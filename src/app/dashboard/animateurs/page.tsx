@@ -15,6 +15,7 @@ const EMPTY_FORM = {
   disponibilites: "",
   statut: "actif",
   est_stagiaire: false,
+  stagiaire_confiance: false,
   date_naissance: "",
   notes: "",
 };
@@ -58,6 +59,7 @@ export default function AnimateursPage() {
       disponibilites: a.disponibilites ?? "",
       statut: a.statut,
       est_stagiaire: a.est_stagiaire,
+      stagiaire_confiance: a.stagiaire_confiance,
       date_naissance: a.date_naissance ?? "",
       notes: a.notes ?? "",
     });
@@ -198,11 +200,29 @@ export default function AnimateursPage() {
               type="checkbox"
               checked={form.est_stagiaire}
               onChange={(e) =>
-                setForm({ ...form, est_stagiaire: e.target.checked })
+                setForm({
+                  ...form,
+                  est_stagiaire: e.target.checked,
+                  stagiaire_confiance: e.target.checked
+                    ? form.stagiaire_confiance
+                    : false,
+                })
               }
             />
             Stagiaire (ne peut pas ouvrir/fermer seul)
           </label>
+          {form.est_stagiaire && (
+            <label className="flex items-center gap-2 text-sm text-zinc-700">
+              <input
+                type="checkbox"
+                checked={form.stagiaire_confiance}
+                onChange={(e) =>
+                  setForm({ ...form, stagiaire_confiance: e.target.checked })
+                }
+              />
+              Stagiaire de confiance (peut ouvrir/fermer seul quand même)
+            </label>
+          )}
           <textarea
             placeholder="Notes"
             value={form.notes}
@@ -262,7 +282,7 @@ export default function AnimateursPage() {
                     <div className="mt-1 flex gap-1">
                       {a.est_stagiaire && (
                         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                          Stagiaire
+                          Stagiaire{a.stagiaire_confiance ? " (confiance)" : ""}
                         </span>
                       )}
                       {a.date_naissance &&

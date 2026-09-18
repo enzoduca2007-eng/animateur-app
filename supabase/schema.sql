@@ -92,6 +92,7 @@ create table public.animateurs (
   disponibilites text,
   statut text not null default 'actif',
   est_stagiaire boolean not null default false,
+  stagiaire_confiance boolean not null default false,
   date_naissance date,
   notes text,
   created_by uuid references public.profiles (id),

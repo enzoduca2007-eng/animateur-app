@@ -7,7 +7,7 @@ import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
 import { formatHeures, heuresJour, pauseMinutes, toMinutes } from "@/lib/creneaux";
-import { estMineur, plafondHeuresSemaine } from "@/lib/regles";
+import { estMineur, plafondHeuresSemaine, peutOuvrirFermerSeul } from "@/lib/regles";
 import { PeriodesVacances } from "@/components/periodes-vacances";
 import {
   canManage,
@@ -367,9 +367,10 @@ export default function PlanningsPage() {
     const eligibles = animateursDuGroupe(groupe, date);
     const ids = animateursDe(creneauId, date).filter((id) => eligibles.includes(id));
     if (ids.length === 0) return false;
-    return ids.every(
-      (id) => animateurs.find((a) => a.id === id)?.est_stagiaire
-    );
+    return ids.every((id) => {
+      const a = animateurs.find((x) => x.id === id);
+      return !a || !peutOuvrirFermerSeul(a);
+    });
   }
 
   // Moins d'animateurs assignés à l'ouverture/fermeture que ce que
@@ -534,9 +535,10 @@ export default function PlanningsPage() {
       let poolRestant = eligibles.filter((id) => !exclure.has(id));
       if (n === 0 || poolRestant.length === 0) return choisis;
 
-      const nonStagiaires = poolRestant.filter(
-        (id) => !animateurs.find((a) => a.id === id)?.est_stagiaire
-      );
+      const nonStagiaires = poolRestant.filter((id) => {
+        const a = animateurs.find((x) => x.id === id);
+        return a && peutOuvrirFermerSeul(a);
+      });
       if (nonStagiaires.length > 0) {
         const premier = nonStagiaires.reduce((m, id) =>
           (compteur.get(id) ?? 0) < (compteur.get(m) ?? 0) ? id : m

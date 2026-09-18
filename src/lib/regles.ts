@@ -19,3 +19,14 @@ export function estMineur(
 export function plafondHeuresSemaine(mineur: boolean | null) {
   return mineur ? 38 : 43;
 }
+
+/**
+ * Un stagiaire "de confiance" peut ouvrir/fermer seul comme un
+ * non-stagiaire ; un stagiaire ordinaire ne le peut pas.
+ */
+export function peutOuvrirFermerSeul(a: {
+  est_stagiaire: boolean;
+  stagiaire_confiance: boolean;
+}) {
+  return !a.est_stagiaire || a.stagiaire_confiance;
+}
