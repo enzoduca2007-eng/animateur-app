@@ -125,6 +125,27 @@ export interface FeuilleTemps {
   updated_at: string;
 }
 
+export type StatutIaGouter = "en_attente" | "traite" | "echec";
+
+export interface Gouter {
+  id: string;
+  date: string;
+  groupe: Groupe;
+  type_produit: string;
+  marque: string;
+  photo_url: string | null;
+  nom_produit: string | null;
+  numero_lot: string | null;
+  date_peremption: string | null;
+  quantite: string | null;
+  statut_ia: StatutIaGouter;
+  erreur_ia: string | null;
+  created_by: string | null;
+  rempli_par: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Message {
   id: string;
   auteur_id: string;
