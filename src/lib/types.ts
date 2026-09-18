@@ -95,9 +95,11 @@ export interface EffectifJour {
   created_at: string;
 }
 
-export interface Reglages {
-  id: number;
-  ratio_encadrement: number;
+export interface PalierEncadrement {
+  id: string;
+  effectif_min: number;
+  nb_animateurs: number;
+  created_at: string;
 }
 
 export interface Message {

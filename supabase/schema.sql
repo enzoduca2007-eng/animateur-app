@@ -202,25 +202,29 @@ create policy "effectifs_jour: directeur/coordinateur write" on public.effectifs
   for all using (public.current_role_name() in ('directeur', 'coordinateur'))
   with check (public.current_role_name() in ('directeur', 'coordinateur'));
 
--- Réglages globaux (une seule ligne). ratio_encadrement = nombre
--- d'enfants par animateur ; à ajuster selon vos propres règles.
-create table public.reglages (
-  id integer primary key default 1,
-  ratio_encadrement integer not null default 12,
-  constraint reglages_singleton check (id = 1)
+-- Paliers d'encadrement : "à partir de X enfants, il faut Y animateurs
+-- à l'ouverture/fermeture" — configurables, plus proche de la réalité
+-- (arrivées échelonnées) qu'un simple ratio.
+create table public.paliers_encadrement (
+  id uuid primary key default gen_random_uuid(),
+  effectif_min integer not null unique,
+  nb_animateurs integer not null check (nb_animateurs >= 1),
+  created_at timestamptz not null default now()
 );
 
-alter table public.reglages enable row level security;
+alter table public.paliers_encadrement enable row level security;
 
-create policy "reglages: readable by any signed-in user" on public.reglages
+create policy "paliers_encadrement: readable by any signed-in user" on public.paliers_encadrement
   for select using (auth.role() = 'authenticated');
 
-create policy "reglages: directeur/coordinateur write" on public.reglages
+create policy "paliers_encadrement: directeur/coordinateur write" on public.paliers_encadrement
   for all using (public.current_role_name() in ('directeur', 'coordinateur'))
   with check (public.current_role_name() in ('directeur', 'coordinateur'));
 
-insert into public.reglages (id, ratio_encadrement) values (1, 12)
-  on conflict (id) do nothing;
+insert into public.paliers_encadrement (effectif_min, nb_animateurs) values
+  (0, 1),
+  (16, 2),
+  (31, 3);
 
 -- Communication interne (simple message board visible to all 3 espaces).
 create table public.messages (

@@ -21,7 +21,7 @@ import {
   type EffectifJour,
   type Groupe,
   type JourFermeture,
-  type Reglages,
+  type PalierEncadrement,
   type TypeCreneau,
 } from "@/lib/types";
 
@@ -67,7 +67,9 @@ export default function PlanningsPage() {
   const [semaineIndex, setSemaineIndex] = useState(0);
   const [groupeSelectionne, setGroupeSelectionne] = useState<Groupe>(GROUPES[0]);
   const [effectifs, setEffectifs] = useState<EffectifJour[]>([]);
-  const [reglages, setReglages] = useState<Reglages>({ id: 1, ratio_encadrement: 12 });
+  const [paliers, setPaliers] = useState<PalierEncadrement[]>([]);
+  const [showPaliers, setShowPaliers] = useState(false);
+  const [formPalier, setFormPalier] = useState({ effectif_min: "", nb_animateurs: "" });
 
   async function chargerCreneaux() {
     const { data } = await supabase
@@ -86,6 +88,14 @@ export default function PlanningsPage() {
     if (data) setJoursFermeture(data as JourFermeture[]);
   }
 
+  async function chargerPaliers() {
+    const { data } = await supabase
+      .from("paliers_encadrement")
+      .select("*")
+      .order("effectif_min");
+    if (data) setPaliers(data as PalierEncadrement[]);
+  }
+
   useEffect(() => {
     supabase
       .from("animateurs")
@@ -95,17 +105,10 @@ export default function PlanningsPage() {
       .then(({ data }) => {
         if (data) setAnimateurs(data as Animateur[]);
       });
-    supabase
-      .from("reglages")
-      .select("*")
-      .eq("id", 1)
-      .single()
-      .then(({ data }) => {
-        if (data) setReglages(data as Reglages);
-      });
     // eslint-disable-next-line react-hooks/set-state-in-effect
     chargerCreneaux();
     chargerFermetures();
+    chargerPaliers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -205,12 +208,15 @@ export default function PlanningsPage() {
   }
 
   // Nombre minimum d'animateurs à l'ouverture/fermeture selon l'effectif
-  // du jour et le taux d'encadrement réglé. 1 par défaut si l'effectif
-  // n'a pas été renseigné.
+  // du jour et les paliers configurés (le palier le plus élevé dont le
+  // seuil est atteint). 1 par défaut si l'effectif n'a pas été renseigné
+  // ou si aucun palier n'est défini.
   function nbRequisEncadrement(groupe: Groupe, date: string) {
     const effectif = effectifDe(groupe, date);
-    if (effectif === null || effectif === 0) return 1;
-    return Math.max(1, Math.ceil(effectif / Math.max(1, reglages.ratio_encadrement)));
+    if (effectif === null || effectif === 0 || paliers.length === 0) return 1;
+    const applicables = paliers.filter((p) => p.effectif_min <= effectif);
+    if (applicables.length === 0) return 1;
+    return applicables.reduce((max, p) => (p.nb_animateurs > max ? p.nb_animateurs : max), 1);
   }
 
   async function majEffectif(groupe: Groupe, date: string, valeur: number) {
@@ -227,13 +233,26 @@ export default function PlanningsPage() {
     if (error) setErreur(error.message);
   }
 
-  async function majRatio(valeur: number) {
-    setReglages((prev) => ({ ...prev, ratio_encadrement: valeur }));
+  async function ajouterPalier(e: React.FormEvent) {
+    e.preventDefault();
+    const effectif_min = Number(formPalier.effectif_min);
+    const nb_animateurs = Number(formPalier.nb_animateurs);
+    if (!Number.isFinite(effectif_min) || !Number.isFinite(nb_animateurs) || nb_animateurs < 1)
+      return;
     const { error } = await supabase
-      .from("reglages")
-      .update({ ratio_encadrement: valeur })
-      .eq("id", 1);
-    if (error) setErreur(error.message);
+      .from("paliers_encadrement")
+      .upsert({ effectif_min, nb_animateurs }, { onConflict: "effectif_min" });
+    if (error) {
+      setErreur(error.message);
+      return;
+    }
+    setFormPalier({ effectif_min: "", nb_animateurs: "" });
+    chargerPaliers();
+  }
+
+  async function supprimerPalier(id: string) {
+    await supabase.from("paliers_encadrement").delete().eq("id", id);
+    chargerPaliers();
   }
 
   async function toggleAffectation(
@@ -736,7 +755,7 @@ export default function PlanningsPage() {
     animateursActifsSemaine,
     compteursOF,
     effectifParCle,
-    reglages,
+    paliers,
   ]);
 
   const alertesParCategorie = useMemo(() => {
@@ -781,27 +800,84 @@ export default function PlanningsPage() {
               {showFermetures ? "Fermer" : "Jours de fermeture"}
             </button>
           )}
+          {editable && (
+            <button
+              onClick={() => setShowPaliers((v) => !v)}
+              className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              {showPaliers ? "Fermer" : "Paliers d'encadrement"}
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="no-print flex items-center gap-2 text-sm text-zinc-500">
-        <span>Taux d&apos;encadrement : 1 animateur pour</span>
-        {editable ? (
-          <input
-            type="number"
-            min={1}
-            defaultValue={reglages.ratio_encadrement}
-            onBlur={(e) => {
-              const v = Number(e.target.value);
-              if (v > 0) majRatio(v);
-            }}
-            className="w-16 rounded-md border border-zinc-300 px-2 py-1 text-center text-sm"
-          />
-        ) : (
-          <span className="font-medium">{reglages.ratio_encadrement}</span>
-        )}
-        <span>enfants — utilisé pour calculer le nombre requis à l&apos;ouverture/fermeture.</span>
-      </div>
+      {showPaliers && editable && (
+        <div className="no-print rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <p className="mb-1 text-sm font-medium text-zinc-900">
+            Paliers d&apos;encadrement (ouverture/fermeture)
+          </p>
+          <p className="mb-3 text-xs text-zinc-500">
+            Les enfants arrivent de façon échelonnée : ce n&apos;est pas un
+            simple ratio effectif/animateur, mais ta propre estimation de
+            combien d&apos;animateurs sont nécessaires à ces moments-là
+            selon l&apos;effectif prévu.
+          </p>
+          {paliers.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {paliers.map((p) => (
+                <span
+                  key={p.id}
+                  className="flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-700"
+                >
+                  ≥ {p.effectif_min} enfants → {p.nb_animateurs} anim
+                  {p.nb_animateurs > 1 ? "s" : ""}
+                  <button
+                    onClick={() => supprimerPalier(p.id)}
+                    className="text-zinc-400 hover:text-red-600"
+                    title="Supprimer"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <form onSubmit={ajouterPalier} className="flex flex-wrap items-end gap-2">
+            <div>
+              <label className="block text-xs text-zinc-500">À partir de (enfants)</label>
+              <input
+                type="number"
+                min={0}
+                required
+                value={formPalier.effectif_min}
+                onChange={(e) =>
+                  setFormPalier({ ...formPalier, effectif_min: e.target.value })
+                }
+                className="w-28 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-500">Animateurs requis</label>
+              <input
+                type="number"
+                min={1}
+                required
+                value={formPalier.nb_animateurs}
+                onChange={(e) =>
+                  setFormPalier({ ...formPalier, nb_animateurs: e.target.value })
+                }
+                className="w-28 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+              />
+            </div>
+            <button
+              type="submit"
+              className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              + Ajouter
+            </button>
+          </form>
+        </div>
+      )}
 
       {erreur && (
         <p className="no-print rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
