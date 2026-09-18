@@ -61,8 +61,8 @@ export function DashboardNav() {
       )}
 
       <aside
-        className={`no-print fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-zinc-200 bg-white transition-transform duration-200 md:static md:z-auto md:w-56 md:translate-x-0 ${
-          ouvert ? "translate-x-0" : "-translate-x-full"
+        className={`no-print fixed inset-y-0 left-0 z-50 w-64 shrink-0 flex-col border-r border-zinc-200 bg-white md:static md:z-auto md:flex md:w-56 ${
+          ouvert ? "flex" : "hidden"
         }`}
       >
         <div className="hidden px-5 py-4 md:block">
