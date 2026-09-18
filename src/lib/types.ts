@@ -86,6 +86,20 @@ export interface JourFermeture {
   created_at: string;
 }
 
+export interface EffectifJour {
+  id: string;
+  date: string;
+  groupe: Groupe;
+  effectif: number;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface Reglages {
+  id: number;
+  ratio_encadrement: number;
+}
+
 export interface Message {
   id: string;
   auteur_id: string;

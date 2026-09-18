@@ -18,8 +18,10 @@ import {
   type AffectationJour,
   type Animateur,
   type Creneau,
+  type EffectifJour,
   type Groupe,
   type JourFermeture,
+  type Reglages,
   type TypeCreneau,
 } from "@/lib/types";
 
@@ -64,6 +66,8 @@ export default function PlanningsPage() {
   const [formFermeture, setFormFermeture] = useState({ date: "", motif: "" });
   const [semaineIndex, setSemaineIndex] = useState(0);
   const [groupeSelectionne, setGroupeSelectionne] = useState<Groupe>(GROUPES[0]);
+  const [effectifs, setEffectifs] = useState<EffectifJour[]>([]);
+  const [reglages, setReglages] = useState<Reglages>({ id: 1, ratio_encadrement: 12 });
 
   async function chargerCreneaux() {
     const { data } = await supabase
@@ -90,6 +94,14 @@ export default function PlanningsPage() {
       .order("nom")
       .then(({ data }) => {
         if (data) setAnimateurs(data as Animateur[]);
+      });
+    supabase
+      .from("reglages")
+      .select("*")
+      .eq("id", 1)
+      .single()
+      .then(({ data }) => {
+        if (data) setReglages(data as Reglages);
       });
     // eslint-disable-next-line react-hooks/set-state-in-effect
     chargerCreneaux();
@@ -127,7 +139,7 @@ export default function PlanningsPage() {
 
   async function loadAffectations(debut: string, fin: string) {
     setLoading(true);
-    const [{ data: c }, { data: j }] = await Promise.all([
+    const [{ data: c }, { data: j }, { data: e }] = await Promise.all([
       supabase
         .from("affectations_creneau")
         .select("*")
@@ -138,9 +150,15 @@ export default function PlanningsPage() {
         .select("*")
         .gte("date", debut)
         .lte("date", fin),
+      supabase
+        .from("effectifs_jour")
+        .select("*")
+        .gte("date", debut)
+        .lte("date", fin),
     ]);
     setAffectations((c as AffectationCreneau[]) ?? []);
     setAffectationsJour((j as AffectationJour[]) ?? []);
+    setEffectifs((e as EffectifJour[]) ?? []);
     setLoading(false);
   }
 
@@ -174,6 +192,48 @@ export default function PlanningsPage() {
 
   function animateursDuGroupe(groupe: Groupe, date: string) {
     return animateursParGroupeJour.get(`${groupe}|${date}`) ?? [];
+  }
+
+  const effectifParCle = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of effectifs) map.set(`${e.groupe}|${e.date}`, e.effectif);
+    return map;
+  }, [effectifs]);
+
+  function effectifDe(groupe: Groupe, date: string): number | null {
+    return effectifParCle.get(`${groupe}|${date}`) ?? null;
+  }
+
+  // Nombre minimum d'animateurs à l'ouverture/fermeture selon l'effectif
+  // du jour et le taux d'encadrement réglé. 1 par défaut si l'effectif
+  // n'a pas été renseigné.
+  function nbRequisEncadrement(groupe: Groupe, date: string) {
+    const effectif = effectifDe(groupe, date);
+    if (effectif === null || effectif === 0) return 1;
+    return Math.max(1, Math.ceil(effectif / Math.max(1, reglages.ratio_encadrement)));
+  }
+
+  async function majEffectif(groupe: Groupe, date: string, valeur: number) {
+    setEffectifs((prev) => [
+      ...prev.filter((e) => !(e.groupe === groupe && e.date === date)),
+      { id: `optimistic-${groupe}-${date}`, date, groupe, effectif: valeur, created_by: profile.id, created_at: new Date().toISOString() },
+    ]);
+    const { error } = await supabase
+      .from("effectifs_jour")
+      .upsert(
+        { date, groupe, effectif: valeur, created_by: profile.id },
+        { onConflict: "date,groupe" }
+      );
+    if (error) setErreur(error.message);
+  }
+
+  async function majRatio(valeur: number) {
+    setReglages((prev) => ({ ...prev, ratio_encadrement: valeur }));
+    const { error } = await supabase
+      .from("reglages")
+      .update({ ratio_encadrement: valeur })
+      .eq("id", 1);
+    if (error) setErreur(error.message);
   }
 
   async function toggleAffectation(
@@ -293,6 +353,28 @@ export default function PlanningsPage() {
     );
   }
 
+  // Moins d'animateurs assignés à l'ouverture/fermeture que ce que
+  // l'effectif du jour exige (taux d'encadrement).
+  function encadrementInsuffisant(creneauId: string, date: string, groupe: Groupe) {
+    const eligibles = animateursDuGroupe(groupe, date);
+    const ids = animateursDe(creneauId, date).filter((id) => eligibles.includes(id));
+    if (ids.length === 0) return false;
+    return ids.length < nbRequisEncadrement(groupe, date);
+  }
+
+  // Un même animateur ne doit jamais ouvrir ET fermer le même jour.
+  function ouvreEtFerme(date: string, groupe: Groupe) {
+    if (!creneauOuverture || !creneauFermeture) return [];
+    const eligibles = animateursDuGroupe(groupe, date);
+    const ouvreurs = animateursDe(creneauOuverture.id, date).filter((id) =>
+      eligibles.includes(id)
+    );
+    const fermeurs = animateursDe(creneauFermeture.id, date).filter((id) =>
+      eligibles.includes(id)
+    );
+    return ouvreurs.filter((id) => fermeurs.includes(id));
+  }
+
   // Jours (dans la période) où chaque animateur a une pause < 1h alors
   // qu'il travaille (arrivée + départ assignés) ce jour-là.
   const violationsPause = useMemo(() => {
@@ -407,15 +489,26 @@ export default function PlanningsPage() {
       map.set(cle, (map.get(cle) ?? 0) + 1);
     }
 
-    function choisirPersonne(eligibles: string[], compteur: Map<string, number>) {
-      if (eligibles.length === 0) return null;
-      const nonStagiaires = eligibles.filter(
-        (id) => !animateurs.find((a) => a.id === id)?.est_stagiaire
-      );
-      const pool = nonStagiaires.length > 0 ? nonStagiaires : eligibles;
-      return pool.reduce((meilleur, id) =>
-        (compteur.get(id) ?? 0) < (compteur.get(meilleur) ?? 0) ? id : meilleur
-      );
+    function choisirPlusieurs(
+      eligibles: string[],
+      compteur: Map<string, number>,
+      n: number,
+      exclure: Set<string>
+    ) {
+      const choisis: string[] = [];
+      let poolRestant = eligibles.filter((id) => !exclure.has(id));
+      for (let i = 0; i < n && poolRestant.length > 0; i++) {
+        const nonStagiaires = poolRestant.filter(
+          (id) => !animateurs.find((a) => a.id === id)?.est_stagiaire
+        );
+        const pool = nonStagiaires.length > 0 ? nonStagiaires : poolRestant;
+        const pick = pool.reduce((meilleur, id) =>
+          (compteur.get(id) ?? 0) < (compteur.get(meilleur) ?? 0) ? id : meilleur
+        );
+        choisis.push(pick);
+        poolRestant = poolRestant.filter((id) => id !== pick);
+      }
+      return choisis;
     }
 
     function moinsUtilise(items: Creneau[], compteur: Map<string, number>) {
@@ -431,25 +524,33 @@ export default function PlanningsPage() {
         const eligibles = animateursDuGroupe(groupe, j);
         if (eligibles.length === 0) continue;
 
-        // Ouverture / fermeture : rotation équitable, jamais un stagiaire seul.
-        const opener = choisirPersonne(eligibles, compteurOuverture);
-        const closer = choisirPersonne(eligibles, compteurFermeture);
+        // Ouverture / fermeture : autant de personnes que l'effectif du
+        // jour l'exige, rotation équitable, jamais un stagiaire seul, et
+        // jamais la même personne à l'ouverture ET à la fermeture.
+        const nbRequis = Math.min(nbRequisEncadrement(groupe, j), eligibles.length);
+        const openers = choisirPlusieurs(eligibles, compteurOuverture, nbRequis, new Set());
+        const closers = choisirPlusieurs(
+          eligibles,
+          compteurFermeture,
+          nbRequis,
+          new Set(openers)
+        );
 
-        if (opener) {
-          incr(compteurOuverture, opener);
+        for (const id of openers) {
+          incr(compteurOuverture, id);
           incr(compteurArrivee, ouverture.id);
-          nouvelles.push({ date: j, creneau_id: ouverture.id, animateur_id: opener });
+          nouvelles.push({ date: j, creneau_id: ouverture.id, animateur_id: id });
         }
-        if (closer) {
-          incr(compteurFermeture, closer);
+        for (const id of closers) {
+          incr(compteurFermeture, id);
           incr(compteurDepart, fermeture.id);
-          nouvelles.push({ date: j, creneau_id: fermeture.id, animateur_id: closer });
+          nouvelles.push({ date: j, creneau_id: fermeture.id, animateur_id: id });
         }
 
         // Arrivée pour les autres : créneau le moins utilisé, pour varier.
         const autresArrivees = arrivees.filter((c) => c.id !== ouverture.id);
         for (const id of eligibles) {
-          if (id === opener) continue;
+          if (openers.includes(id)) continue;
           const c =
             autresArrivees.length > 0 ? moinsUtilise(autresArrivees, compteurArrivee) : ouverture;
           incr(compteurArrivee, c.id);
@@ -459,7 +560,7 @@ export default function PlanningsPage() {
         // Départ pour les autres, même logique.
         const autresDeparts = departs.filter((c) => c.id !== fermeture.id);
         for (const id of eligibles) {
-          if (id === closer) continue;
+          if (closers.includes(id)) continue;
           const c =
             autresDeparts.length > 0 ? moinsUtilise(autresDeparts, compteurDepart) : fermeture;
           incr(compteurDepart, c.id);
@@ -514,7 +615,12 @@ export default function PlanningsPage() {
     if (periode) loadAffectations(periode.debut, periode.fin);
   }
 
-  type CategorieAlerte = "ouverture-fermeture" | "pause" | "heures" | "rotation";
+  type CategorieAlerte =
+    | "ouverture-fermeture"
+    | "pause"
+    | "heures"
+    | "rotation"
+    | "effectif";
   const CATEGORIE_ALERTE_INFO: Record<
     CategorieAlerte,
     { titre: string; icone: string }
@@ -523,6 +629,7 @@ export default function PlanningsPage() {
     pause: { titre: "Pauses", icone: "☕" },
     heures: { titre: "Heures", icone: "⏱️" },
     rotation: { titre: "Rotation ouverture/fermeture", icone: "🔁" },
+    effectif: { titre: "Taux d'encadrement", icone: "👥" },
   };
 
   // Alertes de la semaine affichée, regroupées par catégorie.
@@ -541,6 +648,25 @@ export default function PlanningsPage() {
           liste.push({
             categorie: "ouverture-fermeture",
             texte: `${GROUPE_LABELS[groupe]} · ${formatJourCourt(j)} : uniquement des stagiaires à la fermeture (${creneauFermeture.libelle})`,
+          });
+        }
+        if (creneauOuverture && encadrementInsuffisant(creneauOuverture.id, j, groupe)) {
+          liste.push({
+            categorie: "effectif",
+            texte: `${GROUPE_LABELS[groupe]} · ${formatJourCourt(j)} : ${nbRequisEncadrement(groupe, j)} animateur(s) requis à l'ouverture selon l'effectif (${effectifDe(groupe, j) ?? "?"} enfants), pas assez assignés`,
+          });
+        }
+        if (creneauFermeture && encadrementInsuffisant(creneauFermeture.id, j, groupe)) {
+          liste.push({
+            categorie: "effectif",
+            texte: `${GROUPE_LABELS[groupe]} · ${formatJourCourt(j)} : ${nbRequisEncadrement(groupe, j)} animateur(s) requis à la fermeture selon l'effectif (${effectifDe(groupe, j) ?? "?"} enfants), pas assez assignés`,
+          });
+        }
+        for (const id of ouvreEtFerme(j, groupe)) {
+          const a = animateurs.find((an) => an.id === id);
+          liste.push({
+            categorie: "ouverture-fermeture",
+            texte: `${GROUPE_LABELS[groupe]} · ${formatJourCourt(j)} : ${a?.prenom} ${a?.nom} ouvre ET ferme le même jour`,
           });
         }
       }
@@ -609,6 +735,8 @@ export default function PlanningsPage() {
     animateursParCellule,
     animateursActifsSemaine,
     compteursOF,
+    effectifParCle,
+    reglages,
   ]);
 
   const alertesParCategorie = useMemo(() => {
@@ -654,6 +782,25 @@ export default function PlanningsPage() {
             </button>
           )}
         </div>
+      </div>
+
+      <div className="no-print flex items-center gap-2 text-sm text-zinc-500">
+        <span>Taux d&apos;encadrement : 1 animateur pour</span>
+        {editable ? (
+          <input
+            type="number"
+            min={1}
+            defaultValue={reglages.ratio_encadrement}
+            onBlur={(e) => {
+              const v = Number(e.target.value);
+              if (v > 0) majRatio(v);
+            }}
+            className="w-16 rounded-md border border-zinc-300 px-2 py-1 text-center text-sm"
+          />
+        ) : (
+          <span className="font-medium">{reglages.ratio_encadrement}</span>
+        )}
+        <span>enfants — utilisé pour calculer le nombre requis à l&apos;ouverture/fermeture.</span>
       </div>
 
       {erreur && (
@@ -1021,6 +1168,45 @@ export default function PlanningsPage() {
                               </th>
                             ))}
                           </tr>
+                          <tr className="no-print">
+                            <th
+                              colSpan={2}
+                              className="sticky left-0 z-10 border border-zinc-300 bg-white px-3 py-2 text-left text-xs font-medium text-zinc-500"
+                            >
+                              Effectif enfants
+                            </th>
+                            {semaineJours.map((j) => {
+                              const requis = editable ? nbRequisEncadrement(groupe, j) : null;
+                              return (
+                                <th
+                                  key={j}
+                                  className="border border-zinc-300 bg-white px-2 py-2 text-center font-normal"
+                                >
+                                  {editable ? (
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      defaultValue={effectifDe(groupe, j) ?? ""}
+                                      onBlur={(e) => {
+                                        const v = Number(e.target.value);
+                                        if (!Number.isNaN(v)) majEffectif(groupe, j, v);
+                                      }}
+                                      className="w-14 rounded-md border border-zinc-300 px-1 py-0.5 text-center text-xs"
+                                    />
+                                  ) : (
+                                    <span className="text-xs text-zinc-500">
+                                      {effectifDe(groupe, j) ?? "—"}
+                                    </span>
+                                  )}
+                                  {requis && (
+                                    <p className="mt-0.5 text-[10px] text-zinc-400">
+                                      {requis} requis
+                                    </p>
+                                  )}
+                                </th>
+                              );
+                            })}
+                          </tr>
                         </thead>
                         <tbody>
                           {TYPES.flatMap((type) => {
@@ -1060,8 +1246,11 @@ export default function PlanningsPage() {
                                   const estCritique =
                                     c.id === creneauOuverture?.id ||
                                     c.id === creneauFermeture?.id;
-                                  const alerte =
+                                  const alerteStagiaire =
                                     estCritique && stagiaireSeul(c.id, j, groupe);
+                                  const alerteEffectif =
+                                    estCritique && encadrementInsuffisant(c.id, j, groupe);
+                                  const alerte = alerteStagiaire || alerteEffectif;
                                   return (
                                     <td
                                       key={j}
@@ -1070,9 +1259,11 @@ export default function PlanningsPage() {
                                         setCelluleOuverte({ creneauId: c.id, date: j, groupe })
                                       }
                                       title={
-                                        alerte
+                                        alerteStagiaire
                                           ? "Uniquement des stagiaires — un stagiaire ne peut pas ouvrir/fermer seul"
-                                          : undefined
+                                          : alerteEffectif
+                                            ? `Effectif insuffisant : ${nbRequisEncadrement(groupe, j)} animateur(s) requis selon l'effectif du jour`
+                                            : undefined
                                       }
                                       className={`min-w-24 px-2 py-2 text-center text-xs text-zinc-700 print:border-black ${
                                         alerte
