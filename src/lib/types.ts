@@ -1,11 +1,17 @@
-export type Role = "directeur" | "coordinateur" | "responsable";
+export type Role = "directeur" | "coordinateur" | "responsable" | "animateur";
 
-export const ROLES: Role[] = ["directeur", "coordinateur", "responsable"];
+export const ROLES: Role[] = [
+  "directeur",
+  "coordinateur",
+  "responsable",
+  "animateur",
+];
 
 export const ROLE_LABELS: Record<Role, string> = {
   directeur: "Directeur",
   coordinateur: "Coordinateur",
   responsable: "Responsable",
+  animateur: "Animateur",
 };
 
 export interface Profile {
@@ -29,6 +35,7 @@ export interface Animateur {
   stagiaire_confiance: boolean;
   date_naissance: string | null;
   notes: string | null;
+  profile_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
-import { canManage, type Animateur } from "@/lib/types";
+import { canManage, type Animateur, type Profile } from "@/lib/types";
 import { estMineur } from "@/lib/regles";
 
 const EMPTY_FORM = {
@@ -18,6 +18,7 @@ const EMPTY_FORM = {
   stagiaire_confiance: false,
   date_naissance: "",
   notes: "",
+  profile_id: "",
 };
 
 export default function AnimateursPage() {
@@ -26,6 +27,7 @@ export default function AnimateursPage() {
   const editable = canManage(profile.role);
 
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
+  const [comptesAnimateur, setComptesAnimateur] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -45,6 +47,13 @@ export default function AnimateursPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
+    supabase
+      .from("profiles")
+      .select("*")
+      .eq("role", "animateur")
+      .then(({ data }) => {
+        if (data) setComptesAnimateur(data as Profile[]);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -62,6 +71,7 @@ export default function AnimateursPage() {
       stagiaire_confiance: a.stagiaire_confiance,
       date_naissance: a.date_naissance ?? "",
       notes: a.notes ?? "",
+      profile_id: a.profile_id ?? "",
     });
     setShowForm(true);
   }
@@ -76,7 +86,11 @@ export default function AnimateursPage() {
     e.preventDefault();
     setError(null);
 
-    const payload = { ...form, date_naissance: form.date_naissance || null };
+    const payload = {
+      ...form,
+      date_naissance: form.date_naissance || null,
+      profile_id: form.profile_id || null,
+    };
 
     if (editingId) {
       const { error } = await supabase
@@ -223,6 +237,31 @@ export default function AnimateursPage() {
               Stagiaire de confiance (peut ouvrir/fermer seul quand même)
             </label>
           )}
+          <div>
+            <label className="block text-xs text-zinc-500">
+              Compte animateur lié
+            </label>
+            <select
+              value={form.profile_id}
+              onChange={(e) => setForm({ ...form, profile_id: e.target.value })}
+              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            >
+              <option value="">Aucun</option>
+              {comptesAnimateur
+                .filter(
+                  (p) =>
+                    p.id === form.profile_id ||
+                    !animateurs.some(
+                      (other) => other.profile_id === p.id && other.id !== editingId
+                    )
+                )
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.full_name} ({p.email})
+                  </option>
+                ))}
+            </select>
+          </div>
           <textarea
             placeholder="Notes"
             value={form.notes}
@@ -291,6 +330,11 @@ export default function AnimateursPage() {
                             Mineur
                           </span>
                         )}
+                      {a.profile_id && (
+                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+                          Compte lié
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-zinc-600">

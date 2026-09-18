@@ -3,7 +3,7 @@
 
 create extension if not exists "pgcrypto";
 
-create type public.user_role as enum ('directeur', 'coordinateur', 'responsable');
+create type public.user_role as enum ('directeur', 'coordinateur', 'responsable', 'animateur');
 
 -- One row per account, created automatically on signup (see trigger below).
 create table public.profiles (
@@ -95,6 +95,7 @@ create table public.animateurs (
   stagiaire_confiance boolean not null default false,
   date_naissance date,
   notes text,
+  profile_id uuid unique references public.profiles (id) on delete set null,
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

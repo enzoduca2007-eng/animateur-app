@@ -6,11 +6,14 @@ import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { ROLE_LABELS, type Role } from "@/lib/types";
 
+const STAFF: Role[] = ["directeur", "coordinateur", "responsable"];
+
 const LINKS: { href: string; label: string; roles: Role[] | null }[] = [
-  { href: "/dashboard", label: "Accueil", roles: null },
-  { href: "/dashboard/animateurs", label: "Animateurs", roles: null },
-  { href: "/dashboard/plannings", label: "Plannings", roles: null },
-  { href: "/dashboard/repartition", label: "Répartition", roles: null },
+  { href: "/dashboard", label: "Accueil", roles: STAFF },
+  { href: "/dashboard/mon-planning", label: "Mon planning", roles: ["animateur"] },
+  { href: "/dashboard/animateurs", label: "Animateurs", roles: STAFF },
+  { href: "/dashboard/plannings", label: "Plannings", roles: STAFF },
+  { href: "/dashboard/repartition", label: "Répartition", roles: STAFF },
   { href: "/dashboard/messages", label: "Messages", roles: null },
   { href: "/dashboard/equipe", label: "Équipe", roles: ["directeur"] },
 ];
