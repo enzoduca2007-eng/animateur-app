@@ -497,6 +497,8 @@ export default function PlanningsPage() {
 
     const ouverture = arrivees[0];
     const fermeture = departs[departs.length - 1];
+    const autresArrivees = arrivees.filter((c) => c.id !== ouverture.id);
+    const autresDeparts = departs.filter((c) => c.id !== fermeture.id);
 
     const compteurOuverture = new Map<string, number>();
     const compteurFermeture = new Map<string, number>();
@@ -508,6 +510,9 @@ export default function PlanningsPage() {
       map.set(cle, (map.get(cle) ?? 0) + 1);
     }
 
+    // Choisit n personnes : au moins une non-stagiaire si possible (jamais
+    // seuls des stagiaires), le reste réparti sur tout le monde pour ne
+    // pas surcharger systématiquement les mêmes non-stagiaires.
     function choisirPlusieurs(
       eligibles: string[],
       compteur: Map<string, number>,
@@ -516,13 +521,21 @@ export default function PlanningsPage() {
     ) {
       const choisis: string[] = [];
       let poolRestant = eligibles.filter((id) => !exclure.has(id));
-      for (let i = 0; i < n && poolRestant.length > 0; i++) {
-        const nonStagiaires = poolRestant.filter(
-          (id) => !animateurs.find((a) => a.id === id)?.est_stagiaire
+      if (n === 0 || poolRestant.length === 0) return choisis;
+
+      const nonStagiaires = poolRestant.filter(
+        (id) => !animateurs.find((a) => a.id === id)?.est_stagiaire
+      );
+      if (nonStagiaires.length > 0) {
+        const premier = nonStagiaires.reduce((m, id) =>
+          (compteur.get(id) ?? 0) < (compteur.get(m) ?? 0) ? id : m
         );
-        const pool = nonStagiaires.length > 0 ? nonStagiaires : poolRestant;
-        const pick = pool.reduce((meilleur, id) =>
-          (compteur.get(id) ?? 0) < (compteur.get(meilleur) ?? 0) ? id : meilleur
+        choisis.push(premier);
+        poolRestant = poolRestant.filter((id) => id !== premier);
+      }
+      while (choisis.length < n && poolRestant.length > 0) {
+        const pick = poolRestant.reduce((m, id) =>
+          (compteur.get(id) ?? 0) < (compteur.get(m) ?? 0) ? id : m
         );
         choisis.push(pick);
         poolRestant = poolRestant.filter((id) => id !== pick);
@@ -534,6 +547,59 @@ export default function PlanningsPage() {
       return items.reduce((meilleur, c) =>
         (compteur.get(c.id) ?? 0) < (compteur.get(meilleur.id) ?? 0) ? c : meilleur
       );
+    }
+
+    // Choisit, parmi des options, celle dont la durée (en heures, pause
+    // d'1h déjà déduite) se rapproche le plus d'une cible — pour viser le
+    // plafond hebdomadaire plutôt que de l'ignorer.
+    function optionLaPlusProche<T extends { id: string }>(
+      options: T[],
+      duree: (o: T) => number,
+      cible: number,
+      compteur: Map<string, number>
+    ) {
+      return options.reduce((meilleur, o) => {
+        const ecart = Math.abs(duree(o) - cible);
+        const ecartMeilleur = Math.abs(duree(meilleur) - cible);
+        if (ecart < ecartMeilleur) return o;
+        if (
+          ecart === ecartMeilleur &&
+          (compteur.get(o.id) ?? 0) < (compteur.get(meilleur.id) ?? 0)
+        )
+          return o;
+        return meilleur;
+      });
+    }
+
+    // Combien de jours (dans un groupe) chaque animateur travaille cette
+    // semaine, pour répartir son quota d'heures sur ses jours réels.
+    const joursTravaillesTotal = new Map<string, number>();
+    for (const groupe of GROUPES) {
+      for (const j of semaineJoursSelectionnee) {
+        for (const id of animateursDuGroupe(groupe, j)) {
+          joursTravaillesTotal.set(id, (joursTravaillesTotal.get(id) ?? 0) + 1);
+        }
+      }
+    }
+
+    const joursTraites = new Map<string, number>();
+    const heuresAccumulees = new Map<string, number>();
+
+    function cibleDuJour(id: string) {
+      const a = animateurs.find((x) => x.id === id);
+      const mineur = estMineur(a?.date_naissance ?? null, finSemaineSelectionnee);
+      const plafond = plafondHeuresSemaine(mineur);
+      const restant = plafond - (heuresAccumulees.get(id) ?? 0);
+      const joursRestants = Math.max(
+        1,
+        (joursTravaillesTotal.get(id) ?? 1) - (joursTraites.get(id) ?? 0)
+      );
+      return Math.max(2, restant / joursRestants); // jamais viser moins de 2h
+    }
+
+    function enregistrerHeures(id: string, heures: number) {
+      heuresAccumulees.set(id, (heuresAccumulees.get(id) ?? 0) + Math.max(0, heures));
+      joursTraites.set(id, (joursTraites.get(id) ?? 0) + 1);
     }
 
     const nouvelles: { date: string; creneau_id: string; animateur_id: string }[] = [];
@@ -559,31 +625,77 @@ export default function PlanningsPage() {
           incr(compteurOuverture, id);
           incr(compteurArrivee, ouverture.id);
           nouvelles.push({ date: j, creneau_id: ouverture.id, animateur_id: id });
+
+          const options = autresDeparts.length > 0 ? autresDeparts : [fermeture];
+          const depart = optionLaPlusProche(
+            options,
+            (c) => (toMinutes(c.heure_debut) - toMinutes(ouverture.heure_debut)) / 60 - 1,
+            cibleDuJour(id),
+            compteurDepart
+          );
+          incr(compteurDepart, depart.id);
+          nouvelles.push({ date: j, creneau_id: depart.id, animateur_id: id });
+          enregistrerHeures(
+            id,
+            (toMinutes(depart.heure_debut) - toMinutes(ouverture.heure_debut)) / 60 - 1
+          );
         }
+
         for (const id of closers) {
           incr(compteurFermeture, id);
           incr(compteurDepart, fermeture.id);
           nouvelles.push({ date: j, creneau_id: fermeture.id, animateur_id: id });
+
+          const options = autresArrivees.length > 0 ? autresArrivees : [ouverture];
+          const arrivee = optionLaPlusProche(
+            options,
+            (c) => (toMinutes(fermeture.heure_debut) - toMinutes(c.heure_debut)) / 60 - 1,
+            cibleDuJour(id),
+            compteurArrivee
+          );
+          incr(compteurArrivee, arrivee.id);
+          nouvelles.push({ date: j, creneau_id: arrivee.id, animateur_id: id });
+          enregistrerHeures(
+            id,
+            (toMinutes(fermeture.heure_debut) - toMinutes(arrivee.heure_debut)) / 60 - 1
+          );
         }
 
-        // Arrivée pour les autres : créneau le moins utilisé, pour varier.
-        const autresArrivees = arrivees.filter((c) => c.id !== ouverture.id);
+        // Les autres : arrivée + départ choisis ensemble pour viser leur
+        // plafond hebdomadaire.
         for (const id of eligibles) {
-          if (openers.includes(id)) continue;
-          const c =
-            autresArrivees.length > 0 ? moinsUtilise(autresArrivees, compteurArrivee) : ouverture;
-          incr(compteurArrivee, c.id);
-          nouvelles.push({ date: j, creneau_id: c.id, animateur_id: id });
-        }
+          if (openers.includes(id) || closers.includes(id)) continue;
 
-        // Départ pour les autres, même logique.
-        const autresDeparts = departs.filter((c) => c.id !== fermeture.id);
-        for (const id of eligibles) {
-          if (closers.includes(id)) continue;
-          const c =
-            autresDeparts.length > 0 ? moinsUtilise(autresDeparts, compteurDepart) : fermeture;
-          incr(compteurDepart, c.id);
-          nouvelles.push({ date: j, creneau_id: c.id, animateur_id: id });
+          const optionsArrivee = autresArrivees.length > 0 ? autresArrivees : [ouverture];
+          const optionsDepart = autresDeparts.length > 0 ? autresDeparts : [fermeture];
+          const cible = cibleDuJour(id);
+
+          const paire = optionsArrivee
+            .flatMap((ar) => optionsDepart.map((de) => ({ ar, de })))
+            .reduce((meilleure, p) => {
+              const duree = (c: typeof p) =>
+                (toMinutes(c.de.heure_debut) - toMinutes(c.ar.heure_debut)) / 60 - 1;
+              const ecart = Math.abs(duree(p) - cible);
+              const ecartMeilleure = Math.abs(duree(meilleure) - cible);
+              if (ecart < ecartMeilleure) return p;
+              if (
+                ecart === ecartMeilleure &&
+                (compteurArrivee.get(p.ar.id) ?? 0) + (compteurDepart.get(p.de.id) ?? 0) <
+                  (compteurArrivee.get(meilleure.ar.id) ?? 0) +
+                    (compteurDepart.get(meilleure.de.id) ?? 0)
+              )
+                return p;
+              return meilleure;
+            });
+
+          incr(compteurArrivee, paire.ar.id);
+          incr(compteurDepart, paire.de.id);
+          nouvelles.push({ date: j, creneau_id: paire.ar.id, animateur_id: id });
+          nouvelles.push({ date: j, creneau_id: paire.de.id, animateur_id: id });
+          enregistrerHeures(
+            id,
+            (toMinutes(paire.de.heure_debut) - toMinutes(paire.ar.heure_debut)) / 60 - 1
+          );
         }
 
         // Pause obligatoire d'au moins 1h pour chacun.
