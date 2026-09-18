@@ -1232,7 +1232,7 @@ export default function PlanningsPage() {
                         <thead>
                           <tr>
                             <th className="sticky left-0 z-10 border border-zinc-300 bg-zinc-50 px-2 py-2 font-medium print:static print:border-black" />
-                            <th className="sticky left-10 z-10 border border-zinc-300 bg-zinc-50 px-3 py-2 font-medium print:static print:border-black">
+                            <th className="sticky left-10 z-10 border border-zinc-300 border-r-2 border-r-zinc-400 bg-zinc-50 px-3 py-2 font-medium print:static print:border-black print:border-r-2">
                               Créneau
                             </th>
                             {semaineJours.map((j) => (
@@ -1247,7 +1247,7 @@ export default function PlanningsPage() {
                           <tr className="no-print">
                             <th
                               colSpan={2}
-                              className="sticky left-0 z-10 border border-zinc-300 bg-white px-3 py-2 text-left text-xs font-medium text-zinc-500"
+                              className="sticky left-0 z-10 border border-zinc-300 border-r-2 border-r-zinc-400 bg-white px-3 py-2 text-left text-xs font-medium text-zinc-500"
                             >
                               Effectif enfants
                             </th>
@@ -1307,7 +1307,7 @@ export default function PlanningsPage() {
                                     </span>
                                   </td>
                                 )}
-                                <td className="sticky left-10 z-10 whitespace-nowrap border border-zinc-300 bg-inherit px-3 py-2 font-medium text-zinc-900 print:static print:border-black">
+                                <td className="sticky left-10 z-10 whitespace-nowrap border border-zinc-300 border-r-2 border-r-zinc-400 bg-inherit px-3 py-2 font-medium text-zinc-900 print:static print:border-black print:border-r-2">
                                   {c.libelle}
                                 </td>
                                 {semaineJours.map((j) => {
