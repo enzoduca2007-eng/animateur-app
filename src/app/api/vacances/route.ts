@@ -90,6 +90,15 @@ export async function GET() {
     }
   }
 
+  // Le champ end_date du jeu de données officiel correspond en réalité au
+  // jour de la rentrée (repris à l'école), pas au dernier jour de vacances
+  // — il faut donc reculer d'un jour pour avoir la vraie fin des vacances.
+  for (const p of parPeriode.values()) {
+    const veille = new Date(`${p.fin}T00:00:00Z`);
+    veille.setUTCDate(veille.getUTCDate() - 1);
+    p.fin = veille.toISOString().slice(0, 10);
+  }
+
   const aujourdhui = toDateLocale(now.toISOString());
   const periodes = [...parPeriode.values()]
     .filter((p) => p.fin >= aujourdhui)
