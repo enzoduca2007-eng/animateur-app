@@ -7,6 +7,7 @@ import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours } from "@/lib/vacances";
 import { PeriodesVacances } from "@/components/periodes-vacances";
 import {
+  canManage,
   GROUPES,
   GROUPE_LABELS,
   type AffectationJour,
@@ -30,6 +31,25 @@ function formatJourLong(dateISO: string) {
   });
 }
 
+function formatJourCourt(dateISO: string) {
+  return new Date(`${dateISO}T00:00:00Z`).toLocaleDateString("fr-FR", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
+function formatDatePeremption(dateISO: string | null) {
+  if (!dateISO) return "—";
+  return new Date(`${dateISO}T00:00:00Z`).toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 export default function GoutersPage() {
   const profile = useProfile();
   const supabase = createClient();
@@ -46,6 +66,7 @@ export default function GoutersPage() {
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [jour, setJour] = useState<string | null>(null);
   const [gouters, setGouters] = useState<Gouter[]>([]);
+  const [goutersPeriode, setGoutersPeriode] = useState<Gouter[]>([]);
   const [monAnimateur, setMonAnimateur] = useState<Animateur | null>(null);
   const [mesAffectations, setMesAffectations] = useState<AffectationJour[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,11 +148,42 @@ export default function GoutersPage() {
     setLoading(false);
   }
 
+  // Pour le tableau d'impression (toute la période, pas juste le jour
+  // affiché à l'écran) — réservé au directeur/coordinateur.
+  async function chargerGoutersPeriode() {
+    if (!periode || !canManage(profile.role)) return;
+    const { data } = await supabase
+      .from("gouters")
+      .select("*")
+      .gte("date", periode.debut)
+      .lte("date", periode.fin);
+    setGoutersPeriode((data as Gouter[]) ?? []);
+  }
+
+  function rechargerTout() {
+    chargerGouters();
+    chargerGoutersPeriode();
+  }
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     chargerGouters();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jour]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    chargerGoutersPeriode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periode, profile.role]);
+
+  const goutersImprimables = useMemo(
+    () =>
+      goutersPeriode
+        .filter((g) => !monGroupe || g.groupe === monGroupe)
+        .sort((a, b) => (a.date + a.groupe).localeCompare(b.date + b.groupe)),
+    [goutersPeriode, monGroupe]
+  );
 
   async function ajouterProduit(groupe: Groupe) {
     if (!jour) return;
@@ -150,13 +202,13 @@ export default function GoutersPage() {
       return;
     }
     setNouveaux((prev) => ({ ...prev, [groupe]: { type_produit: "", marque: "" } }));
-    chargerGouters();
+    rechargerTout();
   }
 
   async function supprimerProduit(id: string) {
     if (!confirm("Supprimer ce produit ?")) return;
     await supabase.from("gouters").delete().eq("id", id);
-    chargerGouters();
+    rechargerTout();
   }
 
   async function envoyerPhoto(gouter: Gouter, file: File) {
@@ -190,10 +242,10 @@ export default function GoutersPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Analyse IA échouée.");
 
-      chargerGouters();
+      rechargerTout();
     } catch (err) {
       setErreur(err instanceof Error ? err.message : "Erreur lors de l'envoi de la photo.");
-      chargerGouters();
+      rechargerTout();
     } finally {
       setEnvoiEnCours((prev) => ({ ...prev, [gouter.id]: false }));
     }
@@ -201,12 +253,13 @@ export default function GoutersPage() {
 
   async function majChamp(id: string, champ: "nom_produit" | "numero_lot" | "date_peremption" | "quantite", valeur: string) {
     setGouters((prev) => prev.map((g) => (g.id === id ? { ...g, [champ]: valeur || null } : g)));
+    setGoutersPeriode((prev) => prev.map((g) => (g.id === id ? { ...g, [champ]: valeur || null } : g)));
     await supabase.from("gouters").update({ [champ]: valeur || null }).eq("id", id);
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
+      <div className="no-print">
         <h1 className="text-2xl font-semibold text-zinc-900">Goûters</h1>
         <p className="mt-1 text-sm text-zinc-500">
           Traçabilité alimentaire : type de produit et marque saisis par le
@@ -216,7 +269,9 @@ export default function GoutersPage() {
         </p>
       </div>
 
-      <PeriodesVacances periodes={periodes} zone={zone} loading={loadingVacances} />
+      <div className="no-print">
+        <PeriodesVacances periodes={periodes} zone={zone} loading={loadingVacances} />
+      </div>
 
       {erreur && (
         <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
@@ -230,7 +285,7 @@ export default function GoutersPage() {
         <p className="text-sm text-zinc-400">Aucune période de vacances trouvée.</p>
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="no-print flex flex-wrap items-center gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
             <div>
               <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
                 Période
@@ -266,16 +321,110 @@ export default function GoutersPage() {
                 ))}
               </select>
             </div>
+            {canManage(profile.role) && (
+              <button
+                onClick={() => window.print()}
+                className="ml-auto rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                Imprimer le tableau de traçabilité
+              </button>
+            )}
           </div>
 
+          {canManage(profile.role) && (
+            <div className="hidden print:block">
+              <h2 className="text-lg font-bold text-zinc-900">
+                Traçabilité des goûters
+              </h2>
+              <p className="mt-1 text-sm text-zinc-600">
+                {periode?.description} ({periode?.debut} – {periode?.fin}) · Zone {zone}
+                {monGroupe && ` · ${GROUPE_LABELS[monGroupe]}`}
+              </p>
+              <table className="mt-4 w-full border-collapse text-left text-xs">
+                <thead>
+                  <tr>
+                    <th className="border border-black px-2 py-1 font-semibold capitalize">
+                      Date
+                    </th>
+                    <th className="border border-black px-2 py-1 font-semibold">Groupe</th>
+                    <th className="border border-black px-2 py-1 font-semibold">Type</th>
+                    <th className="border border-black px-2 py-1 font-semibold">Marque</th>
+                    <th className="border border-black px-2 py-1 font-semibold">Photo</th>
+                    <th className="border border-black px-2 py-1 font-semibold">
+                      Nom produit
+                    </th>
+                    <th className="border border-black px-2 py-1 font-semibold">
+                      N° de lot
+                    </th>
+                    <th className="border border-black px-2 py-1 font-semibold">
+                      DLC/DLUO
+                    </th>
+                    <th className="border border-black px-2 py-1 font-semibold">
+                      Quantité
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {goutersImprimables.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={9}
+                        className="border border-black px-2 py-2 text-center text-zinc-500"
+                      >
+                        Aucun produit renseigné sur cette période.
+                      </td>
+                    </tr>
+                  ) : (
+                    goutersImprimables.map((g) => (
+                      <tr key={g.id}>
+                        <td className="border border-black px-2 py-1 capitalize">
+                          {formatJourCourt(g.date)}
+                        </td>
+                        <td className="border border-black px-2 py-1">
+                          {GROUPE_LABELS[g.groupe]}
+                        </td>
+                        <td className="border border-black px-2 py-1">{g.type_produit}</td>
+                        <td className="border border-black px-2 py-1">{g.marque}</td>
+                        <td className="border border-black px-2 py-1">
+                          {g.photo_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={g.photo_url}
+                              alt=""
+                              className="h-14 w-14 object-cover"
+                            />
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="border border-black px-2 py-1">
+                          {g.nom_produit || "—"}
+                        </td>
+                        <td className="border border-black px-2 py-1">
+                          {g.numero_lot || "—"}
+                        </td>
+                        <td className="border border-black px-2 py-1">
+                          {formatDatePeremption(g.date_peremption)}
+                        </td>
+                        <td className="border border-black px-2 py-1">
+                          {g.quantite || "—"}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {loading ? (
-            <p className="text-sm text-zinc-400">Chargement...</p>
+            <p className="no-print text-sm text-zinc-400">Chargement...</p>
           ) : groupesGeres.length === 0 ? (
-            <p className="text-sm text-zinc-400">
+            <p className="no-print text-sm text-zinc-400">
               Tu n&apos;es affecté à aucun groupe ce jour-là.
             </p>
           ) : (
-            <div className="flex flex-col gap-5">
+            <div className="no-print flex flex-col gap-5">
               {groupesGeres.map((groupe) => {
                 const produits = gouters.filter((g) => g.groupe === groupe);
                 const gererGroupe = peutGererGroupe(groupe);
