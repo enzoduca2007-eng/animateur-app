@@ -52,6 +52,30 @@ export default function PlanningsPage() {
     () => (monGroupe ? GROUPES.filter((g) => g === monGroupe) : GROUPES),
     [monGroupe]
   );
+  // Trolls et Géants sont affichés dans un seul tableau sur cette page (ils
+  // travaillent ensemble) quand les deux sont gérés ; sinon chaque groupe
+  // géré reste affiché seul (cas d'un coordinateur restreint à l'un des
+  // deux, ou à Lutins).
+  const blocsGeres = useMemo(() => {
+    const gs = new Set(groupesGeres);
+    const blocs: { cle: string; label: string; groupes: Groupe[] }[] = [];
+    if (gs.has("lutins")) {
+      blocs.push({ cle: "lutins", label: GROUPE_LABELS.lutins, groupes: ["lutins"] });
+    }
+    if (gs.has("trolls") && gs.has("geants")) {
+      blocs.push({
+        cle: "trolls-geants",
+        label: `${GROUPE_LABELS.trolls} & ${GROUPE_LABELS.geants}`,
+        groupes: ["trolls", "geants"],
+      });
+    } else {
+      if (gs.has("trolls"))
+        blocs.push({ cle: "trolls", label: GROUPE_LABELS.trolls, groupes: ["trolls"] });
+      if (gs.has("geants"))
+        blocs.push({ cle: "geants", label: GROUPE_LABELS.geants, groupes: ["geants"] });
+    }
+    return blocs;
+  }, [groupesGeres]);
   const { periodes, zone, loading: loadingVacances } = useVacances();
 
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
@@ -62,7 +86,7 @@ export default function PlanningsPage() {
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [celluleOuverte, setCelluleOuverte] = useState<
-    { creneauId: string; date: string; groupe: Groupe } | null
+    { creneauId: string; date: string; groupes: Groupe[]; label: string } | null
   >(null);
   const [showCreneaux, setShowCreneaux] = useState(false);
   const [formCreneau, setFormCreneau] = useState(EMPTY_CRENEAU_FORM);
@@ -70,7 +94,9 @@ export default function PlanningsPage() {
   const [showFermetures, setShowFermetures] = useState(false);
   const [formFermeture, setFormFermeture] = useState({ date: "", motif: "" });
   const [semaineIndex, setSemaineIndex] = useState(0);
-  const [groupeSelectionne, setGroupeSelectionne] = useState<Groupe>(monGroupe ?? GROUPES[0]);
+  const [blocSelectionne, setBlocSelectionne] = useState<string>(
+    monGroupe === "trolls" || monGroupe === "geants" ? monGroupe : (monGroupe ?? "lutins")
+  );
   const [effectifs, setEffectifs] = useState<EffectifJour[]>([]);
   const [paliers, setPaliers] = useState<PalierEncadrement[]>([]);
   const [showPaliers, setShowPaliers] = useState(false);
@@ -222,6 +248,16 @@ export default function PlanningsPage() {
     const applicables = paliers.filter((p) => p.effectif_min <= effectif);
     if (applicables.length === 0) return 1;
     return applicables.reduce((max, p) => (p.nb_animateurs > max ? p.nb_animateurs : max), 1);
+  }
+
+  // Équivalents "bloc" (Trolls + Géants affichés dans un même tableau) des
+  // fonctions ci-dessus : combinent les groupes réels du bloc.
+  function eligiblesBloc(groupes: Groupe[], date: string) {
+    return groupes.flatMap((g) => animateursDuGroupe(g, date));
+  }
+
+  function nbRequisEncadrementBloc(groupes: Groupe[], date: string) {
+    return groupes.reduce((somme, g) => somme + nbRequisEncadrement(g, date), 0);
   }
 
   async function majEffectif(groupe: Groupe, date: string, valeur: number) {
@@ -385,6 +421,23 @@ export default function PlanningsPage() {
     const ids = animateursDe(creneauId, date).filter((id) => eligibles.includes(id));
     if (ids.length === 0) return false;
     return ids.length < nbRequisEncadrement(groupe, date);
+  }
+
+  function stagiaireSeulBloc(creneauId: string, date: string, groupes: Groupe[]) {
+    const eligibles = eligiblesBloc(groupes, date);
+    const ids = animateursDe(creneauId, date).filter((id) => eligibles.includes(id));
+    if (ids.length === 0) return false;
+    return ids.every((id) => {
+      const a = animateurs.find((x) => x.id === id);
+      return !a || !peutOuvrirFermerSeul(a);
+    });
+  }
+
+  function encadrementInsuffisantBloc(creneauId: string, date: string, groupes: Groupe[]) {
+    const eligibles = eligiblesBloc(groupes, date);
+    const ids = animateursDe(creneauId, date).filter((id) => eligibles.includes(id));
+    if (ids.length === 0) return false;
+    return ids.length < nbRequisEncadrementBloc(groupes, date);
   }
 
   // Un même animateur ne doit jamais ouvrir ET fermer le même jour.
@@ -1292,13 +1345,13 @@ export default function PlanningsPage() {
                     Groupe
                   </p>
                   <select
-                    value={groupeSelectionne}
-                    onChange={(e) => setGroupeSelectionne(e.target.value as Groupe)}
+                    value={blocSelectionne}
+                    onChange={(e) => setBlocSelectionne(e.target.value)}
                     className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
                   >
-                    {GROUPES.map((g) => (
-                      <option key={g} value={g}>
-                        {GROUPE_LABELS[g]}
+                    {blocsGeres.map((bloc) => (
+                      <option key={bloc.cle} value={bloc.cle}>
+                        {bloc.label}
                       </option>
                     ))}
                   </select>
@@ -1405,18 +1458,18 @@ export default function PlanningsPage() {
             </p>
           ) : (
             <div className="flex flex-col gap-6 print:gap-0">
-              {groupesGeres.map((groupe) =>
+              {blocsGeres.map((bloc) =>
                 semaines.map((semaineJours, semaineIdx) => (
                   <div
-                    key={`${groupe}-${semaineJours[0]}`}
+                    key={`${bloc.cle}-${semaineJours[0]}`}
                     className={`print-page ${
-                      semaineIdx === semaineIndexSafe && groupe === groupeSelectionne
+                      semaineIdx === semaineIndexSafe && bloc.cle === blocSelectionne
                         ? ""
                         : "hidden print:block"
                     }`}
                   >
                     <p className="rounded-t-xl border border-b-0 border-zinc-300 bg-zinc-100 py-2 text-center text-sm font-bold uppercase tracking-wide text-zinc-700 print:rounded-none print:border-black print:bg-gray-200 print:text-base">
-                      {GROUPE_LABELS[groupe]}
+                      {bloc.label}
                       <span className="ml-2 font-normal normal-case text-zinc-500">
                         · semaine {semaineIdx + 1} du {formatJourCourt(semaineJours[0])}
                       </span>
@@ -1446,28 +1499,41 @@ export default function PlanningsPage() {
                               Effectif enfants
                             </th>
                             {semaineJours.map((j) => {
-                              const requis = editable ? nbRequisEncadrement(groupe, j) : null;
+                              const requis = editable
+                                ? nbRequisEncadrementBloc(bloc.groupes, j)
+                                : null;
                               return (
                                 <th
                                   key={j}
                                   className="border border-zinc-300 bg-white px-2 py-2 text-center font-normal"
                                 >
-                                  {editable ? (
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      defaultValue={effectifDe(groupe, j) ?? ""}
-                                      onBlur={(e) => {
-                                        const v = Number(e.target.value);
-                                        if (!Number.isNaN(v)) majEffectif(groupe, j, v);
-                                      }}
-                                      className="w-14 rounded-md border border-zinc-300 px-1 py-0.5 text-center text-xs"
-                                    />
-                                  ) : (
-                                    <span className="text-xs text-zinc-500">
-                                      {effectifDe(groupe, j) ?? "—"}
-                                    </span>
-                                  )}
+                                  <div className="flex flex-col items-center gap-1">
+                                    {bloc.groupes.map((g) => (
+                                      <div key={g} className="flex items-center gap-1">
+                                        {bloc.groupes.length > 1 && (
+                                          <span className="text-[9px] uppercase text-zinc-400">
+                                            {GROUPE_LABELS[g].slice(0, 3)}
+                                          </span>
+                                        )}
+                                        {editable ? (
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            defaultValue={effectifDe(g, j) ?? ""}
+                                            onBlur={(e) => {
+                                              const v = Number(e.target.value);
+                                              if (!Number.isNaN(v)) majEffectif(g, j, v);
+                                            }}
+                                            className="w-14 rounded-md border border-zinc-300 px-1 py-0.5 text-center text-xs"
+                                          />
+                                        ) : (
+                                          <span className="text-xs text-zinc-500">
+                                            {effectifDe(g, j) ?? "—"}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
                                   {requis && (
                                     <p className="mt-0.5 text-[10px] text-zinc-400">
                                       {requis} requis
@@ -1505,7 +1571,7 @@ export default function PlanningsPage() {
                                   {c.libelle}
                                 </td>
                                 {semaineJours.map((j) => {
-                                  const eligibles = animateursDuGroupe(groupe, j);
+                                  const eligibles = eligiblesBloc(bloc.groupes, j);
                                   const ids = animateursDe(c.id, j).filter((id) =>
                                     eligibles.includes(id)
                                   );
@@ -1517,22 +1583,28 @@ export default function PlanningsPage() {
                                     c.id === creneauOuverture?.id ||
                                     c.id === creneauFermeture?.id;
                                   const alerteStagiaire =
-                                    estCritique && stagiaireSeul(c.id, j, groupe);
+                                    estCritique && stagiaireSeulBloc(c.id, j, bloc.groupes);
                                   const alerteEffectif =
-                                    estCritique && encadrementInsuffisant(c.id, j, groupe);
+                                    estCritique &&
+                                    encadrementInsuffisantBloc(c.id, j, bloc.groupes);
                                   const alerte = alerteStagiaire || alerteEffectif;
                                   return (
                                     <td
                                       key={j}
                                       onClick={() =>
                                         editable &&
-                                        setCelluleOuverte({ creneauId: c.id, date: j, groupe })
+                                        setCelluleOuverte({
+                                          creneauId: c.id,
+                                          date: j,
+                                          groupes: bloc.groupes,
+                                          label: bloc.label,
+                                        })
                                       }
                                       title={
                                         alerteStagiaire
                                           ? "Uniquement des stagiaires — un stagiaire ne peut pas ouvrir/fermer seul"
                                           : alerteEffectif
-                                            ? `Effectif insuffisant : ${nbRequisEncadrement(groupe, j)} animateur(s) requis selon l'effectif du jour`
+                                            ? `Effectif insuffisant : ${nbRequisEncadrementBloc(bloc.groupes, j)} animateur(s) requis selon l'effectif du jour`
                                             : undefined
                                       }
                                       className={`min-w-24 px-2 py-2 text-center text-xs text-zinc-700 print:border-black ${
@@ -1577,7 +1649,7 @@ export default function PlanningsPage() {
           >
             <div className="mb-3 flex items-center justify-between">
               <p className="text-sm font-medium text-zinc-900">
-                {GROUPE_LABELS[celluleOuverte.groupe]} ·{" "}
+                {celluleOuverte.label} ·{" "}
                 {creneaux.find((c) => c.id === celluleOuverte.creneauId)?.libelle} ·{" "}
                 {formatJourCourt(celluleOuverte.date)}
               </p>
@@ -1589,14 +1661,14 @@ export default function PlanningsPage() {
               </button>
             </div>
             {(() => {
-              const eligibles = animateursDuGroupe(
-                celluleOuverte.groupe,
+              const eligibles = eligiblesBloc(
+                celluleOuverte.groupes,
                 celluleOuverte.date
               );
               if (eligibles.length === 0) {
                 return (
                   <p className="text-sm text-zinc-500">
-                    Aucun animateur affecté au groupe {GROUPE_LABELS[celluleOuverte.groupe]}{" "}
+                    Aucun animateur affecté au groupe {celluleOuverte.label}{" "}
                     ce jour-là. Commence par la page{" "}
                     <Link href="/dashboard/repartition" className="underline">
                       Répartition
