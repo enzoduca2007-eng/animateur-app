@@ -42,14 +42,13 @@ export interface Animateur {
   updated_at: string;
 }
 
-export type Groupe = "lutins" | "trolls" | "geants";
+export type Groupe = "lutins" | "trolls";
 
-export const GROUPES: Groupe[] = ["lutins", "trolls", "geants"];
+export const GROUPES: Groupe[] = ["lutins", "trolls"];
 
 export const GROUPE_LABELS: Record<Groupe, string> = {
   lutins: "Lutins",
-  trolls: "Trolls",
-  geants: "Géants",
+  trolls: "Trolls & Géants",
 };
 
 export interface AffectationJour {

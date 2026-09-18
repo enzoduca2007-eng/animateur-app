@@ -13,7 +13,7 @@ create table public.profiles (
   role public.user_role not null default 'responsable',
   -- Si renseigné, un coordinateur ne peut gérer que ce groupe (répartition,
   -- planning, effectifs, fiches horaires). Null = accès complet.
-  groupe_coordinateur text check (groupe_coordinateur in ('lutins', 'trolls', 'geants')),
+  groupe_coordinateur text check (groupe_coordinateur in ('lutins', 'trolls')),
   created_at timestamptz not null default now()
 );
 
@@ -119,16 +119,16 @@ create policy "animateurs: directeur write" on public.animateurs
   for all using (public.current_role_name() = 'directeur')
   with check (public.current_role_name() = 'directeur');
 
--- Répartition quotidienne des animateurs sur les 3 groupes (Lutins /
--- Trolls / Géants), un animateur ne peut être que dans un seul groupe
--- par jour. Créée avant creneaux/affectations_creneau/effectifs_jour/
--- feuilles_temps car les fonctions de restriction par groupe
--- ci-dessous en dépendent.
+-- Répartition quotidienne des animateurs sur les 2 groupes (Lutins /
+-- Trolls & Géants, fusionnés en un seul groupe réel "trolls"), un
+-- animateur ne peut être que dans un seul groupe par jour. Créée avant
+-- creneaux/affectations_creneau/effectifs_jour/feuilles_temps car les
+-- fonctions de restriction par groupe ci-dessous en dépendent.
 create table public.affectations_jour (
   id uuid primary key default gen_random_uuid(),
   date date not null,
   animateur_id uuid not null references public.animateurs (id) on delete cascade,
-  groupe text not null check (groupe in ('lutins', 'trolls', 'geants')),
+  groupe text not null check (groupe in ('lutins', 'trolls')),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
   unique (date, animateur_id)
@@ -274,7 +274,7 @@ create policy "jours_fermeture: directeur/coordinateur write" on public.jours_fe
 create table public.effectifs_jour (
   id uuid primary key default gen_random_uuid(),
   date date not null,
-  groupe text not null check (groupe in ('lutins', 'trolls', 'geants')),
+  groupe text not null check (groupe in ('lutins', 'trolls')),
   effectif integer not null check (effectif >= 0),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
@@ -387,7 +387,7 @@ create policy "messages: author or directeur can delete" on public.messages
 create table public.gouters (
   id uuid primary key default gen_random_uuid(),
   date date not null,
-  groupe text not null check (groupe in ('lutins', 'trolls', 'geants')),
+  groupe text not null check (groupe in ('lutins', 'trolls')),
   type_produit text,
   marque text,
   photo_url text,

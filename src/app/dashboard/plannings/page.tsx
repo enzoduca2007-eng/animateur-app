@@ -52,30 +52,14 @@ export default function PlanningsPage() {
     () => (monGroupe ? GROUPES.filter((g) => g === monGroupe) : GROUPES),
     [monGroupe]
   );
-  // Trolls et Géants sont affichés dans un seul tableau sur cette page (ils
-  // travaillent ensemble) quand les deux sont gérés ; sinon chaque groupe
-  // géré reste affiché seul (cas d'un coordinateur restreint à l'un des
-  // deux, ou à Lutins).
-  const blocsGeres = useMemo(() => {
-    const gs = new Set(groupesGeres);
-    const blocs: { cle: string; label: string; groupes: Groupe[] }[] = [];
-    if (gs.has("lutins")) {
-      blocs.push({ cle: "lutins", label: GROUPE_LABELS.lutins, groupes: ["lutins"] });
-    }
-    if (gs.has("trolls") && gs.has("geants")) {
-      blocs.push({
-        cle: "trolls-geants",
-        label: `${GROUPE_LABELS.trolls} & ${GROUPE_LABELS.geants}`,
-        groupes: ["trolls", "geants"],
-      });
-    } else {
-      if (gs.has("trolls"))
-        blocs.push({ cle: "trolls", label: GROUPE_LABELS.trolls, groupes: ["trolls"] });
-      if (gs.has("geants"))
-        blocs.push({ cle: "geants", label: GROUPE_LABELS.geants, groupes: ["geants"] });
-    }
-    return blocs;
-  }, [groupesGeres]);
+  // Trolls et Géants ont fusionné en un seul groupe réel ("trolls", libellé
+  // "Trolls & Géants") : un bloc = un groupe géré. La notion de "bloc"
+  // reste utile pour Lutins vs Trolls&Géants sans dupliquer la logique de
+  // rendu du tableau.
+  const blocsGeres = useMemo(
+    () => groupesGeres.map((g) => ({ cle: g, label: GROUPE_LABELS[g], groupes: [g] as Groupe[] })),
+    [groupesGeres]
+  );
   const { periodes, zone, loading: loadingVacances } = useVacances();
 
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
@@ -94,9 +78,7 @@ export default function PlanningsPage() {
   const [showFermetures, setShowFermetures] = useState(false);
   const [formFermeture, setFormFermeture] = useState({ date: "", motif: "" });
   const [semaineIndex, setSemaineIndex] = useState(0);
-  const [blocSelectionne, setBlocSelectionne] = useState<string>(
-    monGroupe === "trolls" || monGroupe === "geants" ? monGroupe : (monGroupe ?? "lutins")
-  );
+  const [blocSelectionne, setBlocSelectionne] = useState<string>(monGroupe ?? "lutins");
   const [effectifs, setEffectifs] = useState<EffectifJour[]>([]);
   const [paliers, setPaliers] = useState<PalierEncadrement[]>([]);
   const [showPaliers, setShowPaliers] = useState(false);
@@ -250,8 +232,9 @@ export default function PlanningsPage() {
     return applicables.reduce((max, p) => (p.nb_animateurs > max ? p.nb_animateurs : max), 1);
   }
 
-  // Équivalents "bloc" (Trolls + Géants affichés dans un même tableau) des
-  // fonctions ci-dessus : combinent les groupes réels du bloc.
+  // Équivalents "bloc" des fonctions ci-dessus (un bloc ne contient qu'un
+  // seul groupe réel désormais, mais l'abstraction évite de dupliquer le
+  // rendu du tableau).
   function eligiblesBloc(groupes: Groupe[], date: string) {
     return groupes.flatMap((g) => animateursDuGroupe(g, date));
   }

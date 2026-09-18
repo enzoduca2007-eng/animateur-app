@@ -14,19 +14,16 @@ import {
 const LETTRE_PAR_GROUPE: Record<Groupe, string> = {
   lutins: "L",
   trolls: "T",
-  geants: "G",
 };
 
 const GROUPE_PAR_LETTRE: Record<string, Groupe> = {
   L: "lutins",
   T: "trolls",
-  G: "geants",
 };
 
 const COULEUR_PAR_GROUPE: Record<Groupe, string> = {
   lutins: "bg-sky-100 text-sky-700",
   trolls: "bg-emerald-100 text-emerald-700",
-  geants: "bg-amber-100 text-amber-700",
 };
 
 function formatJourCourt(dateISO: string) {
@@ -190,7 +187,7 @@ export default function RepartitionPage() {
         <h1 className="text-2xl font-semibold text-zinc-900">Répartition</h1>
         <p className="mt-1 text-sm text-zinc-500">
           {editable
-            ? "Tape L (Lutins), T (Trolls) ou G (Géants) dans chaque case — la saisie avance automatiquement au jour suivant."
+            ? "Tape L (Lutins) ou T (Trolls & Géants) dans chaque case — la saisie avance automatiquement au jour suivant."
             : "Consulte la répartition des animateurs par groupe."}
         </p>
       </div>
@@ -231,10 +228,8 @@ export default function RepartitionPage() {
                 <span className="inline-block h-3 w-3 rounded bg-sky-100" /> L = Lutins
               </span>
               <span className="flex items-center gap-1">
-                <span className="inline-block h-3 w-3 rounded bg-emerald-100" /> T = Trolls
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="inline-block h-3 w-3 rounded bg-amber-100" /> G = Géants
+                <span className="inline-block h-3 w-3 rounded bg-emerald-100" /> T = Trolls &
+                Géants
               </span>
               <span className="flex items-center gap-1">
                 <span className="inline-block h-3 w-3 rounded bg-zinc-200" /> Week-end (fermé)

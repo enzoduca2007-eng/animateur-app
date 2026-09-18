@@ -76,7 +76,7 @@ export default function GoutersPage() {
     Partial<Record<Groupe, { fait: number; total: number }>>
   >({});
   const [nouveaux, setNouveaux] = useState<Record<Groupe, { type_produit: string; marque: string }>>(
-    { lutins: { type_produit: "", marque: "" }, trolls: { type_produit: "", marque: "" }, geants: { type_produit: "", marque: "" } }
+    { lutins: { type_produit: "", marque: "" }, trolls: { type_produit: "", marque: "" } }
   );
   const compteurUpload = useRef(0);
 

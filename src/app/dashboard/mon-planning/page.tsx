@@ -22,7 +22,6 @@ import {
 const COULEUR_GROUPE: Record<Groupe, string> = {
   lutins: "bg-sky-100 text-sky-700",
   trolls: "bg-emerald-100 text-emerald-700",
-  geants: "bg-amber-100 text-amber-700",
 };
 
 function formatJourLong(dateISO: string) {
