@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
-import { formatHeures, heuresJour, pauseMinutes } from "@/lib/creneaux";
+import { formatHeures, heuresJour, pauseMinutes, toMinutes } from "@/lib/creneaux";
 import { estMineur, plafondHeuresSemaine } from "@/lib/regles";
 import { PeriodesVacances } from "@/components/periodes-vacances";
 import {
@@ -372,25 +372,42 @@ export default function PlanningsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [affectations, creneauOuverture, creneauFermeture, semaineKey]);
 
-  async function autoRepartirOuvertureFermeture() {
-    if (!creneauOuverture || !creneauFermeture) {
+  async function autoRepartirSemaine() {
+    const arrivees = creneaux
+      .filter((c) => c.type === "arrivee")
+      .sort((a, b) => a.heure_debut.localeCompare(b.heure_debut));
+    const departs = creneaux
+      .filter((c) => c.type === "depart")
+      .sort((a, b) => a.heure_debut.localeCompare(b.heure_debut));
+    const pauses = creneaux.filter((c) => c.type === "pause");
+
+    if (arrivees.length === 0 || departs.length === 0) {
       setErreur("Il faut au moins un créneau d'arrivée et un créneau de départ définis.");
       return;
     }
     if (semaineJoursSelectionnee.length === 0) return;
     if (
       !confirm(
-        "Ça va remplacer les affectations actuelles des créneaux d'ouverture " +
-          `(${creneauOuverture.libelle}) et de fermeture (${creneauFermeture.libelle}) ` +
-          "pour cette semaine — les autres créneaux ne sont pas touchés. Continuer ?"
+        "Ça va remplacer TOUTES les affectations (arrivées, pauses, départs) " +
+          "des animateurs concernés pour cette semaine. Continuer ?"
       )
     )
       return;
 
+    const ouverture = arrivees[0];
+    const fermeture = departs[departs.length - 1];
+
     const compteurOuverture = new Map<string, number>();
     const compteurFermeture = new Map<string, number>();
+    const compteurArrivee = new Map<string, number>();
+    const compteurDepart = new Map<string, number>();
+    const compteurPause = new Map<string, number>();
 
-    function choisir(eligibles: string[], compteur: Map<string, number>) {
+    function incr(map: Map<string, number>, cle: string) {
+      map.set(cle, (map.get(cle) ?? 0) + 1);
+    }
+
+    function choisirPersonne(eligibles: string[], compteur: Map<string, number>) {
       if (eligibles.length === 0) return null;
       const nonStagiaires = eligibles.filter(
         (id) => !animateurs.find((a) => a.id === id)?.est_stagiaire
@@ -401,6 +418,12 @@ export default function PlanningsPage() {
       );
     }
 
+    function moinsUtilise(items: Creneau[], compteur: Map<string, number>) {
+      return items.reduce((meilleur, c) =>
+        (compteur.get(c.id) ?? 0) < (compteur.get(meilleur.id) ?? 0) ? c : meilleur
+      );
+    }
+
     const nouvelles: { date: string; creneau_id: string; animateur_id: string }[] = [];
 
     for (const groupe of GROUPES) {
@@ -408,16 +431,57 @@ export default function PlanningsPage() {
         const eligibles = animateursDuGroupe(groupe, j);
         if (eligibles.length === 0) continue;
 
-        const opener = choisir(eligibles, compteurOuverture);
+        // Ouverture / fermeture : rotation équitable, jamais un stagiaire seul.
+        const opener = choisirPersonne(eligibles, compteurOuverture);
+        const closer = choisirPersonne(eligibles, compteurFermeture);
+
         if (opener) {
-          compteurOuverture.set(opener, (compteurOuverture.get(opener) ?? 0) + 1);
-          nouvelles.push({ date: j, creneau_id: creneauOuverture.id, animateur_id: opener });
+          incr(compteurOuverture, opener);
+          incr(compteurArrivee, ouverture.id);
+          nouvelles.push({ date: j, creneau_id: ouverture.id, animateur_id: opener });
+        }
+        if (closer) {
+          incr(compteurFermeture, closer);
+          incr(compteurDepart, fermeture.id);
+          nouvelles.push({ date: j, creneau_id: fermeture.id, animateur_id: closer });
         }
 
-        const closer = choisir(eligibles, compteurFermeture);
-        if (closer) {
-          compteurFermeture.set(closer, (compteurFermeture.get(closer) ?? 0) + 1);
-          nouvelles.push({ date: j, creneau_id: creneauFermeture.id, animateur_id: closer });
+        // Arrivée pour les autres : créneau le moins utilisé, pour varier.
+        const autresArrivees = arrivees.filter((c) => c.id !== ouverture.id);
+        for (const id of eligibles) {
+          if (id === opener) continue;
+          const c =
+            autresArrivees.length > 0 ? moinsUtilise(autresArrivees, compteurArrivee) : ouverture;
+          incr(compteurArrivee, c.id);
+          nouvelles.push({ date: j, creneau_id: c.id, animateur_id: id });
+        }
+
+        // Départ pour les autres, même logique.
+        const autresDeparts = departs.filter((c) => c.id !== fermeture.id);
+        for (const id of eligibles) {
+          if (id === closer) continue;
+          const c =
+            autresDeparts.length > 0 ? moinsUtilise(autresDeparts, compteurDepart) : fermeture;
+          incr(compteurDepart, c.id);
+          nouvelles.push({ date: j, creneau_id: c.id, animateur_id: id });
+        }
+
+        // Pause obligatoire d'au moins 1h pour chacun.
+        if (pauses.length > 0) {
+          for (const id of eligibles) {
+            let cumul = 0;
+            const dispo = [...pauses];
+            while (cumul < 60 && dispo.length > 0) {
+              const c = moinsUtilise(dispo, compteurPause);
+              incr(compteurPause, c.id);
+              nouvelles.push({ date: j, creneau_id: c.id, animateur_id: id });
+              cumul += c.heure_fin ? toMinutes(c.heure_fin) - toMinutes(c.heure_debut) : 60;
+              dispo.splice(
+                dispo.findIndex((x) => x.id === c.id),
+                1
+              );
+            }
+          }
         }
       }
     }
@@ -427,7 +491,10 @@ export default function PlanningsPage() {
     const { error: errDel } = await supabase
       .from("affectations_creneau")
       .delete()
-      .in("creneau_id", [creneauOuverture.id, creneauFermeture.id])
+      .in(
+        "creneau_id",
+        creneaux.map((c) => c.id)
+      )
       .in("date", semaineJoursSelectionnee);
     if (errDel) {
       setErreur(errDel.message);
@@ -826,10 +893,10 @@ export default function PlanningsPage() {
               </div>
               {editable && creneauOuverture && creneauFermeture && (
                 <button
-                  onClick={autoRepartirOuvertureFermeture}
+                  onClick={autoRepartirSemaine}
                   className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
                 >
-                  Répartir automatiquement ouverture/fermeture
+                  Répartir automatiquement toute la semaine
                 </button>
               )}
             </div>

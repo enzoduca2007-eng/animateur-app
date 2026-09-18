@@ -1,6 +1,6 @@
 import type { Creneau } from "@/lib/types";
 
-function toMinutes(heure: string) {
+export function toMinutes(heure: string) {
   const [h, m] = heure.split(":").map(Number);
   return h * 60 + m;
 }
