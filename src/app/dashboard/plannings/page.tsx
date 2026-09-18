@@ -513,12 +513,23 @@ export default function PlanningsPage() {
     // Choisit n personnes : au moins une non-stagiaire si possible (jamais
     // seuls des stagiaires), le reste réparti sur tout le monde pour ne
     // pas surcharger systématiquement les mêmes non-stagiaires.
+    // prioritaires : personnes à privilégier si possible (ex: qui a fermé
+    // hier, pour qu'elle rouvre avec la clé qu'elle a déjà) sans jamais
+    // casser la garantie "jamais un stagiaire seul".
     function choisirPlusieurs(
       eligibles: string[],
       compteur: Map<string, number>,
       n: number,
-      exclure: Set<string>
+      exclure: Set<string>,
+      prioritaires: string[] = []
     ) {
+      if (prioritaires.length > 0) {
+        const compteurAjuste = new Map(compteur);
+        for (const id of prioritaires) {
+          compteurAjuste.set(id, (compteurAjuste.get(id) ?? 0) - 1000);
+        }
+        compteur = compteurAjuste;
+      }
       const choisis: string[] = [];
       let poolRestant = eligibles.filter((id) => !exclure.has(id));
       if (n === 0 || poolRestant.length === 0) return choisis;
@@ -608,21 +619,31 @@ export default function PlanningsPage() {
     const nouvelles: { date: string; creneau_id: string; animateur_id: string }[] = [];
 
     for (const groupe of GROUPES) {
+      let fermeursVeille: string[] = [];
       for (const j of semaineJoursSelectionnee) {
         const eligibles = animateursDuGroupe(groupe, j);
         if (eligibles.length === 0) continue;
 
         // Ouverture / fermeture : autant de personnes que l'effectif du
         // jour l'exige, rotation équitable, jamais un stagiaire seul, et
-        // jamais la même personne à l'ouverture ET à la fermeture.
+        // jamais la même personne à l'ouverture ET à la fermeture. On
+        // privilégie, pour ouvrir, qui a fermé la veille (continuité de
+        // la clé), quand c'est possible.
         const nbRequis = Math.min(nbRequisEncadrement(groupe, j), eligibles.length);
-        const openers = choisirPlusieurs(eligibles, compteurOuverture, nbRequis, new Set());
+        const openers = choisirPlusieurs(
+          eligibles,
+          compteurOuverture,
+          nbRequis,
+          new Set(),
+          fermeursVeille
+        );
         const closers = choisirPlusieurs(
           eligibles,
           compteurFermeture,
           nbRequis,
           new Set(openers)
         );
+        fermeursVeille = closers;
 
         for (const id of openers) {
           incr(compteurOuverture, id);
@@ -754,7 +775,8 @@ export default function PlanningsPage() {
     | "pause"
     | "heures"
     | "rotation"
-    | "effectif";
+    | "effectif"
+    | "cle";
   const CATEGORIE_ALERTE_INFO: Record<
     CategorieAlerte,
     { titre: string; icone: string }
@@ -764,6 +786,7 @@ export default function PlanningsPage() {
     heures: { titre: "Heures", icone: "⏱️" },
     rotation: { titre: "Rotation ouverture/fermeture", icone: "🔁" },
     effectif: { titre: "Taux d'encadrement", icone: "👥" },
+    cle: { titre: "Continuité des clés", icone: "🔑" },
   };
 
   // Alertes de la semaine affichée, regroupées par catégorie.
@@ -802,6 +825,40 @@ export default function PlanningsPage() {
             categorie: "ouverture-fermeture",
             texte: `${GROUPE_LABELS[groupe]} · ${formatJourCourt(j)} : ${a?.prenom} ${a?.nom} ouvre ET ferme le même jour`,
           });
+        }
+      }
+    }
+
+    // Continuité de la clé : qui ferme un jour devrait rouvrir le
+    // lendemain, sinon il faut prévoir explicitement la remise de clé.
+    if (creneauOuverture && creneauFermeture) {
+      for (const groupe of GROUPES) {
+        for (let i = 0; i < semaineJoursSelectionnee.length - 1; i++) {
+          const j = semaineJoursSelectionnee[i];
+          const jSuivant = semaineJoursSelectionnee[i + 1];
+          const eligiblesJ = animateursDuGroupe(groupe, j);
+          const fermeurs = animateursDe(creneauFermeture.id, j).filter((id) =>
+            eligiblesJ.includes(id)
+          );
+          if (fermeurs.length === 0) continue;
+
+          const eligiblesLendemain = animateursDuGroupe(groupe, jSuivant);
+          const ouvreursLendemain = animateursDe(creneauOuverture.id, jSuivant).filter((id) =>
+            eligiblesLendemain.includes(id)
+          );
+          if (ouvreursLendemain.length === 0) continue;
+
+          if (!fermeurs.some((id) => ouvreursLendemain.includes(id))) {
+            const noms = fermeurs
+              .map((id) => animateurs.find((a) => a.id === id))
+              .filter(Boolean)
+              .map((a) => `${a!.prenom} ${a!.nom}`)
+              .join(", ");
+            liste.push({
+              categorie: "cle",
+              texte: `${GROUPE_LABELS[groupe]} · ${formatJourCourt(j)} → ${formatJourCourt(jSuivant)} : ${noms} ferme mais n'ouvre pas le lendemain — prévoir qui prend la clé`,
+            });
+          }
         }
       }
     }
