@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
-import { formatHeures, heuresJour } from "@/lib/creneaux";
+import { formatHeures, heuresJour, toMinutes } from "@/lib/creneaux";
+import { PointageJour } from "@/components/pointage-jour";
 import {
   canManage,
-  GROUPE_LABELS,
   type AffectationCreneau,
   type AffectationJour,
   type Animateur,
@@ -26,15 +26,6 @@ function formatJourCourt(dateISO: string) {
   });
 }
 
-function formatPlage(creneaux: Creneau[]) {
-  const arrivees = creneaux.filter((c) => c.type === "arrivee");
-  const departs = creneaux.filter((c) => c.type === "depart");
-  if (arrivees.length === 0 || departs.length === 0) return "—";
-  const arrivee = arrivees.reduce((min, c) => (c.heure_debut < min.heure_debut ? c : min));
-  const depart = departs.reduce((max, c) => (c.heure_debut > max.heure_debut ? c : max));
-  return `${arrivee.libelle} → ${depart.libelle}`;
-}
-
 export default function FichesHorairesPage() {
   const profile = useProfile();
   const supabase = createClient();
@@ -45,13 +36,16 @@ export default function FichesHorairesPage() {
   const [creneaux, setCreneaux] = useState<Creneau[]>([]);
   const [affectations, setAffectations] = useState<AffectationCreneau[]>([]);
   const [affectationsJour, setAffectationsJour] = useState<AffectationJour[]>([]);
-  const [joursFermeture, setJoursFermeture] = useState<JourFermeture[]>([]);
   const [feuilles, setFeuilles] = useState<FeuilleTemps[]>([]);
+  const [joursFermeture, setJoursFermeture] = useState<JourFermeture[]>([]);
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [semaineIndex, setSemaineIndex] = useState(0);
-  const [animateurFiltre, setAnimateurFiltre] = useState<string>("tous");
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [celluleOuverte, setCelluleOuverte] = useState<
+    { animateurId: string; date: string } | null
+  >(null);
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
     supabase
@@ -131,7 +125,29 @@ export default function FichesHorairesPage() {
       setLoading(false);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [semaineJours.join(",")]);
+  }, [semaineJours]);
+
+  function assignesDe(animateurId: string, date: string) {
+    const ids = new Set(
+      affectations
+        .filter((a) => a.date === date && a.animateur_id === animateurId)
+        .map((a) => a.creneau_id)
+    );
+    return creneaux.filter((c) => ids.has(c.id));
+  }
+
+  function aUneAffectation(animateurId: string, date: string) {
+    return (
+      affectations.some((a) => a.date === date && a.animateur_id === animateurId) ||
+      affectationsJour.some((a) => a.date === date && a.animateur_id === animateurId)
+    );
+  }
+
+  const lignes = useMemo(
+    () => animateurs.filter((a) => semaineJours.some((j) => aUneAffectation(a.id, j))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [animateurs, semaineJours, affectations, affectationsJour]
+  );
 
   async function majFeuille(
     animateurId: string,
@@ -177,33 +193,107 @@ export default function FichesHorairesPage() {
       setErreur(error.message);
       const debut = semaineJours[0];
       const fin = semaineJours[semaineJours.length - 1];
-      chargerFeuilles(debut, fin);
+      if (debut && fin) chargerFeuilles(debut, fin);
     }
   }
 
-  const lignes = useMemo(() => {
-    const res: { animateur: Animateur; date: string }[] = [];
-    for (const a of animateurs) {
-      if (animateurFiltre !== "tous" && a.id !== animateurFiltre) continue;
-      for (const j of semaineJours) {
-        const aDesCreneaux = affectations.some(
-          (aff) => aff.date === j && aff.animateur_id === a.id
-        );
-        const aUnGroupe = affectationsJour.some(
-          (aff) => aff.date === j && aff.animateur_id === a.id
-        );
-        if (aDesCreneaux || aUnGroupe) res.push({ animateur: a, date: j });
+  function focusCellule(animateurId: string, date: string) {
+    inputRefs.current[`${animateurId}|${date}`]?.focus();
+  }
+
+  function handleChange(
+    animateurId: string,
+    date: string,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const lettre = e.target.value.trim().toUpperCase().slice(-1);
+    const joursActifs = semaineJours.filter((j) => aUneAffectation(animateurId, j));
+    const indexCourant = joursActifs.indexOf(date);
+    const prochain = joursActifs[indexCourant + 1];
+
+    if (lettre === "I") {
+      const assignes = assignesDe(animateurId, date);
+      const arrivees = assignes.filter((c) => c.type === "arrivee");
+      const departs = assignes.filter((c) => c.type === "depart");
+      const arrivee =
+        arrivees.length > 0
+          ? arrivees.reduce((min, c) => (c.heure_debut < min.heure_debut ? c : min))
+          : null;
+      const depart =
+        departs.length > 0
+          ? departs.reduce((max, c) => (c.heure_debut > max.heure_debut ? c : max))
+          : null;
+      majFeuille(animateurId, date, {
+        present: true,
+        heure_arrivee_reelle: arrivee?.heure_debut ?? null,
+        heure_depart_reelle: depart?.heure_debut ?? null,
+        motif_absence: null,
+      });
+      if (prochain) focusCellule(animateurId, prochain);
+    } else if (lettre === "A") {
+      majFeuille(animateurId, date, { present: false });
+      if (prochain) focusCellule(animateurId, prochain);
+    }
+  }
+
+  function lettreEtCouleur(animateurId: string, date: string) {
+    const feuille = feuilles.find((f) => f.date === date && f.animateur_id === animateurId);
+    if (!feuille) return { lettre: "", couleur: "" };
+    if (!feuille.present) return { lettre: "A", couleur: "bg-red-100 text-red-700" };
+
+    const assignes = assignesDe(animateurId, date);
+    const arrivees = assignes.filter((c) => c.type === "arrivee");
+    const departs = assignes.filter((c) => c.type === "depart");
+    const arriveePrevue =
+      arrivees.length > 0
+        ? arrivees.reduce((min, c) => (c.heure_debut < min.heure_debut ? c : min)).heure_debut
+        : null;
+    const departPrevu =
+      departs.length > 0
+        ? departs.reduce((max, c) => (c.heure_debut > max.heure_debut ? c : max)).heure_debut
+        : null;
+
+    const idem =
+      feuille.heure_arrivee_reelle === arriveePrevue &&
+      feuille.heure_depart_reelle === departPrevu;
+
+    return idem
+      ? { lettre: "I", couleur: "bg-emerald-100 text-emerald-700" }
+      : { lettre: "R", couleur: "bg-amber-100 text-amber-700" };
+  }
+
+  function ecartSemaine(animateurId: string) {
+    let total = 0;
+    let complet = true;
+    for (const j of semaineJours) {
+      if (!aUneAffectation(animateurId, j)) continue;
+      const assignes = assignesDe(animateurId, j);
+      const prevu = heuresJour(assignes);
+      const feuille = feuilles.find((f) => f.date === j && f.animateur_id === animateurId);
+      if (!feuille || prevu === null) {
+        complet = false;
+        continue;
+      }
+      if (!feuille.present) continue;
+      if (feuille.heure_arrivee_reelle && feuille.heure_depart_reelle) {
+        const reel =
+          (toMinutes(feuille.heure_depart_reelle) - toMinutes(feuille.heure_arrivee_reelle)) / 60;
+        total += reel - prevu;
+      } else {
+        complet = false;
       }
     }
-    return res;
-  }, [animateurs, animateurFiltre, semaineJours, affectations, affectationsJour]);
+    return { total, complet };
+  }
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold text-zinc-900">Fiches horaires</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Horaires prévisionnels vs réels, et présence de chaque animateur.
+          {editable
+            ? "Tape I (idem au prévisionnel) ou A (absent) dans chaque case — ça avance automatiquement au jour suivant. Clique ✎ pour un horaire différent."
+            : "Horaires prévisionnels vs réels et présence de chaque animateur."}
         </p>
       </div>
 
@@ -259,178 +349,105 @@ export default function FichesHorairesPage() {
               </div>
             )}
 
-            <div>
-              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
-                Animateur
-              </p>
-              <select
-                value={animateurFiltre}
-                onChange={(e) => setAnimateurFiltre(e.target.value)}
-                className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
-              >
-                <option value="tous">Tous</option>
-                {animateurs.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.prenom} {a.nom}
-                  </option>
-                ))}
-              </select>
+            <div className="flex gap-3 text-xs text-zinc-500">
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-3 w-3 rounded bg-emerald-100" /> I = Idem
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-3 w-3 rounded bg-red-100" /> A = Absent
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-3 w-3 rounded bg-amber-100" /> R = Réel différent
+              </span>
             </div>
           </div>
 
           {loading ? (
             <p className="text-sm text-zinc-400">Chargement...</p>
           ) : lignes.length === 0 ? (
-            <p className="text-sm text-zinc-400">
-              Aucune affectation cette semaine{animateurFiltre !== "tous" ? " pour cet animateur" : ""}.
-            </p>
+            <p className="text-sm text-zinc-400">Aucune affectation cette semaine.</p>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b border-zinc-200 bg-zinc-50 text-zinc-500">
+              <table className="w-full border-collapse text-left text-sm">
+                <thead>
                   <tr>
-                    <th className="px-3 py-2 font-medium">Animateur</th>
-                    <th className="px-3 py-2 font-medium">Jour</th>
-                    <th className="px-3 py-2 font-medium">Groupe</th>
-                    <th className="px-3 py-2 font-medium">Prévisionnel</th>
-                    <th className="px-3 py-2 font-medium">Présent</th>
-                    <th className="px-3 py-2 font-medium">Réel</th>
-                    <th className="px-3 py-2 font-medium">Écart</th>
+                    <th className="sticky left-0 z-10 border border-zinc-300 bg-zinc-50 px-3 py-2 font-medium">
+                      Animateur
+                    </th>
+                    {semaineJours.map((j) => (
+                      <th
+                        key={j}
+                        className="border border-zinc-300 bg-zinc-50 px-2 py-2 text-center font-medium capitalize"
+                      >
+                        {formatJourCourt(j)}
+                      </th>
+                    ))}
+                    <th className="border border-zinc-300 bg-zinc-50 px-3 py-2 text-center font-medium">
+                      Écart semaine
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {lignes.map(({ animateur, date }) => {
-                    const ids = new Set(
-                      affectations
-                        .filter((a) => a.date === date && a.animateur_id === animateur.id)
-                        .map((a) => a.creneau_id)
-                    );
-                    const assignes = creneaux.filter((c) => ids.has(c.id));
-                    const groupe = affectationsJour.find(
-                      (a) => a.date === date && a.animateur_id === animateur.id
-                    )?.groupe;
-                    const heuresPrevues = heuresJour(assignes);
-                    const feuille = feuilles.find(
-                      (f) => f.date === date && f.animateur_id === animateur.id
-                    );
-                    const present = feuille?.present ?? true;
-
-                    let heuresReelles: number | null = null;
-                    if (
-                      present &&
-                      feuille?.heure_arrivee_reelle &&
-                      feuille?.heure_depart_reelle
-                    ) {
-                      const [ha, ma] = feuille.heure_arrivee_reelle.split(":").map(Number);
-                      const [hd, md] = feuille.heure_depart_reelle.split(":").map(Number);
-                      heuresReelles = Math.max(0, (hd * 60 + md - (ha * 60 + ma)) / 60);
-                    }
-
-                    const ecart =
-                      heuresPrevues !== null && heuresReelles !== null
-                        ? heuresReelles - heuresPrevues
-                        : null;
-
+                  {lignes.map((a) => {
+                    const { total, complet } = ecartSemaine(a.id);
                     return (
-                      <tr key={`${animateur.id}-${date}`} className="border-b border-zinc-100 last:border-0">
-                        <td className="px-3 py-2 font-medium text-zinc-900">
-                          {animateur.prenom} {animateur.nom}
+                      <tr key={a.id} className="border-b border-zinc-100 last:border-0">
+                        <td className="sticky left-0 z-10 whitespace-nowrap border border-zinc-300 bg-white px-3 py-2 font-medium text-zinc-900">
+                          {a.prenom} {a.nom}
                         </td>
-                        <td className="px-3 py-2 capitalize text-zinc-600">
-                          {formatJourCourt(date)}
-                        </td>
-                        <td className="px-3 py-2 text-zinc-600">
-                          {groupe ? GROUPE_LABELS[groupe] : "—"}
-                        </td>
-                        <td className="px-3 py-2 text-zinc-600">
-                          {formatPlage(assignes)}
-                          {heuresPrevues !== null && (
-                            <span className="ml-1 text-xs text-zinc-400">
-                              ({formatHeures(heuresPrevues)})
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {editable ? (
-                            <input
-                              type="checkbox"
-                              checked={present}
-                              onChange={(e) =>
-                                majFeuille(animateur.id, date, { present: e.target.checked })
-                              }
-                            />
-                          ) : present ? (
-                            "✅"
-                          ) : (
-                            "❌"
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {!present ? (
-                            editable ? (
-                              <input
-                                type="text"
-                                placeholder="Motif absence"
-                                defaultValue={feuille?.motif_absence ?? ""}
-                                onBlur={(e) =>
-                                  majFeuille(animateur.id, date, {
-                                    motif_absence: e.target.value || null,
-                                  })
-                                }
-                                className="w-32 rounded-md border border-zinc-300 px-2 py-1 text-xs"
-                              />
-                            ) : (
-                              <span className="text-xs text-zinc-500">
-                                {feuille?.motif_absence ?? "Absent"}
-                              </span>
-                            )
-                          ) : editable ? (
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="time"
-                                defaultValue={feuille?.heure_arrivee_reelle?.slice(0, 5) ?? ""}
-                                onBlur={(e) =>
-                                  majFeuille(animateur.id, date, {
-                                    heure_arrivee_reelle: e.target.value || null,
-                                  })
-                                }
-                                className="w-24 rounded-md border border-zinc-300 px-1 py-1 text-xs"
-                              />
-                              <span className="text-zinc-400">→</span>
-                              <input
-                                type="time"
-                                defaultValue={feuille?.heure_depart_reelle?.slice(0, 5) ?? ""}
-                                onBlur={(e) =>
-                                  majFeuille(animateur.id, date, {
-                                    heure_depart_reelle: e.target.value || null,
-                                  })
-                                }
-                                className="w-24 rounded-md border border-zinc-300 px-1 py-1 text-xs"
-                              />
-                            </div>
-                          ) : (
-                            <span className="text-zinc-600">
-                              {feuille?.heure_arrivee_reelle?.slice(0, 5) ?? "—"} →{" "}
-                              {feuille?.heure_depart_reelle?.slice(0, 5) ?? "—"}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {ecart !== null ? (
+                        {semaineJours.map((j) => {
+                          if (!aUneAffectation(a.id, j)) {
+                            return (
+                              <td key={j} className="border border-zinc-300 bg-zinc-100 px-2 py-2" />
+                            );
+                          }
+                          const { lettre, couleur } = lettreEtCouleur(a.id, j);
+                          return (
+                            <td key={j} className="border border-zinc-300 px-2 py-2 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <input
+                                  ref={(el) => {
+                                    inputRefs.current[`${a.id}|${j}`] = el;
+                                  }}
+                                  value={lettre}
+                                  disabled={!editable}
+                                  onChange={(e) => handleChange(a.id, j, e)}
+                                  onFocus={(e) => e.target.select()}
+                                  maxLength={1}
+                                  className={`h-8 w-8 rounded-md border border-zinc-300 text-center text-sm font-semibold uppercase focus:border-zinc-500 focus:outline-none ${couleur}`}
+                                />
+                                {editable && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setCelluleOuverte({ animateurId: a.id, date: j })
+                                    }
+                                    title="Horaire différent / motif"
+                                    className="text-xs text-zinc-400 hover:text-zinc-700"
+                                  >
+                                    ✎
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          );
+                        })}
+                        <td className="border border-zinc-300 px-3 py-2 text-center">
+                          {complet ? (
                             <span
-                              className={`text-xs font-medium ${
-                                Math.abs(ecart) < 0.17
+                              className={`text-sm font-semibold ${
+                                Math.abs(total) < 0.17
                                   ? "text-zinc-400"
-                                  : ecart > 0
+                                  : total > 0
                                     ? "text-amber-600"
                                     : "text-red-600"
                               }`}
                             >
-                              {ecart > 0 ? "+" : ""}
-                              {formatHeures(ecart)}
+                              {total > 0 ? "+" : ""}
+                              {formatHeures(total)}
                             </span>
                           ) : (
-                            <span className="text-xs text-zinc-300">—</span>
+                            <span className="text-xs text-zinc-300">incomplet</span>
                           )}
                         </td>
                       </tr>
@@ -441,6 +458,44 @@ export default function FichesHorairesPage() {
             </div>
           )}
         </>
+      )}
+
+      {celluleOuverte && (
+        <div
+          className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 px-4"
+          onClick={() => setCelluleOuverte(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-xl bg-white p-5 shadow-lg"
+          >
+            <div className="mb-1 flex items-center justify-between">
+              <p className="text-sm font-medium text-zinc-900">
+                {animateurs.find((a) => a.id === celluleOuverte.animateurId)?.prenom}{" "}
+                {animateurs.find((a) => a.id === celluleOuverte.animateurId)?.nom} ·{" "}
+                {formatJourCourt(celluleOuverte.date)}
+              </p>
+              <button
+                onClick={() => setCelluleOuverte(null)}
+                className="text-zinc-400 hover:text-zinc-700"
+              >
+                ✕
+              </button>
+            </div>
+            <PointageJour
+              feuille={
+                feuilles.find(
+                  (f) =>
+                    f.date === celluleOuverte.date &&
+                    f.animateur_id === celluleOuverte.animateurId
+                ) ?? null
+              }
+              onChange={(updates) =>
+                majFeuille(celluleOuverte.animateurId, celluleOuverte.date, updates)
+              }
+            />
+          </div>
+        </div>
       )}
     </div>
   );
