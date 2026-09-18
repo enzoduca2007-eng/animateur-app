@@ -594,7 +594,10 @@ export default function PlanningsPage() {
         1,
         (joursTravaillesTotal.get(id) ?? 1) - (joursTraites.get(id) ?? 0)
       );
-      return Math.max(2, restant / joursRestants); // jamais viser moins de 2h
+      // Pas de plancher artificiel : viser pile ce qu'il reste à faire sur
+      // les jours restants, sinon on risque de dépasser le quota en fin de
+      // semaine quand peu de budget reste.
+      return restant / joursRestants;
     }
 
     function enregistrerHeures(id: string, heures: number) {
@@ -815,16 +818,24 @@ export default function PlanningsPage() {
       const mineur = estMineur(a.date_naissance, finSemaineSelectionnee);
       const plafond = plafondHeuresSemaine(mineur);
       const total = heuresSemaineParAnimateur.get(a.id) ?? 0;
-      if (total > plafond) {
-        liste.push({
-          categorie: "heures",
-          texte: `${a.prenom} ${a.nom} : ${formatHeures(total)} cette semaine, au-delà du plafond ${
-            mineur ? "mineur" : "majeur"
-          } (${plafond}h)`,
-        });
-      }
-
       if (animateursActifsSemaine.has(a.id)) {
+        const ecart = total - plafond;
+        if (ecart > 1) {
+          liste.push({
+            categorie: "heures",
+            texte: `${a.prenom} ${a.nom} : ${formatHeures(total)} cette semaine, ${formatHeures(ecart)} au-delà du plafond ${
+              mineur ? "mineur" : "majeur"
+            } (${plafond}h)`,
+          });
+        } else if (ecart < -1) {
+          liste.push({
+            categorie: "heures",
+            texte: `${a.prenom} ${a.nom} : ${formatHeures(total)} cette semaine, ${formatHeures(-ecart)} en dessous du quota ${
+              mineur ? "mineur" : "majeur"
+            } (${plafond}h)`,
+          });
+        }
+
         const nbOuvertures = compteursOF.ouvertures.get(a.id) ?? 0;
         const nbFermetures = compteursOF.fermetures.get(a.id) ?? 0;
         if (nbOuvertures === 0) {
@@ -1248,12 +1259,13 @@ export default function PlanningsPage() {
                   const plafond = plafondHeuresSemaine(mineur);
                   const total = heuresSemaineParAnimateur.get(a.id) ?? 0;
                   const ratio = plafond > 0 ? total / plafond : 0;
-                  const couleur =
-                    ratio > 1
-                      ? "bg-red-500"
-                      : ratio > 0.8
-                        ? "bg-amber-500"
-                        : "bg-emerald-500";
+                  const horsTolerance =
+                    animateursActifsSemaine.has(a.id) && Math.abs(total - plafond) > 1;
+                  const couleur = horsTolerance
+                    ? "bg-red-500"
+                    : ratio > 0.8
+                      ? "bg-amber-500"
+                      : "bg-emerald-500";
                   return (
                     <div key={a.id} className="flex items-center gap-3">
                       <span className="w-36 shrink-0 truncate text-sm font-medium text-zinc-800">
@@ -1267,7 +1279,7 @@ export default function PlanningsPage() {
                       </div>
                       <span
                         className={`w-28 shrink-0 text-right text-sm font-semibold ${
-                          ratio > 1 ? "text-red-600" : "text-zinc-700"
+                          horsTolerance ? "text-red-600" : "text-zinc-700"
                         }`}
                       >
                         {formatHeures(total)}{" "}
@@ -1280,9 +1292,9 @@ export default function PlanningsPage() {
                 })}
               </div>
               <p className="mt-4 text-xs text-zinc-400">
-                Plafond légal hebdomadaire : 38h pour les mineurs, 43h pour
-                les majeurs (majeur appliqué par défaut si la date de
-                naissance n&apos;est pas renseignée).
+                Quota hebdomadaire visé : 38h pour les mineurs, 43h pour les
+                majeurs (majeur appliqué par défaut si la date de naissance
+                n&apos;est pas renseignée) — tolérance de ±1h avant alerte.
               </p>
             </div>
           )}
