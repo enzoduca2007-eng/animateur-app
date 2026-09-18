@@ -9,6 +9,7 @@ import { formatHeures, heuresJour, toMinutes } from "@/lib/creneaux";
 import { PointageJour } from "@/components/pointage-jour";
 import {
   canManage,
+  GROUPE_LABELS,
   type AffectationCreneau,
   type AffectationJour,
   type Animateur,
@@ -16,6 +17,15 @@ import {
   type FeuilleTemps,
   type JourFermeture,
 } from "@/lib/types";
+
+function formatPlage(creneaux: Creneau[]) {
+  const arrivees = creneaux.filter((c) => c.type === "arrivee");
+  const departs = creneaux.filter((c) => c.type === "depart");
+  if (arrivees.length === 0 || departs.length === 0) return "—";
+  const arrivee = arrivees.reduce((min, c) => (c.heure_debut < min.heure_debut ? c : min));
+  const depart = departs.reduce((max, c) => (c.heure_debut > max.heure_debut ? c : max));
+  return `${arrivee.libelle} → ${depart.libelle}`;
+}
 
 function formatJourCourt(dateISO: string) {
   return new Date(`${dateISO}T00:00:00Z`).toLocaleDateString("fr-FR", {
@@ -288,17 +298,25 @@ export default function FichesHorairesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-zinc-900">Fiches horaires</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          {editable
-            ? "Tape I (idem au prévisionnel) ou A (absent) dans chaque case — ça avance automatiquement au jour suivant. Clique ✎ pour un horaire différent."
-            : "Horaires prévisionnels vs réels et présence de chaque animateur."}
-        </p>
+      <div className="no-print flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-zinc-900">Fiches horaires</h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            {editable
+              ? "Tape I (idem au prévisionnel) ou A (absent) dans chaque case — ça avance automatiquement au jour suivant. Clique ✎ pour un horaire différent."
+              : "Horaires prévisionnels vs réels et présence de chaque animateur."}
+          </p>
+        </div>
+        <button
+          onClick={() => window.print()}
+          className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+        >
+          Télécharger en PDF (à faire signer)
+        </button>
       </div>
 
       {erreur && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+        <p className="no-print rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
           {erreur}
         </p>
       )}
@@ -309,7 +327,7 @@ export default function FichesHorairesPage() {
         <p className="text-sm text-zinc-400">Aucune période de vacances trouvée.</p>
       ) : (
         <>
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="no-print flex flex-wrap items-end gap-3">
             <div>
               <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
                 Période · Zone {zone}
@@ -367,7 +385,7 @@ export default function FichesHorairesPage() {
           ) : lignes.length === 0 ? (
             <p className="text-sm text-zinc-400">Aucune affectation cette semaine.</p>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
+            <div className="no-print overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
               <table className="w-full border-collapse text-left text-sm">
                 <thead>
                   <tr>
@@ -457,12 +475,118 @@ export default function FichesHorairesPage() {
               </table>
             </div>
           )}
+
+          {lignes.length > 0 && (
+            <div className="hidden print:block">
+              {lignes.map((a) => {
+                const { total, complet } = ecartSemaine(a.id);
+                return (
+                  <div key={a.id} className="print-page">
+                    <h2 className="text-lg font-bold text-zinc-900">Fiche horaire</h2>
+                    <p className="mt-1 text-sm text-zinc-600">
+                      {a.prenom} {a.nom} · Semaine du {formatJourCourt(semaineJours[0])} au{" "}
+                      {formatJourCourt(semaineJours[semaineJours.length - 1])} · Zone {zone}
+                    </p>
+
+                    <table className="mt-4 w-full border-collapse text-left text-sm">
+                      <thead>
+                        <tr>
+                          <th className="border border-black px-2 py-1.5 font-semibold capitalize">
+                            Jour
+                          </th>
+                          <th className="border border-black px-2 py-1.5 font-semibold">Groupe</th>
+                          <th className="border border-black px-2 py-1.5 font-semibold">
+                            Prévisionnel
+                          </th>
+                          <th className="border border-black px-2 py-1.5 font-semibold">
+                            Présence
+                          </th>
+                          <th className="border border-black px-2 py-1.5 font-semibold">Réel</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {semaineJours.map((j) => {
+                          const assignes = assignesDe(a.id, j);
+                          const groupe = affectationsJour.find(
+                            (aff) => aff.date === j && aff.animateur_id === a.id
+                          )?.groupe;
+                          const feuille = feuilles.find(
+                            (f) => f.date === j && f.animateur_id === a.id
+                          );
+                          if (!aUneAffectation(a.id, j)) {
+                            return (
+                              <tr key={j}>
+                                <td className="border border-black bg-gray-100 px-2 py-1.5 capitalize">
+                                  {formatJourCourt(j)}
+                                </td>
+                                <td className="border border-black bg-gray-100 px-2 py-1.5" colSpan={3} />
+                              </tr>
+                            );
+                          }
+                          return (
+                            <tr key={j}>
+                              <td className="border border-black px-2 py-1.5 capitalize">
+                                {formatJourCourt(j)}
+                              </td>
+                              <td className="border border-black px-2 py-1.5">
+                                {groupe ? GROUPE_LABELS[groupe] : "—"}
+                              </td>
+                              <td className="border border-black px-2 py-1.5">
+                                {formatPlage(assignes)}
+                              </td>
+                              <td className="border border-black px-2 py-1.5">
+                                {!feuille
+                                  ? "—"
+                                  : feuille.present
+                                    ? "Présent"
+                                    : `Absent${feuille.motif_absence ? ` (${feuille.motif_absence})` : ""}`}
+                              </td>
+                              <td className="border border-black px-2 py-1.5">
+                                {feuille?.present
+                                  ? `${feuille.heure_arrivee_reelle?.slice(0, 5) ?? "—"} → ${feuille.heure_depart_reelle?.slice(0, 5) ?? "—"}`
+                                  : "—"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+
+                    <p className="mt-3 text-sm font-semibold text-zinc-900">
+                      Écart total sur la semaine :{" "}
+                      {complet ? (
+                        <>
+                          {total > 0 ? "+" : ""}
+                          {formatHeures(total)}
+                        </>
+                      ) : (
+                        "à compléter"
+                      )}
+                    </p>
+
+                    <div className="mt-12 grid grid-cols-2 gap-8">
+                      <div>
+                        <p className="text-sm text-zinc-700">Signature de l&apos;animateur</p>
+                        <div className="mt-10 border-t border-black" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-zinc-700">
+                          Signature du directeur / de la coordination
+                        </p>
+                        <div className="mt-10 border-t border-black" />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 
       {celluleOuverte && (
         <div
-          className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 px-4"
+          className="no-print fixed inset-0 z-20 flex items-center justify-center bg-black/30 px-4"
           onClick={() => setCelluleOuverte(null)}
         >
           <div
