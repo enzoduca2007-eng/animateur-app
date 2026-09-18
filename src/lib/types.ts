@@ -23,13 +23,31 @@ export interface Animateur {
   email: string | null;
   telephone: string | null;
   diplomes: string | null;
-  groupe: string | null;
   disponibilites: string | null;
   statut: string;
   notes: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export type Groupe = "lutins" | "trolls" | "geants";
+
+export const GROUPES: Groupe[] = ["lutins", "trolls", "geants"];
+
+export const GROUPE_LABELS: Record<Groupe, string> = {
+  lutins: "Lutins",
+  trolls: "Trolls",
+  geants: "Géants",
+};
+
+export interface AffectationJour {
+  id: string;
+  date: string;
+  animateur_id: string;
+  groupe: Groupe;
+  created_by: string | null;
+  created_at: string;
 }
 
 export interface Planning {

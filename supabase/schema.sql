@@ -89,7 +89,6 @@ create table public.animateurs (
   email text,
   telephone text,
   diplomes text,
-  groupe text,
   disponibilites text,
   statut text not null default 'actif',
   notes text,
@@ -163,3 +162,25 @@ create policy "messages: any signed-in user can post as themselves" on public.me
 
 create policy "messages: author or directeur can delete" on public.messages
   for delete using (auth.uid() = auteur_id or public.current_role_name() = 'directeur');
+
+-- Répartition quotidienne des animateurs sur les 3 groupes (Lutins /
+-- Trolls / Géants), un animateur ne peut être que dans un seul groupe
+-- par jour.
+create table public.affectations_jour (
+  id uuid primary key default gen_random_uuid(),
+  date date not null,
+  animateur_id uuid not null references public.animateurs (id) on delete cascade,
+  groupe text not null check (groupe in ('lutins', 'trolls', 'geants')),
+  created_by uuid references public.profiles (id),
+  created_at timestamptz not null default now(),
+  unique (date, animateur_id)
+);
+
+alter table public.affectations_jour enable row level security;
+
+create policy "affectations_jour: readable by any signed-in user" on public.affectations_jour
+  for select using (auth.role() = 'authenticated');
+
+create policy "affectations_jour: directeur/coordinateur write" on public.affectations_jour
+  for all using (public.current_role_name() in ('directeur', 'coordinateur'))
+  with check (public.current_role_name() in ('directeur', 'coordinateur'));

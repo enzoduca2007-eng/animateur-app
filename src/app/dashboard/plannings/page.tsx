@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
+import { useVacances } from "@/lib/use-vacances";
+import { estJourOuvert } from "@/lib/vacances";
+import { PeriodesVacances } from "@/components/periodes-vacances";
 import { canManage, type Animateur, type Planning } from "@/lib/types";
 
 const EMPTY_FORM = {
@@ -18,6 +21,7 @@ export default function PlanningsPage() {
   const profile = useProfile();
   const supabase = createClient();
   const editable = canManage(profile.role);
+  const { periodes, zone, loading: loadingVacances } = useVacances();
 
   const [plannings, setPlannings] = useState<Planning[]>([]);
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
@@ -115,6 +119,8 @@ export default function PlanningsPage() {
         )}
       </div>
 
+      <PeriodesVacances periodes={periodes} zone={zone} loading={loadingVacances} />
+
       {showForm && editable && (
         <form
           onSubmit={handleSubmit}
@@ -127,13 +133,23 @@ export default function PlanningsPage() {
             onChange={(e) => setForm({ ...form, titre: e.target.value })}
             className="col-span-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
           />
-          <input
-            type="date"
-            required
-            value={form.date}
-            onChange={(e) => setForm({ ...form, date: e.target.value })}
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
-          />
+          <div>
+            <input
+              type="date"
+              required
+              value={form.date}
+              onChange={(e) => setForm({ ...form, date: e.target.value })}
+              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            />
+            {form.date &&
+              !loadingVacances &&
+              !estJourOuvert(form.date, periodes) && (
+                <p className="mt-1 text-xs text-amber-600">
+                  ⚠️ Cette date ne tombe pas dans une période de vacances
+                  connue (zone {zone}) — vérifie qu&apos;elle est correcte.
+                </p>
+              )}
+          </div>
           <input
             placeholder="Lieu"
             value={form.lieu}

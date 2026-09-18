@@ -11,7 +11,6 @@ const EMPTY_FORM = {
   email: "",
   telephone: "",
   diplomes: "",
-  groupe: "",
   disponibilites: "",
   statut: "actif",
   notes: "",
@@ -53,7 +52,6 @@ export default function AnimateursPage() {
       email: a.email ?? "",
       telephone: a.telephone ?? "",
       diplomes: a.diplomes ?? "",
-      groupe: a.groupe ?? "",
       disponibilites: a.disponibilites ?? "",
       statut: a.statut,
       notes: a.notes ?? "",
@@ -162,12 +160,6 @@ export default function AnimateursPage() {
             className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
           />
           <input
-            placeholder="Groupe"
-            value={form.groupe}
-            onChange={(e) => setForm({ ...form, groupe: e.target.value })}
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
-          />
-          <input
             placeholder="Disponibilités"
             value={form.disponibilites}
             onChange={(e) =>
@@ -217,7 +209,6 @@ export default function AnimateursPage() {
               <th className="px-4 py-3 font-medium">Nom</th>
               <th className="px-4 py-3 font-medium">Contact</th>
               <th className="px-4 py-3 font-medium">Diplômes</th>
-              <th className="px-4 py-3 font-medium">Groupe</th>
               <th className="px-4 py-3 font-medium">Statut</th>
               {editable && <th className="px-4 py-3" />}
             </tr>
@@ -225,13 +216,13 @@ export default function AnimateursPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-zinc-400">
+                <td colSpan={5} className="px-4 py-6 text-center text-zinc-400">
                   Chargement...
                 </td>
               </tr>
             ) : animateurs.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-zinc-400">
+                <td colSpan={5} className="px-4 py-6 text-center text-zinc-400">
                   Aucun animateur pour l&apos;instant.
                 </td>
               </tr>
@@ -247,7 +238,6 @@ export default function AnimateursPage() {
                     {a.telephone}
                   </td>
                   <td className="px-4 py-3 text-zinc-600">{a.diplomes}</td>
-                  <td className="px-4 py-3 text-zinc-600">{a.groupe}</td>
                   <td className="px-4 py-3">
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-medium ${
