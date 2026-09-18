@@ -11,6 +11,9 @@ create table public.profiles (
   email text not null,
   full_name text not null,
   role public.user_role not null default 'responsable',
+  -- Si renseigné, un coordinateur ne peut gérer que ce groupe (répartition,
+  -- planning, effectifs, fiches horaires). Null = accès complet.
+  groupe_coordinateur text check (groupe_coordinateur in ('lutins', 'trolls', 'geants')),
   created_at timestamptz not null default now()
 );
 
@@ -50,7 +53,8 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
--- Prevent a non-directeur from promoting themselves by editing their own row.
+-- Prevent a non-directeur from promoting themselves, or from lifting
+-- their own groupe_coordinateur restriction, by editing their own row.
 create or replace function public.prevent_role_self_escalation()
 returns trigger
 language plpgsql
@@ -58,8 +62,13 @@ security definer
 set search_path = public
 as $$
 begin
-  if new.role is distinct from old.role and public.current_role_name() <> 'directeur' then
-    new.role := old.role;
+  if public.current_role_name() <> 'directeur' then
+    if new.role is distinct from old.role then
+      new.role := old.role;
+    end if;
+    if new.groupe_coordinateur is distinct from old.groupe_coordinateur then
+      new.groupe_coordinateur := old.groupe_coordinateur;
+    end if;
   end if;
   return new;
 end;
@@ -109,6 +118,79 @@ create policy "animateurs: readable by any signed-in user" on public.animateurs
 create policy "animateurs: directeur/coordinateur write" on public.animateurs
   for all using (public.current_role_name() in ('directeur', 'coordinateur'))
   with check (public.current_role_name() in ('directeur', 'coordinateur'));
+
+-- Répartition quotidienne des animateurs sur les 3 groupes (Lutins /
+-- Trolls / Géants), un animateur ne peut être que dans un seul groupe
+-- par jour. Créée avant creneaux/affectations_creneau/effectifs_jour/
+-- feuilles_temps car les fonctions de restriction par groupe
+-- ci-dessous en dépendent.
+create table public.affectations_jour (
+  id uuid primary key default gen_random_uuid(),
+  date date not null,
+  animateur_id uuid not null references public.animateurs (id) on delete cascade,
+  groupe text not null check (groupe in ('lutins', 'trolls', 'geants')),
+  created_by uuid references public.profiles (id),
+  created_at timestamptz not null default now(),
+  unique (date, animateur_id)
+);
+
+alter table public.affectations_jour enable row level security;
+
+create policy "affectations_jour: readable by any signed-in user" on public.affectations_jour
+  for select using (auth.role() = 'authenticated');
+
+-- Groupe auquel le coordinateur connecté est rattaché (null = pas de
+-- restriction, y compris pour un directeur).
+create or replace function public.mon_groupe_coordinateur()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select groupe_coordinateur from public.profiles where id = auth.uid();
+$$;
+
+-- Le groupe auquel un animateur est affecté un jour donné (via la
+-- Répartition), pour les tables qui n'ont pas de colonne "groupe"
+-- directe (planning, fiches horaires).
+create or replace function public.groupe_de_ce_jour(p_animateur_id uuid, p_date date)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select groupe from public.affectations_jour
+  where animateur_id = p_animateur_id and date = p_date
+  limit 1;
+$$;
+
+-- Vrai si l'utilisateur connecté peut gérer une ligne rattachée au
+-- groupe p_groupe : toujours vrai pour un directeur, vrai pour un
+-- coordinateur non restreint, vrai pour un coordinateur restreint
+-- seulement si p_groupe correspond à son groupe.
+create or replace function public.peut_gerer_groupe(p_groupe text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    public.current_role_name() = 'directeur'
+    or (
+      public.current_role_name() = 'coordinateur'
+      and (
+        public.mon_groupe_coordinateur() is null
+        or public.mon_groupe_coordinateur() = p_groupe
+      )
+    );
+$$;
+
+create policy "affectations_jour: directeur/coordinateur write" on public.affectations_jour
+  for all using (public.peut_gerer_groupe(groupe))
+  with check (public.peut_gerer_groupe(groupe));
 
 -- Créneaux horaires configurables (arrivées / pauses / départs) qui
 -- forment les lignes de la grille de planning.
@@ -161,8 +243,8 @@ create policy "affectations_creneau: readable by any signed-in user" on public.a
   for select using (auth.role() = 'authenticated');
 
 create policy "affectations_creneau: directeur/coordinateur write" on public.affectations_creneau
-  for all using (public.current_role_name() in ('directeur', 'coordinateur'))
-  with check (public.current_role_name() in ('directeur', 'coordinateur'));
+  for all using (public.peut_gerer_groupe(public.groupe_de_ce_jour(animateur_id, date)))
+  with check (public.peut_gerer_groupe(public.groupe_de_ce_jour(animateur_id, date)));
 
 -- Jours exceptionnellement fermés (en plus des week-ends), ex: un jour
 -- encore compté comme vacances par le calendrier officiel mais où le
@@ -201,8 +283,8 @@ create policy "effectifs_jour: readable by any signed-in user" on public.effecti
   for select using (auth.role() = 'authenticated');
 
 create policy "effectifs_jour: directeur/coordinateur write" on public.effectifs_jour
-  for all using (public.current_role_name() in ('directeur', 'coordinateur'))
-  with check (public.current_role_name() in ('directeur', 'coordinateur'));
+  for all using (public.peut_gerer_groupe(groupe))
+  with check (public.peut_gerer_groupe(groupe));
 
 -- Paliers d'encadrement : "à partir de X enfants, il faut Y animateurs
 -- à l'ouverture/fermeture" — configurables, plus proche de la réalité
@@ -266,8 +348,8 @@ create policy "feuilles_temps: readable by any signed-in user" on public.feuille
   for select using (auth.role() = 'authenticated');
 
 create policy "feuilles_temps: directeur/coordinateur write" on public.feuilles_temps
-  for all using (public.current_role_name() in ('directeur', 'coordinateur'))
-  with check (public.current_role_name() in ('directeur', 'coordinateur'));
+  for all using (public.peut_gerer_groupe(public.groupe_de_ce_jour(animateur_id, date)))
+  with check (public.peut_gerer_groupe(public.groupe_de_ce_jour(animateur_id, date)));
 
 create policy "feuilles_temps: animateur writes their own" on public.feuilles_temps
   for all using (public.est_mon_animateur(animateur_id))
@@ -291,25 +373,3 @@ create policy "messages: any signed-in user can post as themselves" on public.me
 
 create policy "messages: author or directeur can delete" on public.messages
   for delete using (auth.uid() = auteur_id or public.current_role_name() = 'directeur');
-
--- Répartition quotidienne des animateurs sur les 3 groupes (Lutins /
--- Trolls / Géants), un animateur ne peut être que dans un seul groupe
--- par jour.
-create table public.affectations_jour (
-  id uuid primary key default gen_random_uuid(),
-  date date not null,
-  animateur_id uuid not null references public.animateurs (id) on delete cascade,
-  groupe text not null check (groupe in ('lutins', 'trolls', 'geants')),
-  created_by uuid references public.profiles (id),
-  created_at timestamptz not null default now(),
-  unique (date, animateur_id)
-);
-
-alter table public.affectations_jour enable row level security;
-
-create policy "affectations_jour: readable by any signed-in user" on public.affectations_jour
-  for select using (auth.role() = 'authenticated');
-
-create policy "affectations_jour: directeur/coordinateur write" on public.affectations_jour
-  for all using (public.current_role_name() in ('directeur', 'coordinateur'))
-  with check (public.current_role_name() in ('directeur', 'coordinateur'));

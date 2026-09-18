@@ -7,6 +7,7 @@ import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours } from "@/lib/vacances";
 import {
   canManage,
+  GROUPE_LABELS,
   type AffectationJour,
   type Animateur,
   type Groupe,
@@ -43,6 +44,7 @@ export default function RepartitionPage() {
   const profile = useProfile();
   const supabase = createClient();
   const editable = canManage(profile.role);
+  const monGroupe = profile.role === "coordinateur" ? profile.groupe_coordinateur : null;
   const { periodes, zone, loading: loadingVacances } = useVacances();
 
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
@@ -182,6 +184,7 @@ export default function RepartitionPage() {
   ) {
     const lettre = e.target.value.trim().toUpperCase().slice(-1);
     if (lettre && !GROUPE_PAR_LETTRE[lettre]) return; // caractère invalide ignoré
+    if (monGroupe && lettre && GROUPE_PAR_LETTRE[lettre] !== monGroupe) return; // hors de son groupe
     assigner(animateurId, date, lettre);
   }
 
@@ -191,7 +194,9 @@ export default function RepartitionPage() {
         <h1 className="text-2xl font-semibold text-zinc-900">Répartition</h1>
         <p className="mt-1 text-sm text-zinc-500">
           {editable
-            ? "Tape L (Lutins), T (Trolls) ou G (Géants) dans chaque case — la saisie avance automatiquement au jour suivant."
+            ? monGroupe
+              ? `Tu ne peux gérer que le groupe ${GROUPE_LABELS[monGroupe]} : tape ${LETTRE_PAR_GROUPE[monGroupe]} pour affecter, case vide pour retirer.`
+              : "Tape L (Lutins), T (Trolls) ou G (Géants) dans chaque case — la saisie avance automatiquement au jour suivant."
             : "Consulte la répartition des animateurs par groupe."}
         </p>
       </div>
@@ -282,9 +287,11 @@ export default function RepartitionPage() {
                           );
                         }
                         const groupe = parCle.get(`${j}|${a.id}`);
+                        const modifiable =
+                          editable && (!monGroupe || !groupe || groupe === monGroupe);
                         return (
                           <td key={j} className="px-2 py-2 text-center">
-                            {editable ? (
+                            {modifiable ? (
                               <input
                                 ref={(el) => {
                                   inputRefs.current[`${a.id}|${j}`] = el;

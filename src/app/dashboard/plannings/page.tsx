@@ -47,6 +47,11 @@ export default function PlanningsPage() {
   const profile = useProfile();
   const supabase = createClient();
   const editable = canManage(profile.role);
+  const monGroupe = profile.role === "coordinateur" ? profile.groupe_coordinateur : null;
+  const groupesGeres = useMemo(
+    () => (monGroupe ? GROUPES.filter((g) => g === monGroupe) : GROUPES),
+    [monGroupe]
+  );
   const { periodes, zone, loading: loadingVacances } = useVacances();
 
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
@@ -65,7 +70,7 @@ export default function PlanningsPage() {
   const [showFermetures, setShowFermetures] = useState(false);
   const [formFermeture, setFormFermeture] = useState({ date: "", motif: "" });
   const [semaineIndex, setSemaineIndex] = useState(0);
-  const [groupeSelectionne, setGroupeSelectionne] = useState<Groupe>(GROUPES[0]);
+  const [groupeSelectionne, setGroupeSelectionne] = useState<Groupe>(monGroupe ?? GROUPES[0]);
   const [effectifs, setEffectifs] = useState<EffectifJour[]>([]);
   const [paliers, setPaliers] = useState<PalierEncadrement[]>([]);
   const [showPaliers, setShowPaliers] = useState(false);
@@ -448,14 +453,14 @@ export default function PlanningsPage() {
   // d'absent toute la semaine.
   const animateursActifsSemaine = useMemo(() => {
     const ids = new Set<string>();
-    for (const groupe of GROUPES) {
+    for (const groupe of groupesGeres) {
       for (const j of semaineJoursSelectionnee) {
         for (const id of animateursDuGroupe(groupe, j)) ids.add(id);
       }
     }
     return ids;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [semaineKey, animateursParGroupeJour]);
+  }, [semaineKey, animateursParGroupeJour, groupesGeres]);
 
   // Nombre d'ouvertures/fermetures par animateur cette semaine.
   const compteursOF = useMemo(() => {
@@ -620,7 +625,7 @@ export default function PlanningsPage() {
 
     const nouvelles: { date: string; creneau_id: string; animateur_id: string }[] = [];
 
-    for (const groupe of GROUPES) {
+    for (const groupe of groupesGeres) {
       let fermeursVeille: string[] = [];
       for (const j of semaineJoursSelectionnee) {
         const eligibles = animateursDuGroupe(groupe, j);
@@ -795,7 +800,7 @@ export default function PlanningsPage() {
   const alertes = useMemo(() => {
     const liste: { categorie: CategorieAlerte; texte: string }[] = [];
 
-    for (const groupe of GROUPES) {
+    for (const groupe of groupesGeres) {
       for (const j of semaineJoursSelectionnee) {
         if (creneauOuverture && stagiaireSeul(creneauOuverture.id, j, groupe)) {
           liste.push({
@@ -834,7 +839,7 @@ export default function PlanningsPage() {
     // Continuité de la clé : qui ferme un jour devrait rouvrir le
     // lendemain, sinon il faut prévoir explicitement la remise de clé.
     if (creneauOuverture && creneauFermeture) {
-      for (const groupe of GROUPES) {
+      for (const groupe of groupesGeres) {
         for (let i = 0; i < semaineJoursSelectionnee.length - 1; i++) {
           const j = semaineJoursSelectionnee[i];
           const jSuivant = semaineJoursSelectionnee[i + 1];
@@ -938,6 +943,7 @@ export default function PlanningsPage() {
     compteursOF,
     effectifParCle,
     paliers,
+    groupesGeres,
   ]);
 
   const alertesParCategorie = useMemo(() => {
@@ -1280,22 +1286,24 @@ export default function PlanningsPage() {
                   ))}
                 </select>
               </div>
-              <div>
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
-                  Groupe
-                </p>
-                <select
-                  value={groupeSelectionne}
-                  onChange={(e) => setGroupeSelectionne(e.target.value as Groupe)}
-                  className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
-                >
-                  {GROUPES.map((g) => (
-                    <option key={g} value={g}>
-                      {GROUPE_LABELS[g]}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {!monGroupe && (
+                <div>
+                  <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
+                    Groupe
+                  </p>
+                  <select
+                    value={groupeSelectionne}
+                    onChange={(e) => setGroupeSelectionne(e.target.value as Groupe)}
+                    className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                  >
+                    {GROUPES.map((g) => (
+                      <option key={g} value={g}>
+                        {GROUPE_LABELS[g]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {editable && creneauOuverture && creneauFermeture && (
                 <button
                   onClick={autoRepartirSemaine}
@@ -1394,7 +1402,7 @@ export default function PlanningsPage() {
             </p>
           ) : (
             <div className="flex flex-col gap-6 print:gap-0">
-              {GROUPES.map((groupe) =>
+              {groupesGeres.map((groupe) =>
                 semaines.map((semaineJours, semaineIdx) => (
                   <div
                     key={`${groupe}-${semaineJours[0]}`}

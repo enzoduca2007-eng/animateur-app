@@ -60,6 +60,7 @@ export default function FichesHorairesPage() {
   const profile = useProfile();
   const supabase = createClient();
   const editable = canManage(profile.role);
+  const monGroupe = profile.role === "coordinateur" ? profile.groupe_coordinateur : null;
   const { periodes, zone, loading: loadingVacances } = useVacances();
 
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
@@ -173,10 +174,30 @@ export default function FichesHorairesPage() {
     );
   }
 
+  function groupeDe(animateurId: string, date: string) {
+    return affectationsJour.find(
+      (a) => a.date === date && a.animateur_id === animateurId
+    )?.groupe;
+  }
+
+  // Une case n'est modifiable que si elle concerne le groupe géré par
+  // le coordinateur (aucune restriction pour un directeur ou un
+  // coordinateur non rattaché à un groupe).
+  function modifiable(animateurId: string, date: string) {
+    if (!editable) return false;
+    if (!monGroupe) return true;
+    return groupeDe(animateurId, date) === monGroupe;
+  }
+
   const lignes = useMemo(
-    () => animateurs.filter((a) => semaineJours.some((j) => aUneAffectation(a.id, j))),
+    () =>
+      animateurs.filter((a) =>
+        semaineJours.some(
+          (j) => aUneAffectation(a.id, j) && (!monGroupe || groupeDe(a.id, j) === monGroupe)
+        )
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [animateurs, semaineJours, affectations, affectationsJour]
+    [animateurs, semaineJours, affectations, affectationsJour, monGroupe]
   );
 
   async function majFeuille(
@@ -443,12 +464,16 @@ export default function FichesHorairesPage() {
                           {a.prenom} {a.nom}
                         </td>
                         {semaineJours.map((j) => {
-                          if (!aUneAffectation(a.id, j)) {
+                          if (
+                            !aUneAffectation(a.id, j) ||
+                            (monGroupe && groupeDe(a.id, j) !== monGroupe)
+                          ) {
                             return (
                               <td key={j} className="border border-zinc-300 bg-zinc-100 px-2 py-2" />
                             );
                           }
                           const { lettre, couleur } = lettreEtCouleur(a.id, j);
+                          const peutModifier = modifiable(a.id, j);
                           return (
                             <td key={j} className="border border-zinc-300 px-2 py-2 text-center">
                               <div className="flex items-center justify-center gap-1">
@@ -457,13 +482,13 @@ export default function FichesHorairesPage() {
                                     inputRefs.current[`${a.id}|${j}`] = el;
                                   }}
                                   value={lettre}
-                                  disabled={!editable}
+                                  disabled={!peutModifier}
                                   onChange={(e) => handleChange(a.id, j, e)}
                                   onFocus={(e) => e.target.select()}
                                   maxLength={1}
                                   className={`h-8 w-8 rounded-md border border-zinc-300 text-center text-sm font-semibold uppercase focus:border-zinc-500 focus:outline-none ${couleur}`}
                                 />
-                                {editable && (
+                                {peutModifier && (
                                   <button
                                     type="button"
                                     onClick={() =>

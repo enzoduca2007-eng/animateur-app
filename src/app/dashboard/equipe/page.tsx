@@ -3,7 +3,15 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
-import { ROLES, ROLE_LABELS, type Profile, type Role } from "@/lib/types";
+import {
+  GROUPES,
+  GROUPE_LABELS,
+  ROLES,
+  ROLE_LABELS,
+  type Groupe,
+  type Profile,
+  type Role,
+} from "@/lib/types";
 
 export default function EquipePage() {
   const profile = useProfile();
@@ -29,8 +37,31 @@ export default function EquipePage() {
   }, []);
 
   async function handleRoleChange(id: string, role: Role) {
-    setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, role } : p)));
-    await supabase.from("profiles").update({ role }).eq("id", id);
+    setProfiles((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? { ...p, role, groupe_coordinateur: role === "coordinateur" ? p.groupe_coordinateur : null }
+          : p
+      )
+    );
+    await supabase
+      .from("profiles")
+      .update({
+        role,
+        ...(role !== "coordinateur" && { groupe_coordinateur: null }),
+      })
+      .eq("id", id);
+    load();
+  }
+
+  async function handleGroupeChange(id: string, groupe: Groupe | "") {
+    setProfiles((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, groupe_coordinateur: groupe || null } : p))
+    );
+    await supabase
+      .from("profiles")
+      .update({ groupe_coordinateur: groupe || null })
+      .eq("id", id);
     load();
   }
 
@@ -47,8 +78,10 @@ export default function EquipePage() {
       <div>
         <h1 className="text-2xl font-semibold text-zinc-900">Équipe</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Gère les espaces (directeur / coordinateur / responsable) de chaque
-          compte.
+          Gère les espaces de chaque compte. Pour un coordinateur, tu peux le
+          rattacher à un seul groupe : il ne pourra alors gérer que la
+          répartition, le planning, les effectifs et les fiches horaires de
+          ce groupe.
         </p>
       </div>
 
@@ -59,12 +92,13 @@ export default function EquipePage() {
               <th className="px-4 py-3 font-medium">Nom</th>
               <th className="px-4 py-3 font-medium">Email</th>
               <th className="px-4 py-3 font-medium">Espace</th>
+              <th className="px-4 py-3 font-medium">Groupe géré</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={3} className="px-4 py-6 text-center text-zinc-400">
+                <td colSpan={4} className="px-4 py-6 text-center text-zinc-400">
                   Chargement...
                 </td>
               </tr>
@@ -92,6 +126,26 @@ export default function EquipePage() {
                         </option>
                       ))}
                     </select>
+                  </td>
+                  <td className="px-4 py-3">
+                    {p.role === "coordinateur" ? (
+                      <select
+                        value={p.groupe_coordinateur ?? ""}
+                        onChange={(e) =>
+                          handleGroupeChange(p.id, e.target.value as Groupe | "")
+                        }
+                        className="rounded-md border border-zinc-300 px-2 py-1 text-sm"
+                      >
+                        <option value="">Tous les groupes</option>
+                        {GROUPES.map((g) => (
+                          <option key={g} value={g}>
+                            {GROUPE_LABELS[g]}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-xs text-zinc-300">—</span>
+                    )}
                   </td>
                 </tr>
               ))

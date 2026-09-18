@@ -19,6 +19,7 @@ export interface Profile {
   email: string;
   full_name: string;
   role: Role;
+  groupe_coordinateur: Groupe | null;
   created_at: string;
 }
 
