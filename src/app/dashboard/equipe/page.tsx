@@ -86,8 +86,8 @@ export default function EquipePage() {
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
+      <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
+        <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="border-b border-zinc-200 bg-zinc-50 text-zinc-500">
             <tr>
               <th className="px-4 py-3 font-medium">Nom</th>

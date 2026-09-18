@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-const MODELE = "gemini-2.0-flash";
+const MODELE = "gemini-3.6-flash";
 
 const PROMPT = `Tu regardes la photo de l'emballage d'un produit alimentaire (goûter de centre de loisirs). Extrait UNIQUEMENT les informations suivantes, telles qu'elles apparaissent sur l'emballage :
 - nom_produit : le nom exact du produit
