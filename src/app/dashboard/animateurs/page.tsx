@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { canManage, type Animateur } from "@/lib/types";
+import { estMineur } from "@/lib/regles";
 
 const EMPTY_FORM = {
   nom: "",
@@ -13,6 +14,8 @@ const EMPTY_FORM = {
   diplomes: "",
   disponibilites: "",
   statut: "actif",
+  est_stagiaire: false,
+  date_naissance: "",
   notes: "",
 };
 
@@ -54,6 +57,8 @@ export default function AnimateursPage() {
       diplomes: a.diplomes ?? "",
       disponibilites: a.disponibilites ?? "",
       statut: a.statut,
+      est_stagiaire: a.est_stagiaire,
+      date_naissance: a.date_naissance ?? "",
       notes: a.notes ?? "",
     });
     setShowForm(true);
@@ -69,10 +74,12 @@ export default function AnimateursPage() {
     e.preventDefault();
     setError(null);
 
+    const payload = { ...form, date_naissance: form.date_naissance || null };
+
     if (editingId) {
       const { error } = await supabase
         .from("animateurs")
-        .update(form)
+        .update(payload)
         .eq("id", editingId);
       if (error) {
         setError(error.message);
@@ -81,7 +88,7 @@ export default function AnimateursPage() {
     } else {
       const { error } = await supabase
         .from("animateurs")
-        .insert({ ...form, created_by: profile.id });
+        .insert({ ...payload, created_by: profile.id });
       if (error) {
         setError(error.message);
         return;
@@ -175,6 +182,27 @@ export default function AnimateursPage() {
             <option value="actif">Actif</option>
             <option value="inactif">Inactif</option>
           </select>
+          <div>
+            <label className="block text-xs text-zinc-500">Date de naissance</label>
+            <input
+              type="date"
+              value={form.date_naissance}
+              onChange={(e) =>
+                setForm({ ...form, date_naissance: e.target.value })
+              }
+              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-zinc-700">
+            <input
+              type="checkbox"
+              checked={form.est_stagiaire}
+              onChange={(e) =>
+                setForm({ ...form, est_stagiaire: e.target.checked })
+              }
+            />
+            Stagiaire (ne peut pas ouvrir/fermer seul)
+          </label>
           <textarea
             placeholder="Notes"
             value={form.notes}
@@ -231,6 +259,19 @@ export default function AnimateursPage() {
                 <tr key={a.id} className="border-b border-zinc-100 last:border-0">
                   <td className="px-4 py-3 font-medium text-zinc-900">
                     {a.prenom} {a.nom}
+                    <div className="mt-1 flex gap-1">
+                      {a.est_stagiaire && (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                          Stagiaire
+                        </span>
+                      )}
+                      {a.date_naissance &&
+                        estMineur(a.date_naissance, new Date().toISOString().slice(0, 10)) && (
+                          <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+                            Mineur
+                          </span>
+                        )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-zinc-600">
                     {a.email}

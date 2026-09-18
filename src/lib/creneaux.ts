@@ -5,6 +5,15 @@ function toMinutes(heure: string) {
   return h * 60 + m;
 }
 
+export function pauseMinutes(creneauxAssignes: Creneau[]) {
+  return creneauxAssignes
+    .filter((c) => c.type === "pause" && c.heure_fin)
+    .reduce(
+      (total, c) => total + (toMinutes(c.heure_fin!) - toMinutes(c.heure_debut)),
+      0
+    );
+}
+
 /**
  * Heures travaillées un jour donné pour un animateur, à partir des créneaux
  * qui lui sont affectés ce jour-là : de sa première arrivée à son dernier
@@ -21,12 +30,7 @@ export function heuresJour(
   const debut = Math.min(...arrivees.map((c) => toMinutes(c.heure_debut)));
   const fin = Math.max(...departs.map((c) => toMinutes(c.heure_debut)));
 
-  const pause = creneauxAssignes
-    .filter((c) => c.type === "pause" && c.heure_fin)
-    .reduce(
-      (total, c) => total + (toMinutes(c.heure_fin!) - toMinutes(c.heure_debut)),
-      0
-    );
+  const pause = pauseMinutes(creneauxAssignes);
 
   return Math.max(0, (fin - debut - pause) / 60);
 }

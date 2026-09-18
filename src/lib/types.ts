@@ -25,6 +25,8 @@ export interface Animateur {
   diplomes: string | null;
   disponibilites: string | null;
   statut: string;
+  est_stagiaire: boolean;
+  date_naissance: string | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;

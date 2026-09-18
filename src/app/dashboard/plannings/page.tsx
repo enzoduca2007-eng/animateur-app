@@ -6,7 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
-import { formatHeures, heuresJour } from "@/lib/creneaux";
+import { formatHeures, heuresJour, pauseMinutes } from "@/lib/creneaux";
+import { estMineur, plafondHeuresSemaine } from "@/lib/regles";
 import { PeriodesVacances } from "@/components/periodes-vacances";
 import {
   canManage,
@@ -272,12 +273,64 @@ export default function PlanningsPage() {
     chargerFermetures();
   }
 
-  // Total d'heures par animateur sur la période affichée.
-  const heuresParAnimateur = useMemo(() => {
+  // Créneau d'ouverture = arrivée la plus tôt, de fermeture = départ le plus
+  // tard, dans le catalogue de créneaux actuel.
+  const creneauOuverture = useMemo(() => {
+    const arrivees = creneaux.filter((c) => c.type === "arrivee");
+    return arrivees.length
+      ? arrivees.reduce((min, c) => (c.heure_debut < min.heure_debut ? c : min))
+      : null;
+  }, [creneaux]);
+
+  const creneauFermeture = useMemo(() => {
+    const departs = creneaux.filter((c) => c.type === "depart");
+    return departs.length
+      ? departs.reduce((max, c) => (c.heure_debut > max.heure_debut ? c : max))
+      : null;
+  }, [creneaux]);
+
+  function stagiaireSeul(creneauId: string, date: string, groupe: Groupe) {
+    const eligibles = animateursDuGroupe(groupe, date);
+    const ids = animateursDe(creneauId, date).filter((id) => eligibles.includes(id));
+    if (ids.length === 0) return false;
+    return ids.every(
+      (id) => animateurs.find((a) => a.id === id)?.est_stagiaire
+    );
+  }
+
+  // Jours (dans la période) où chaque animateur a une pause < 1h alors
+  // qu'il travaille (arrivée + départ assignés) ce jour-là.
+  const violationsPause = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of animateurs) {
+      for (const j of joursOuvres) {
+        const ids = new Set(
+          affectations
+            .filter((aff) => aff.date === j && aff.animateur_id === a.id)
+            .map((aff) => aff.creneau_id)
+        );
+        if (ids.size === 0) continue;
+        const creneauxAssignes = creneaux.filter((c) => ids.has(c.id));
+        if (heuresJour(creneauxAssignes) === null) continue;
+        if (pauseMinutes(creneauxAssignes) < 60) set.add(`${a.id}|${j}`);
+      }
+    }
+    return set;
+  }, [animateurs, joursOuvres, affectations, creneaux]);
+
+  const semaineJoursSelectionnee = semaines[semaineIndexSafe] ?? [];
+  const semaineKey = semaineJoursSelectionnee.join(",");
+  const finSemaineSelectionnee =
+    semaineJoursSelectionnee[semaineJoursSelectionnee.length - 1] ??
+    new Date().toISOString().slice(0, 10);
+
+  // Total d'heures par animateur sur la seule semaine affichée (les
+  // plafonds légaux sont hebdomadaires).
+  const heuresSemaineParAnimateur = useMemo(() => {
     const totaux = new Map<string, number>();
     for (const a of animateurs) {
       let total = 0;
-      for (const j of joursOuvres) {
+      for (const j of semaineJoursSelectionnee) {
         const ids = new Set(
           affectations
             .filter((aff) => aff.date === j && aff.animateur_id === a.id)
@@ -290,7 +343,61 @@ export default function PlanningsPage() {
       totaux.set(a.id, total);
     }
     return totaux;
-  }, [animateurs, joursOuvres, affectations, creneaux]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animateurs, semaineKey, affectations, creneaux]);
+
+  // Récapitulatif texte des alertes de la semaine affichée.
+  const alertes = useMemo(() => {
+    const liste: string[] = [];
+
+    for (const groupe of GROUPES) {
+      for (const j of semaineJoursSelectionnee) {
+        if (creneauOuverture && stagiaireSeul(creneauOuverture.id, j, groupe)) {
+          liste.push(
+            `${GROUPE_LABELS[groupe]} · ${formatJourCourt(j)} : uniquement des stagiaires à l'ouverture (${creneauOuverture.libelle})`
+          );
+        }
+        if (creneauFermeture && stagiaireSeul(creneauFermeture.id, j, groupe)) {
+          liste.push(
+            `${GROUPE_LABELS[groupe]} · ${formatJourCourt(j)} : uniquement des stagiaires à la fermeture (${creneauFermeture.libelle})`
+          );
+        }
+      }
+    }
+
+    for (const a of animateurs) {
+      for (const j of semaineJoursSelectionnee) {
+        if (violationsPause.has(`${a.id}|${j}`)) {
+          liste.push(
+            `${a.prenom} ${a.nom} · ${formatJourCourt(j)} : pause inférieure à 1h`
+          );
+        }
+      }
+      const mineur = estMineur(a.date_naissance, finSemaineSelectionnee);
+      const plafond = plafondHeuresSemaine(mineur);
+      const total = heuresSemaineParAnimateur.get(a.id) ?? 0;
+      if (total > plafond) {
+        liste.push(
+          `${a.prenom} ${a.nom} : ${formatHeures(total)} cette semaine, au-delà du plafond ${
+            mineur ? "mineur" : "majeur"
+          } (${plafond}h)`
+        );
+      }
+    }
+
+    return liste;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    animateurs,
+    semaineKey,
+    creneauOuverture,
+    creneauFermeture,
+    violationsPause,
+    heuresSemaineParAnimateur,
+    finSemaineSelectionnee,
+    animateursParGroupeJour,
+    animateursParCellule,
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -624,6 +731,11 @@ export default function PlanningsPage() {
                                     .map((id) => animateurs.find((a) => a.id === id))
                                     .filter(Boolean)
                                     .map((a) => a!.prenom);
+                                  const estCritique =
+                                    c.id === creneauOuverture?.id ||
+                                    c.id === creneauFermeture?.id;
+                                  const alerte =
+                                    estCritique && stagiaireSeul(c.id, j, groupe);
                                   return (
                                     <td
                                       key={j}
@@ -631,9 +743,16 @@ export default function PlanningsPage() {
                                         editable &&
                                         setCelluleOuverte({ creneauId: c.id, date: j, groupe })
                                       }
-                                      className={`min-w-24 border border-zinc-300 px-2 py-2 text-center text-xs text-zinc-700 print:border-black ${
-                                        editable ? "cursor-pointer hover:bg-zinc-50/60" : ""
-                                      }`}
+                                      title={
+                                        alerte
+                                          ? "Uniquement des stagiaires — un stagiaire ne peut pas ouvrir/fermer seul"
+                                          : undefined
+                                      }
+                                      className={`min-w-24 px-2 py-2 text-center text-xs text-zinc-700 print:border-black ${
+                                        alerte
+                                          ? "border-2 border-red-500 bg-red-50 print:border-red-600"
+                                          : "border border-zinc-300"
+                                      } ${editable ? "cursor-pointer hover:bg-zinc-50/60" : ""}`}
                                     >
                                       {noms.length > 0 ? noms.join(" / ") : editable ? "+" : ""}
                                     </td>
@@ -651,24 +770,51 @@ export default function PlanningsPage() {
             </div>
           )}
 
+          {alertes.length > 0 && (
+            <div className="no-print rounded-xl border border-red-200 bg-red-50 p-4">
+              <p className="mb-2 text-sm font-medium text-red-800">
+                ⚠️ Alertes · semaine {semaineIndexSafe + 1}
+              </p>
+              <ul className="flex flex-col gap-1 text-sm text-red-700">
+                {alertes.map((a, i) => (
+                  <li key={i}>• {a}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {animateurs.length > 0 && (
             <div className="no-print rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <p className="mb-3 text-sm font-medium text-zinc-900">
-                Total d&apos;heures sur la période
+                Heures · semaine {semaineIndexSafe + 1}
               </p>
               <div className="flex flex-wrap gap-2">
-                {animateurs.map((a) => (
-                  <span
-                    key={a.id}
-                    className="rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-700"
-                  >
-                    {a.prenom} {a.nom} ·{" "}
-                    <span className="font-semibold">
-                      {formatHeures(heuresParAnimateur.get(a.id) ?? 0)}
+                {animateurs.map((a) => {
+                  const mineur = estMineur(a.date_naissance, finSemaineSelectionnee);
+                  const plafond = plafondHeuresSemaine(mineur);
+                  const total = heuresSemaineParAnimateur.get(a.id) ?? 0;
+                  const depasse = total > plafond;
+                  return (
+                    <span
+                      key={a.id}
+                      className={`rounded-full px-3 py-1 text-xs ${
+                        depasse
+                          ? "bg-red-100 text-red-700"
+                          : "bg-zinc-100 text-zinc-700"
+                      }`}
+                    >
+                      {a.prenom} {a.nom} ·{" "}
+                      <span className="font-semibold">{formatHeures(total)}</span>
+                      <span className="text-[10px] opacity-70"> /{plafond}h max</span>
                     </span>
-                  </span>
-                ))}
+                  );
+                })}
               </div>
+              <p className="mt-3 text-xs text-zinc-400">
+                Plafond légal hebdomadaire : 38h pour les mineurs, 43h pour
+                les majeurs (majeur appliqué par défaut si la date de
+                naissance n&apos;est pas renseignée).
+              </p>
             </div>
           )}
         </>
