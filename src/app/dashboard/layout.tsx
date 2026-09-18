@@ -30,7 +30,7 @@ export default async function DashboardLayout({
 
   return (
     <ProfileProvider profile={profile}>
-      <div className="flex min-h-screen flex-1 flex-col">
+      <div className="flex min-h-screen flex-1">
         <DashboardNav />
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
           {children}

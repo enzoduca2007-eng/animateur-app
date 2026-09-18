@@ -33,43 +33,44 @@ export function DashboardNav() {
   }
 
   return (
-    <header className="no-print border-b border-zinc-200 bg-white">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-6">
-          <span className="font-semibold text-zinc-900">Animateurs</span>
-          <nav className="flex gap-4 text-sm">
-            {LINKS.filter(
-              (link) => !link.roles || link.roles.includes(profile.role)
-            ).map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={
-                  pathname === link.href
-                    ? "font-medium text-zinc-900"
-                    : "text-zinc-500 hover:text-zinc-900"
-                }
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-        <div className="flex items-center gap-3 text-sm">
-          <span className="text-zinc-500">
-            {profile.full_name}{" "}
-            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-              {ROLE_LABELS[profile.role]}
-            </span>
-          </span>
-          <button
-            onClick={handleSignOut}
-            className="text-zinc-500 hover:text-zinc-900"
-          >
-            Déconnexion
-          </button>
-        </div>
+    <aside className="no-print flex w-56 shrink-0 flex-col border-r border-zinc-200 bg-white">
+      <div className="px-5 py-4">
+        <span className="font-semibold text-zinc-900">Animateurs</span>
       </div>
-    </header>
+
+      <nav className="flex flex-1 flex-col gap-1 px-3">
+        {LINKS.filter(
+          (link) => !link.roles || link.roles.includes(profile.role)
+        ).map((link) => (
+          <Link
+            key={link.href}
+            href={link.href}
+            className={`rounded-md px-3 py-2 text-sm ${
+              pathname === link.href
+                ? "bg-zinc-100 font-medium text-zinc-900"
+                : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
+            }`}
+          >
+            {link.label}
+          </Link>
+        ))}
+      </nav>
+
+      <div className="flex flex-col gap-2 border-t border-zinc-200 px-4 py-4 text-sm">
+        <span className="text-zinc-500">
+          {profile.full_name}
+          <br />
+          <span className="mt-1 inline-block rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
+            {ROLE_LABELS[profile.role]}
+          </span>
+        </span>
+        <button
+          onClick={handleSignOut}
+          className="text-left text-zinc-500 hover:text-zinc-900"
+        >
+          Déconnexion
+        </button>
+      </div>
+    </aside>
   );
 }
