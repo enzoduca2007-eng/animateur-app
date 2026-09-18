@@ -11,11 +11,11 @@ interface MessagePreview {
 export default async function DashboardHome() {
   const supabase = await createClient();
 
-  const [{ count: nbAnimateurs }, { count: nbPlannings }, { data: messages }] =
+  const [{ count: nbAnimateurs }, { count: nbAffectations }, { data: messages }] =
     await Promise.all([
       supabase.from("animateurs").select("*", { count: "exact", head: true }),
       supabase
-        .from("plannings")
+        .from("affectations_creneau")
         .select("*", { count: "exact", head: true })
         .gte("date", new Date().toISOString().slice(0, 10)),
       supabase
@@ -36,8 +36,8 @@ export default async function DashboardHome() {
     },
     {
       href: "/dashboard/plannings",
-      label: "Plannings à venir",
-      value: nbPlannings ?? 0,
+      label: "Créneaux affectés à venir",
+      value: nbAffectations ?? 0,
       hint: "à partir d'aujourd'hui",
     },
   ];

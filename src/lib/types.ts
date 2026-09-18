@@ -50,17 +50,31 @@ export interface AffectationJour {
   created_at: string;
 }
 
-export interface Planning {
+export type TypeCreneau = "arrivee" | "pause" | "depart";
+
+export const TYPE_CRENEAU_LABELS: Record<TypeCreneau, string> = {
+  arrivee: "Arrivées",
+  pause: "Pauses",
+  depart: "Départs",
+};
+
+export interface Creneau {
   id: string;
-  titre: string;
+  libelle: string;
+  type: TypeCreneau;
+  heure_debut: string; // "HH:MM:SS"
+  heure_fin: string | null; // requis pour les pauses
+  ordre: number;
+  created_at: string;
+}
+
+export interface AffectationCreneau {
+  id: string;
   date: string;
-  heure_debut: string | null;
-  heure_fin: string | null;
-  lieu: string | null;
-  description: string | null;
+  creneau_id: string;
+  animateur_id: string;
   created_by: string | null;
   created_at: string;
-  planning_animateurs?: { animateur_id: string }[];
 }
 
 export interface Message {
