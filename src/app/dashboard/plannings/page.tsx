@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
@@ -247,7 +247,7 @@ export default function PlanningsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="no-print flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-zinc-900">Planning</h1>
           <p className="mt-1 text-sm text-zinc-500">
@@ -256,24 +256,32 @@ export default function PlanningsPage() {
               : "Consulte qui est présent à chaque créneau."}
           </p>
         </div>
-        {editable && (
+        <div className="flex gap-2">
           <button
-            onClick={() => setShowCreneaux((v) => !v)}
+            onClick={() => window.print()}
             className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
           >
-            {showCreneaux ? "Fermer les créneaux" : "Gérer les créneaux"}
+            Télécharger en PDF
           </button>
-        )}
+          {editable && (
+            <button
+              onClick={() => setShowCreneaux((v) => !v)}
+              className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              {showCreneaux ? "Fermer les créneaux" : "Gérer les créneaux"}
+            </button>
+          )}
+        </div>
       </div>
 
       {erreur && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+        <p className="no-print rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
           {erreur}
         </p>
       )}
 
       {showCreneaux && editable && (
-        <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+        <div className="no-print rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
           <p className="mb-3 text-sm font-medium text-zinc-900">Créneaux</p>
           <div className="flex flex-col gap-2">
             {TYPES.map((type) => (
@@ -371,7 +379,9 @@ export default function PlanningsPage() {
         </div>
       )}
 
-      <PeriodesVacances periodes={periodes} zone={zone} loading={loadingVacances} />
+      <div className="no-print">
+        <PeriodesVacances periodes={periodes} zone={zone} loading={loadingVacances} />
+      </div>
 
       {loadingVacances || periodeIndex === null ? (
         <p className="text-sm text-zinc-400">Chargement...</p>
@@ -379,7 +389,7 @@ export default function PlanningsPage() {
         <p className="text-sm text-zinc-400">Aucune période de vacances trouvée.</p>
       ) : (
         <>
-          <div>
+          <div className="no-print">
             <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
               Période
             </p>
@@ -395,6 +405,11 @@ export default function PlanningsPage() {
               ))}
             </select>
           </div>
+          {periode && (
+            <p className="hidden print:block print:text-center print:text-sm print:font-medium">
+              {periode.description} · {periode.debut} – {periode.fin}
+            </p>
+          )}
 
           {loading ? (
             <p className="text-sm text-zinc-400">Chargement...</p>
@@ -403,24 +418,25 @@ export default function PlanningsPage() {
               Aucun créneau défini. {editable && "Clique \"Gérer les créneaux\" pour en créer."}
             </p>
           ) : (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-6 print:gap-0">
               {GROUPES.map((groupe) => (
-                <div key={groupe}>
-                  <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                <div key={groupe} className="print-page">
+                  <p className="rounded-t-xl border border-b-0 border-zinc-300 bg-zinc-100 py-2 text-center text-sm font-bold uppercase tracking-wide text-zinc-700 print:rounded-none print:border-black print:bg-gray-200 print:text-base">
                     {GROUPE_LABELS[groupe]}
-                  </h2>
-                  <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
-                    <table className="text-left text-sm">
-                      <thead className="border-b border-zinc-200 bg-zinc-50 text-zinc-500">
+                  </p>
+                  <div className="overflow-x-auto rounded-b-xl border border-zinc-300 bg-white shadow-sm print:overflow-visible print:rounded-none print:border-black print:shadow-none">
+                    <table className="w-full border-collapse text-left text-sm print:text-xs">
+                      <thead>
                         <tr>
-                          <th className="sticky left-0 z-10 bg-zinc-50 px-4 py-3 font-medium">
+                          <th className="sticky left-0 z-10 border border-zinc-300 bg-zinc-50 px-2 py-2 font-medium print:static print:border-black" />
+                          <th className="sticky left-10 z-10 border border-zinc-300 bg-zinc-50 px-3 py-2 font-medium print:static print:border-black">
                             Créneau
                           </th>
                           {jours.map((j) => (
                             <th
                               key={j}
-                              className={`px-2 py-3 text-center font-medium capitalize ${
-                                estWeekend(j) ? "bg-zinc-100 text-zinc-400" : ""
+                              className={`border border-zinc-300 px-2 py-2 text-center font-medium capitalize print:border-black ${
+                                estWeekend(j) ? "bg-zinc-100 text-zinc-400" : "bg-zinc-50"
                               }`}
                             >
                               {formatJourCourt(j)}
@@ -429,57 +445,65 @@ export default function PlanningsPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {TYPES.map((type) => {
+                        {TYPES.flatMap((type) => {
                           const lignes = creneaux.filter((c) => c.type === type);
-                          if (lignes.length === 0) return null;
-                          return (
-                            <Fragment key={type}>
-                              <tr className="bg-zinc-50/70">
+                          return lignes.map((c, idx) => (
+                            <tr
+                              key={c.id}
+                              className={
+                                type === "pause"
+                                  ? "bg-zinc-100 print:bg-gray-200"
+                                  : "bg-white"
+                              }
+                            >
+                              {idx === 0 && (
                                 <td
-                                  colSpan={jours.length + 1}
-                                  className="sticky left-0 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-400"
+                                  rowSpan={lignes.length}
+                                  className="sticky left-0 z-10 border border-zinc-300 bg-zinc-50 px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-500 print:static print:border-black print:bg-gray-200"
+                                  style={{ writingMode: "vertical-rl" }}
                                 >
-                                  {TYPE_CRENEAU_LABELS[type]}
+                                  <span className="inline-block rotate-180">
+                                    {TYPE_CRENEAU_LABELS[type]}
+                                  </span>
                                 </td>
-                              </tr>
-                              {lignes.map((c) => (
-                                <tr key={c.id} className="border-b border-zinc-100 last:border-0">
-                                  <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-zinc-900">
-                                    {c.libelle}
-                                  </td>
-                                  {jours.map((j) => {
-                                    if (estWeekend(j)) {
-                                      return (
-                                        <td key={j} className="bg-zinc-100 px-2 py-2 text-center" />
-                                      );
+                              )}
+                              <td className="sticky left-10 z-10 whitespace-nowrap border border-zinc-300 bg-inherit px-3 py-2 font-medium text-zinc-900 print:static print:border-black">
+                                {c.libelle}
+                              </td>
+                              {jours.map((j) => {
+                                if (estWeekend(j)) {
+                                  return (
+                                    <td
+                                      key={j}
+                                      className="border border-zinc-300 bg-zinc-200 px-2 py-2 text-center print:border-black"
+                                    />
+                                  );
+                                }
+                                const eligibles = animateursDuGroupe(groupe, j);
+                                const ids = animateursDe(c.id, j).filter((id) =>
+                                  eligibles.includes(id)
+                                );
+                                const noms = ids
+                                  .map((id) => animateurs.find((a) => a.id === id))
+                                  .filter(Boolean)
+                                  .map((a) => a!.prenom);
+                                return (
+                                  <td
+                                    key={j}
+                                    onClick={() =>
+                                      editable &&
+                                      setCelluleOuverte({ creneauId: c.id, date: j, groupe })
                                     }
-                                    const eligibles = animateursDuGroupe(groupe, j);
-                                    const ids = animateursDe(c.id, j).filter((id) =>
-                                      eligibles.includes(id)
-                                    );
-                                    const noms = ids
-                                      .map((id) => animateurs.find((a) => a.id === id))
-                                      .filter(Boolean)
-                                      .map((a) => a!.prenom);
-                                    return (
-                                      <td
-                                        key={j}
-                                        onClick={() =>
-                                          editable &&
-                                          setCelluleOuverte({ creneauId: c.id, date: j, groupe })
-                                        }
-                                        className={`min-w-24 px-2 py-2 text-center text-xs text-zinc-700 ${
-                                          editable ? "cursor-pointer hover:bg-zinc-50" : ""
-                                        }`}
-                                      >
-                                        {noms.length > 0 ? noms.join(" / ") : editable ? "+" : ""}
-                                      </td>
-                                    );
-                                  })}
-                                </tr>
-                              ))}
-                            </Fragment>
-                          );
+                                    className={`min-w-24 border border-zinc-300 px-2 py-2 text-center text-xs text-zinc-700 print:border-black ${
+                                      editable ? "cursor-pointer hover:bg-zinc-50/60" : ""
+                                    }`}
+                                  >
+                                    {noms.length > 0 ? noms.join(" / ") : editable ? "+" : ""}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ));
                         })}
                       </tbody>
                     </table>
@@ -490,7 +514,7 @@ export default function PlanningsPage() {
           )}
 
           {animateurs.length > 0 && (
-            <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <div className="no-print rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <p className="mb-3 text-sm font-medium text-zinc-900">
                 Total d&apos;heures sur la période
               </p>
@@ -514,7 +538,7 @@ export default function PlanningsPage() {
 
       {celluleOuverte && (
         <div
-          className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 px-4"
+          className="no-print fixed inset-0 z-20 flex items-center justify-center bg-black/30 px-4"
           onClick={() => setCelluleOuverte(null)}
         >
           <div
