@@ -270,8 +270,8 @@ export default function MonPlanningPage() {
         <h1 className="text-2xl font-semibold text-zinc-900">Mon planning</h1>
         <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Ton compte n&apos;est pas encore relié à une fiche animateur.
-          Demande à un directeur ou un coordinateur de faire le lien depuis
-          la page Animateurs (bouton &quot;Modifier&quot; sur ta fiche).
+          Demande à un directeur de faire le lien depuis la page Animateurs
+          (bouton &quot;Modifier&quot; sur ta fiche).
         </p>
       </div>
     );

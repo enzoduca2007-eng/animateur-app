@@ -50,7 +50,7 @@ export default function AnimateursPage() {
     supabase
       .from("profiles")
       .select("*")
-      .eq("role", "animateur")
+      .in("role", ["animateur", "coordinateur"])
       .then(({ data }) => {
         if (data) setComptesAnimateur(data as Profile[]);
       });

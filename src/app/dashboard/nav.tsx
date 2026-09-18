@@ -10,7 +10,7 @@ const STAFF: Role[] = ["directeur", "coordinateur", "responsable"];
 
 const LINKS: { href: string; label: string; roles: Role[] | null }[] = [
   { href: "/dashboard", label: "Accueil", roles: STAFF },
-  { href: "/dashboard/mon-planning", label: "Mon planning", roles: ["animateur"] },
+  { href: "/dashboard/mon-planning", label: "Mon planning", roles: ["animateur", "coordinateur"] },
   { href: "/dashboard/animateurs", label: "Animateurs", roles: STAFF },
   { href: "/dashboard/plannings", label: "Plannings", roles: STAFF },
   { href: "/dashboard/repartition", label: "Répartition", roles: STAFF },
