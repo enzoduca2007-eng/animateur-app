@@ -69,7 +69,7 @@ export default function PlanningsPage() {
       .from("creneaux")
       .select("*")
       .order("type")
-      .order("ordre");
+      .order("heure_debut");
     if (data) setCreneaux(data as Creneau[]);
   }
 
@@ -225,18 +225,12 @@ export default function PlanningsPage() {
   async function ajouterCreneau(e: React.FormEvent) {
     e.preventDefault();
     if (!formCreneau.libelle || !formCreneau.heure_debut) return;
-    const ordre =
-      Math.max(
-        0,
-        ...creneaux.filter((c) => c.type === formCreneau.type).map((c) => c.ordre)
-      ) + 1;
 
     const { error } = await supabase.from("creneaux").insert({
       libelle: formCreneau.libelle,
       type: formCreneau.type,
       heure_debut: formCreneau.heure_debut,
       heure_fin: formCreneau.type === "pause" ? formCreneau.heure_fin || null : null,
-      ordre,
     });
     if (error) {
       setErreur(error.message);
