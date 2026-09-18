@@ -5,29 +5,79 @@ export const maxDuration = 60;
 
 const MODELE = "gemini-3.6-flash";
 
-// Le modèle Gemini renvoie parfois 503 (surchargé) ou 429 (limite de débit)
-// de façon transitoire : on réessaie automatiquement avant d'abandonner.
-const DELAIS_RETRY_MS = [3000, 6000];
+// Le modèle Gemini renvoie parfois une erreur transitoire (surcharge, limite
+// de débit) ou une réponse mal formée (JSON tronqué/invalide) de façon
+// aléatoire : on réessaie automatiquement avant d'abandonner.
+const DELAIS_RETRY_MS = [3000, 6000, 10000];
 
 function attendre(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function appellerGemini(url: string, body: string) {
-  let derniereReponse: Response | null = null;
-  for (let tentative = 0; tentative <= DELAIS_RETRY_MS.length; tentative++) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-    });
-    if (res.ok) return res;
-    derniereReponse = res;
-    const reessayable = res.status === 503 || res.status === 429;
-    if (!reessayable || tentative === DELAIS_RETRY_MS.length) break;
-    await attendre(DELAIS_RETRY_MS[tentative]);
+class ErreurReessayable extends Error {}
+
+// Le modèle enveloppe parfois le JSON dans des ```json ... ``` malgré la
+// consigne stricte : on l'extrait avant de parser.
+function extraireJson(texte: string) {
+  const nettoye = texte
+    .trim()
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/, "")
+    .trim();
+  try {
+    return JSON.parse(nettoye);
+  } catch {
+    const match = nettoye.match(/\{[\s\S]*\}/);
+    if (!match) throw new ErreurReessayable("Réponse IA non-JSON.");
+    return JSON.parse(match[0]);
   }
-  return derniereReponse!;
+}
+
+async function tenterAnalyse(url: string, body: string) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+  });
+
+  if (!res.ok) {
+    const detail = await res.text();
+    if (res.status === 503 || res.status === 429) {
+      throw new ErreurReessayable(
+        "Le modèle IA est temporairement surchargé, réessaie dans quelques instants."
+      );
+    }
+    throw new Error(`Erreur Gemini (${res.status}) : ${detail.slice(0, 300)}`);
+  }
+
+  const geminiJson = await res.json();
+  const candidat = geminiJson?.candidates?.[0];
+  const texte = candidat?.content?.parts?.[0]?.text;
+
+  if (!texte) {
+    // Réponse vide (filtre de sécurité, coupure) : quasi toujours transitoire.
+    throw new ErreurReessayable(
+      `Réponse IA vide ou inattendue${candidat?.finishReason ? ` (${candidat.finishReason})` : ""}.`
+    );
+  }
+
+  try {
+    return extraireJson(texte);
+  } catch {
+    throw new ErreurReessayable("Réponse IA mal formée (JSON invalide).");
+  }
+}
+
+async function appellerGeminiAvecRetry(url: string, body: string) {
+  for (let tentative = 0; ; tentative++) {
+    try {
+      return await tenterAnalyse(url, body);
+    } catch (err) {
+      const reessayable = err instanceof ErreurReessayable;
+      if (!reessayable || tentative === DELAIS_RETRY_MS.length) throw err;
+      await attendre(DELAIS_RETRY_MS[tentative]);
+    }
+  }
 }
 
 const PROMPT = `Tu regardes la photo de l'emballage d'un produit alimentaire (goûter de centre de loisirs). Extrait UNIQUEMENT les informations suivantes, telles qu'elles apparaissent sur l'emballage :
@@ -81,7 +131,7 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(await photoRes.arrayBuffer());
     const base64 = buffer.toString("base64");
 
-    const geminiRes = await appellerGemini(
+    const extrait = (await appellerGeminiAvecRetry(
       `https://generativelanguage.googleapis.com/v1beta/models/${MODELE}:generateContent?key=${apiKey}`,
       JSON.stringify({
         contents: [
@@ -92,24 +142,9 @@ export async function POST(request: Request) {
             ],
           },
         ],
-        generationConfig: { responseMimeType: "application/json" },
+        generationConfig: { responseMimeType: "application/json", temperature: 0 },
       })
-    );
-
-    if (!geminiRes.ok) {
-      const detail = await geminiRes.text();
-      const messageBase =
-        geminiRes.status === 503
-          ? "Le modèle IA est temporairement surchargé, réessaie dans quelques instants."
-          : `Erreur Gemini (${geminiRes.status}) : ${detail.slice(0, 300)}`;
-      throw new Error(messageBase);
-    }
-
-    const geminiJson = await geminiRes.json();
-    const texte = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!texte) throw new Error("Réponse IA vide ou inattendue.");
-
-    const extrait = JSON.parse(texte) as {
+    )) as {
       type_produit: string | null;
       marque: string | null;
       nom_produit: string | null;
