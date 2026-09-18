@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
@@ -72,9 +72,13 @@ export default function GoutersPage() {
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoiEnCours, setEnvoiEnCours] = useState<Record<string, boolean>>({});
+  const [importEnCours, setImportEnCours] = useState<
+    Partial<Record<Groupe, { fait: number; total: number }>>
+  >({});
   const [nouveaux, setNouveaux] = useState<Record<Groupe, { type_produit: string; marque: string }>>(
     { lutins: { type_produit: "", marque: "" }, trolls: { type_produit: "", marque: "" }, geants: { type_produit: "", marque: "" } }
   );
+  const compteurUpload = useRef(0);
 
   useEffect(() => {
     supabase
@@ -215,7 +219,8 @@ export default function GoutersPage() {
     setErreur(null);
     setEnvoiEnCours((prev) => ({ ...prev, [gouter.id]: true }));
     try {
-      const chemin = `${gouter.id}/${Date.now()}-${file.name}`;
+      compteurUpload.current += 1;
+      const chemin = `${gouter.id}/${compteurUpload.current}-${file.name}`;
       const { error: erreurUpload } = await supabase.storage
         .from("gouters")
         .upload(chemin, file, { upsert: true });
@@ -251,10 +256,39 @@ export default function GoutersPage() {
     }
   }
 
-  async function majChamp(id: string, champ: "nom_produit" | "numero_lot" | "date_peremption" | "quantite", valeur: string) {
+  async function majChamp(
+    id: string,
+    champ: "type_produit" | "marque" | "nom_produit" | "numero_lot" | "date_peremption" | "quantite",
+    valeur: string
+  ) {
     setGouters((prev) => prev.map((g) => (g.id === id ? { ...g, [champ]: valeur || null } : g)));
     setGoutersPeriode((prev) => prev.map((g) => (g.id === id ? { ...g, [champ]: valeur || null } : g)));
     await supabase.from("gouters").update({ [champ]: valeur || null }).eq("id", id);
+  }
+
+  // Import en masse : une photo = une fiche créée automatiquement (sans
+  // passer par la saisie manuelle du type/marque), analysée par l'IA.
+  async function importerPlusieursPhotos(groupe: Groupe, files: FileList | null) {
+    if (!jour || !files || files.length === 0) return;
+    const liste = Array.from(files);
+    setErreur(null);
+    setImportEnCours((prev) => ({ ...prev, [groupe]: { fait: 0, total: liste.length } }));
+
+    for (let i = 0; i < liste.length; i++) {
+      const { data, error } = await supabase
+        .from("gouters")
+        .insert({ date: jour, groupe, created_by: profile.id })
+        .select("*")
+        .single();
+      if (error || !data) {
+        setErreur(error?.message ?? "Erreur lors de la création de la fiche.");
+      } else {
+        await envoyerPhoto(data as Gouter, liste[i]);
+      }
+      setImportEnCours((prev) => ({ ...prev, [groupe]: { fait: i + 1, total: liste.length } }));
+    }
+
+    setImportEnCours((prev) => ({ ...prev, [groupe]: undefined }));
   }
 
   return (
@@ -262,10 +296,11 @@ export default function GoutersPage() {
       <div className="no-print">
         <h1 className="text-2xl font-semibold text-zinc-900">Goûters</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Traçabilité alimentaire : type de produit et marque saisis par le
-          directeur/coordinateur, photo de l&apos;emballage prise par
-          l&apos;animateur du groupe puis analysée automatiquement (numéro de
-          lot, DLC, nom du produit, quantité).
+          Traçabilité alimentaire : l&apos;animateur du groupe importe toutes
+          les photos des emballages d&apos;un coup, l&apos;IA reconnaît
+          automatiquement le produit, la marque, le numéro de lot, la DLC et
+          la quantité de chacun. Tout reste corrigible à la main en cas
+          d&apos;erreur de lecture.
         </p>
       </div>
 
@@ -383,8 +418,8 @@ export default function GoutersPage() {
                         <td className="border border-black px-2 py-1">
                           {GROUPE_LABELS[g.groupe]}
                         </td>
-                        <td className="border border-black px-2 py-1">{g.type_produit}</td>
-                        <td className="border border-black px-2 py-1">{g.marque}</td>
+                        <td className="border border-black px-2 py-1">{g.type_produit || "—"}</td>
+                        <td className="border border-black px-2 py-1">{g.marque || "—"}</td>
                         <td className="border border-black px-2 py-1">
                           {g.photo_url ? (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -428,6 +463,9 @@ export default function GoutersPage() {
               {groupesGeres.map((groupe) => {
                 const produits = gouters.filter((g) => g.groupe === groupe);
                 const gererGroupe = peutGererGroupe(groupe);
+                const peutImporter =
+                  gererGroupe || (monAnimateur && jour && estAffecteCeJour(groupe, jour));
+                const progression = importEnCours[groupe];
                 return (
                   <div
                     key={groupe}
@@ -436,6 +474,31 @@ export default function GoutersPage() {
                     <h2 className="text-lg font-semibold text-zinc-900">
                       {GROUPE_LABELS[groupe]}
                     </h2>
+
+                    {peutImporter && (
+                      <div className="mt-3 rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-3">
+                        <label className="text-xs font-medium text-zinc-600">
+                          Importer toutes les photos des goûters d&apos;un coup
+                          (l&apos;IA reconnaît chaque produit automatiquement)
+                        </label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          disabled={!!progression}
+                          onChange={(e) => {
+                            importerPlusieursPhotos(groupe, e.target.files);
+                            e.target.value = "";
+                          }}
+                          className="mt-1 block text-sm"
+                        />
+                        {progression && (
+                          <p className="mt-1 text-xs text-zinc-500">
+                            Importation {progression.fait}/{progression.total}...
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     <div className="mt-3 flex flex-col gap-4">
                       {produits.length === 0 && (
@@ -456,7 +519,9 @@ export default function GoutersPage() {
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
                                 <p className="font-medium text-zinc-900">
-                                  {g.type_produit} · {g.marque}
+                                  {g.type_produit || g.marque
+                                    ? `${g.type_produit ?? "?"} · ${g.marque ?? "?"}`
+                                    : "Nouveau produit"}
                                 </p>
                                 <span
                                   className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${statut.classe}`}
@@ -517,8 +582,26 @@ export default function GoutersPage() {
                               </div>
                             )}
 
-                            {(g.nom_produit || g.numero_lot || g.date_peremption || g.quantite || g.statut_ia === "traite") && (
+                            {(peutPhoto || g.nom_produit || g.numero_lot || g.date_peremption || g.quantite || g.type_produit || g.marque) && (
                               <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                <div>
+                                  <label className="text-xs text-zinc-400">Type de produit</label>
+                                  <input
+                                    value={g.type_produit ?? ""}
+                                    disabled={!peutPhoto}
+                                    onChange={(e) => majChamp(g.id, "type_produit", e.target.value)}
+                                    className="mt-0.5 w-full rounded-md border border-zinc-300 px-2 py-1 text-sm disabled:bg-zinc-50"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-xs text-zinc-400">Marque</label>
+                                  <input
+                                    value={g.marque ?? ""}
+                                    disabled={!peutPhoto}
+                                    onChange={(e) => majChamp(g.id, "marque", e.target.value)}
+                                    className="mt-0.5 w-full rounded-md border border-zinc-300 px-2 py-1 text-sm disabled:bg-zinc-50"
+                                  />
+                                </div>
                                 <div>
                                   <label className="text-xs text-zinc-400">Nom produit</label>
                                   <input

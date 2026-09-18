@@ -131,8 +131,8 @@ export interface Gouter {
   id: string;
   date: string;
   groupe: Groupe;
-  type_produit: string;
-  marque: string;
+  type_produit: string | null;
+  marque: string | null;
   photo_url: string | null;
   nom_produit: string | null;
   numero_lot: string | null;

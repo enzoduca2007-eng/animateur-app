@@ -378,17 +378,18 @@ create policy "messages: any signed-in user can post as themselves" on public.me
 create policy "messages: author or directeur can delete" on public.messages
   for delete using (auth.uid() = auteur_id or public.current_role_name() = 'directeur');
 
--- Traçabilité des goûters : le directeur/coordinateur saisit le type de
--- produit et la marque pour un groupe un jour donné ; un animateur affecté
--- à ce groupe ce jour-là prend une photo de l'emballage, qu'une IA analyse
--- pour en extraire le nom du produit, le numéro de lot, la DLC/DLUO et la
--- quantité (relevé conservé pour la traçabilité alimentaire).
+-- Traçabilité des goûters : un animateur affecté à un groupe un jour donné
+-- importe la/les photo(s) de l'emballage (une ligne créée automatiquement
+-- par photo), qu'une IA analyse pour en extraire le type de produit, la
+-- marque, le nom du produit, le numéro de lot, la DLC/DLUO et la quantité.
+-- Le directeur/coordinateur peut aussi créer une ligne à la main et
+-- corriger le type de produit / la marque si l'IA se trompe.
 create table public.gouters (
   id uuid primary key default gen_random_uuid(),
   date date not null,
   groupe text not null check (groupe in ('lutins', 'trolls', 'geants')),
-  type_produit text not null,
-  marque text not null,
+  type_produit text,
+  marque text,
   photo_url text,
   nom_produit text,
   numero_lot text,
@@ -407,9 +408,11 @@ create index gouters_date_groupe_idx on public.gouters (date, groupe);
 alter table public.gouters enable row level security;
 
 -- Un animateur affecté à ce groupe ce jour-là (via la Répartition) peut
--- mettre à jour la ligne pour y ajouter sa photo — le trigger ci-dessous
--- l'empêche de toucher au type de produit / à la marque / au groupe / à la
--- date, réservés au directeur/coordinateur.
+-- créer une ligne (une photo importée = une ligne) et la mettre à jour —
+-- le trigger ci-dessous l'empêche de déplacer la ligne vers un autre
+-- groupe/jour, réservé au directeur/coordinateur ; le type de produit et
+-- la marque restent modifiables par lui (l'IA les remplit à sa place) mais
+-- pas par un tiers non affecté à ce groupe ce jour-là.
 create or replace function public.est_affecte_ce_jour(p_groupe text, p_date date)
 returns boolean
 language sql
@@ -432,10 +435,12 @@ set search_path = public
 as $$
 begin
   if not public.peut_gerer_groupe(old.groupe) then
-    new.type_produit := old.type_produit;
-    new.marque := old.marque;
     new.groupe := old.groupe;
     new.date := old.date;
+    if not public.est_affecte_ce_jour(old.groupe, old.date) then
+      new.type_produit := old.type_produit;
+      new.marque := old.marque;
+    end if;
   end if;
   return new;
 end;
@@ -448,12 +453,14 @@ create trigger gouters_before_update
 create policy "gouters: readable by any signed-in user" on public.gouters
   for select using (auth.role() = 'authenticated');
 
--- Créer/modifier/supprimer la fiche (type de produit, marque) : réservé au
--- directeur, ou au coordinateur si le groupe est le sien.
-create policy "gouters: directeur/coordinateur insert" on public.gouters
-  for insert with check (public.peut_gerer_groupe(groupe));
+-- Créer une ligne : le directeur/coordinateur (n'importe quel groupe qu'il
+-- gère), ou un animateur affecté à ce groupe ce jour-là (une photo importée
+-- = une ligne créée automatiquement).
+create policy "gouters: insert" on public.gouters
+  for insert
+  with check (public.peut_gerer_groupe(groupe) or public.est_affecte_ce_jour(groupe, date));
 
-create policy "gouters: directeur/coordinateur update" on public.gouters
+create policy "gouters: update" on public.gouters
   for update
   using (public.peut_gerer_groupe(groupe) or public.est_affecte_ce_jour(groupe, date))
   with check (public.peut_gerer_groupe(groupe) or public.est_affecte_ce_jour(groupe, date));
