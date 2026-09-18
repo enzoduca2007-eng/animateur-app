@@ -447,21 +447,34 @@ export default function PlanningsPage() {
     if (periode) loadAffectations(periode.debut, periode.fin);
   }
 
-  // Récapitulatif texte des alertes de la semaine affichée.
+  type CategorieAlerte = "ouverture-fermeture" | "pause" | "heures" | "rotation";
+  const CATEGORIE_ALERTE_INFO: Record<
+    CategorieAlerte,
+    { titre: string; icone: string }
+  > = {
+    "ouverture-fermeture": { titre: "Ouverture / fermeture", icone: "🔓" },
+    pause: { titre: "Pauses", icone: "☕" },
+    heures: { titre: "Heures", icone: "⏱️" },
+    rotation: { titre: "Rotation ouverture/fermeture", icone: "🔁" },
+  };
+
+  // Alertes de la semaine affichée, regroupées par catégorie.
   const alertes = useMemo(() => {
-    const liste: string[] = [];
+    const liste: { categorie: CategorieAlerte; texte: string }[] = [];
 
     for (const groupe of GROUPES) {
       for (const j of semaineJoursSelectionnee) {
         if (creneauOuverture && stagiaireSeul(creneauOuverture.id, j, groupe)) {
-          liste.push(
-            `${GROUPE_LABELS[groupe]} · ${formatJourCourt(j)} : uniquement des stagiaires à l'ouverture (${creneauOuverture.libelle})`
-          );
+          liste.push({
+            categorie: "ouverture-fermeture",
+            texte: `${GROUPE_LABELS[groupe]} · ${formatJourCourt(j)} : uniquement des stagiaires à l'ouverture (${creneauOuverture.libelle})`,
+          });
         }
         if (creneauFermeture && stagiaireSeul(creneauFermeture.id, j, groupe)) {
-          liste.push(
-            `${GROUPE_LABELS[groupe]} · ${formatJourCourt(j)} : uniquement des stagiaires à la fermeture (${creneauFermeture.libelle})`
-          );
+          liste.push({
+            categorie: "ouverture-fermeture",
+            texte: `${GROUPE_LABELS[groupe]} · ${formatJourCourt(j)} : uniquement des stagiaires à la fermeture (${creneauFermeture.libelle})`,
+          });
         }
       }
     }
@@ -469,34 +482,48 @@ export default function PlanningsPage() {
     for (const a of animateurs) {
       for (const j of semaineJoursSelectionnee) {
         if (violationsPause.has(`${a.id}|${j}`)) {
-          liste.push(
-            `${a.prenom} ${a.nom} · ${formatJourCourt(j)} : pause inférieure à 1h`
-          );
+          liste.push({
+            categorie: "pause",
+            texte: `${a.prenom} ${a.nom} · ${formatJourCourt(j)} : pause inférieure à 1h`,
+          });
         }
       }
       const mineur = estMineur(a.date_naissance, finSemaineSelectionnee);
       const plafond = plafondHeuresSemaine(mineur);
       const total = heuresSemaineParAnimateur.get(a.id) ?? 0;
       if (total > plafond) {
-        liste.push(
-          `${a.prenom} ${a.nom} : ${formatHeures(total)} cette semaine, au-delà du plafond ${
+        liste.push({
+          categorie: "heures",
+          texte: `${a.prenom} ${a.nom} : ${formatHeures(total)} cette semaine, au-delà du plafond ${
             mineur ? "mineur" : "majeur"
-          } (${plafond}h)`
-        );
+          } (${plafond}h)`,
+        });
       }
 
       if (animateursActifsSemaine.has(a.id)) {
         const nbOuvertures = compteursOF.ouvertures.get(a.id) ?? 0;
         const nbFermetures = compteursOF.fermetures.get(a.id) ?? 0;
         if (nbOuvertures === 0) {
-          liste.push(`${a.prenom} ${a.nom} : n'ouvre jamais cette semaine (minimum 1 fois)`);
+          liste.push({
+            categorie: "rotation",
+            texte: `${a.prenom} ${a.nom} : n'ouvre jamais cette semaine (minimum 1 fois)`,
+          });
         } else if (nbOuvertures > 2) {
-          liste.push(`${a.prenom} ${a.nom} : ouvre ${nbOuvertures} fois cette semaine (maximum 2)`);
+          liste.push({
+            categorie: "rotation",
+            texte: `${a.prenom} ${a.nom} : ouvre ${nbOuvertures} fois cette semaine (maximum 2)`,
+          });
         }
         if (nbFermetures === 0) {
-          liste.push(`${a.prenom} ${a.nom} : ne ferme jamais cette semaine (minimum 1 fois)`);
+          liste.push({
+            categorie: "rotation",
+            texte: `${a.prenom} ${a.nom} : ne ferme jamais cette semaine (minimum 1 fois)`,
+          });
         } else if (nbFermetures > 2) {
-          liste.push(`${a.prenom} ${a.nom} : ferme ${nbFermetures} fois cette semaine (maximum 2)`);
+          liste.push({
+            categorie: "rotation",
+            texte: `${a.prenom} ${a.nom} : ferme ${nbFermetures} fois cette semaine (maximum 2)`,
+          });
         }
       }
     }
@@ -516,6 +543,14 @@ export default function PlanningsPage() {
     animateursActifsSemaine,
     compteursOF,
   ]);
+
+  const alertesParCategorie = useMemo(() => {
+    const map = new Map<CategorieAlerte, string[]>();
+    for (const { categorie, texte } of alertes) {
+      map.set(categorie, [...(map.get(categorie) ?? []), texte]);
+    }
+    return map;
+  }, [alertes]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -800,6 +835,84 @@ export default function PlanningsPage() {
             </div>
           )}
 
+          {animateurs.length > 0 && (
+            <div className="no-print rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <p className="mb-4 text-sm font-semibold text-zinc-900">
+                Heures · semaine {semaineIndexSafe + 1}
+              </p>
+              <div className="flex flex-col gap-3">
+                {animateurs.map((a) => {
+                  const mineur = estMineur(a.date_naissance, finSemaineSelectionnee);
+                  const plafond = plafondHeuresSemaine(mineur);
+                  const total = heuresSemaineParAnimateur.get(a.id) ?? 0;
+                  const ratio = plafond > 0 ? total / plafond : 0;
+                  const couleur =
+                    ratio > 1
+                      ? "bg-red-500"
+                      : ratio > 0.8
+                        ? "bg-amber-500"
+                        : "bg-emerald-500";
+                  return (
+                    <div key={a.id} className="flex items-center gap-3">
+                      <span className="w-36 shrink-0 truncate text-sm font-medium text-zinc-800">
+                        {a.prenom} {a.nom}
+                      </span>
+                      <div className="h-3 flex-1 overflow-hidden rounded-full bg-zinc-100">
+                        <div
+                          className={`h-full rounded-full ${couleur}`}
+                          style={{ width: `${Math.min(100, ratio * 100)}%` }}
+                        />
+                      </div>
+                      <span
+                        className={`w-28 shrink-0 text-right text-sm font-semibold ${
+                          ratio > 1 ? "text-red-600" : "text-zinc-700"
+                        }`}
+                      >
+                        {formatHeures(total)}{" "}
+                        <span className="text-xs font-normal text-zinc-400">
+                          / {plafond}h
+                        </span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-4 text-xs text-zinc-400">
+                Plafond légal hebdomadaire : 38h pour les mineurs, 43h pour
+                les majeurs (majeur appliqué par défaut si la date de
+                naissance n&apos;est pas renseignée).
+              </p>
+            </div>
+          )}
+
+          {alertes.length > 0 && (
+            <div className="no-print rounded-xl border border-red-200 bg-red-50 p-4">
+              <p className="mb-3 text-sm font-semibold text-red-800">
+                ⚠️ {alertes.length} alerte{alertes.length > 1 ? "s" : ""} · semaine{" "}
+                {semaineIndexSafe + 1}
+              </p>
+              <div className="flex flex-col gap-3">
+                {(Object.keys(CATEGORIE_ALERTE_INFO) as CategorieAlerte[])
+                  .filter((cat) => (alertesParCategorie.get(cat)?.length ?? 0) > 0)
+                  .map((cat) => (
+                    <div key={cat}>
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-red-700">
+                        {CATEGORIE_ALERTE_INFO[cat].icone} {CATEGORIE_ALERTE_INFO[cat].titre}{" "}
+                        <span className="font-normal opacity-70">
+                          ({alertesParCategorie.get(cat)?.length})
+                        </span>
+                      </p>
+                      <ul className="flex flex-col gap-0.5 text-sm text-red-700">
+                        {alertesParCategorie.get(cat)?.map((texte, i) => (
+                          <li key={i}>• {texte}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <p className="text-sm text-zinc-400">Chargement...</p>
           ) : creneaux.length === 0 ? (
@@ -916,53 +1029,6 @@ export default function PlanningsPage() {
             </div>
           )}
 
-          {alertes.length > 0 && (
-            <div className="no-print rounded-xl border border-red-200 bg-red-50 p-4">
-              <p className="mb-2 text-sm font-medium text-red-800">
-                ⚠️ Alertes · semaine {semaineIndexSafe + 1}
-              </p>
-              <ul className="flex flex-col gap-1 text-sm text-red-700">
-                {alertes.map((a, i) => (
-                  <li key={i}>• {a}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {animateurs.length > 0 && (
-            <div className="no-print rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <p className="mb-3 text-sm font-medium text-zinc-900">
-                Heures · semaine {semaineIndexSafe + 1}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {animateurs.map((a) => {
-                  const mineur = estMineur(a.date_naissance, finSemaineSelectionnee);
-                  const plafond = plafondHeuresSemaine(mineur);
-                  const total = heuresSemaineParAnimateur.get(a.id) ?? 0;
-                  const depasse = total > plafond;
-                  return (
-                    <span
-                      key={a.id}
-                      className={`rounded-full px-3 py-1 text-xs ${
-                        depasse
-                          ? "bg-red-100 text-red-700"
-                          : "bg-zinc-100 text-zinc-700"
-                      }`}
-                    >
-                      {a.prenom} {a.nom} ·{" "}
-                      <span className="font-semibold">{formatHeures(total)}</span>
-                      <span className="text-[10px] opacity-70"> /{plafond}h max</span>
-                    </span>
-                  );
-                })}
-              </div>
-              <p className="mt-3 text-xs text-zinc-400">
-                Plafond légal hebdomadaire : 38h pour les mineurs, 43h pour
-                les majeurs (majeur appliqué par défaut si la date de
-                naissance n&apos;est pas renseignée).
-              </p>
-            </div>
-          )}
         </>
       )}
 
