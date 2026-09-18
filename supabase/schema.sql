@@ -188,9 +188,23 @@ as $$
     );
 $$;
 
-create policy "affectations_jour: directeur/coordinateur write" on public.affectations_jour
-  for all using (public.peut_gerer_groupe(groupe))
+-- Un coordinateur restreint peut créer/modifier une ligne du moment
+-- que le résultat appartient à son groupe (peu importe l'ancien
+-- groupe, pour pouvoir "récupérer" un animateur d'un autre groupe),
+-- mais ne peut pas supprimer une ligne d'un groupe qui n'est pas le
+-- sien.
+create policy "affectations_jour: directeur/coordinateur insert" on public.affectations_jour
+  for insert
   with check (public.peut_gerer_groupe(groupe));
+
+create policy "affectations_jour: directeur/coordinateur update" on public.affectations_jour
+  for update
+  using (public.current_role_name() in ('directeur', 'coordinateur'))
+  with check (public.peut_gerer_groupe(groupe));
+
+create policy "affectations_jour: directeur/coordinateur delete" on public.affectations_jour
+  for delete
+  using (public.peut_gerer_groupe(groupe));
 
 -- Créneaux horaires configurables (arrivées / pauses / départs) qui
 -- forment les lignes de la grille de planning.

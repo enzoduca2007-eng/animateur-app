@@ -195,7 +195,7 @@ export default function RepartitionPage() {
         <p className="mt-1 text-sm text-zinc-500">
           {editable
             ? monGroupe
-              ? `Tu ne peux gérer que le groupe ${GROUPE_LABELS[monGroupe]} : tape ${LETTRE_PAR_GROUPE[monGroupe]} pour affecter, case vide pour retirer.`
+              ? `Tu ne peux affecter qu'au groupe ${GROUPE_LABELS[monGroupe]} : tape ${LETTRE_PAR_GROUPE[monGroupe]} pour affecter un animateur (même s'il est déjà dans un autre groupe). Tu ne peux pas retirer quelqu'un d'un autre groupe.`
               : "Tape L (Lutins), T (Trolls) ou G (Géants) dans chaque case — la saisie avance automatiquement au jour suivant."
             : "Consulte la répartition des animateurs par groupe."}
         </p>
@@ -287,11 +287,9 @@ export default function RepartitionPage() {
                           );
                         }
                         const groupe = parCle.get(`${j}|${a.id}`);
-                        const modifiable =
-                          editable && (!monGroupe || !groupe || groupe === monGroupe);
                         return (
                           <td key={j} className="px-2 py-2 text-center">
-                            {modifiable ? (
+                            {editable ? (
                               <input
                                 ref={(el) => {
                                   inputRefs.current[`${a.id}|${j}`] = el;
