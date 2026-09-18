@@ -1419,7 +1419,7 @@ export default function PlanningsPage() {
                             {semaineJours.map((j) => (
                               <th
                                 key={j}
-                                className="border border-zinc-300 bg-zinc-50 px-2 py-2 text-center font-medium capitalize print:border-black"
+                                className="border border-zinc-300 bg-zinc-50 px-2 py-2 text-center font-bold capitalize print:border-black"
                               >
                                 {formatJourCourt(j)}
                               </th>
@@ -1488,7 +1488,7 @@ export default function PlanningsPage() {
                                     </span>
                                   </td>
                                 )}
-                                <td className="sticky left-10 z-10 whitespace-nowrap border border-zinc-300 border-r-2 border-r-zinc-400 bg-inherit px-3 py-2 font-medium text-zinc-900 print:static print:border-black print:border-r-2">
+                                <td className="sticky left-10 z-10 whitespace-nowrap border border-zinc-300 border-r-2 border-r-zinc-400 bg-inherit px-3 py-2 font-bold text-zinc-900 print:static print:border-black print:border-r-2">
                                   {c.libelle}
                                 </td>
                                 {semaineJours.map((j) => {
