@@ -110,6 +110,20 @@ export interface PalierEncadrement {
   created_at: string;
 }
 
+export interface FeuilleTemps {
+  id: string;
+  date: string;
+  animateur_id: string;
+  present: boolean;
+  motif_absence: string | null;
+  heure_arrivee_reelle: string | null;
+  heure_depart_reelle: string | null;
+  commentaire: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Message {
   id: string;
   auteur_id: string;

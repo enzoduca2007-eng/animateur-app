@@ -36,7 +36,11 @@ export function heuresJour(
 }
 
 export function formatHeures(h: number) {
-  const heures = Math.floor(h);
-  const minutes = Math.round((h - heures) * 60);
-  return minutes === 0 ? `${heures}h` : `${heures}h${String(minutes).padStart(2, "0")}`;
+  const signe = h < 0 ? "-" : "";
+  const abs = Math.abs(h);
+  const heures = Math.floor(abs);
+  const minutes = Math.round((abs - heures) * 60);
+  return minutes === 0
+    ? `${signe}${heures}h`
+    : `${signe}${heures}h${String(minutes).padStart(2, "0")}`;
 }

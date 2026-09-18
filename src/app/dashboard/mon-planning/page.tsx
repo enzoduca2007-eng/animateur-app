@@ -13,6 +13,7 @@ import {
   type AffectationJour,
   type Animateur,
   type Creneau,
+  type FeuilleTemps,
   type Groupe,
   type JourFermeture,
 } from "@/lib/types";
@@ -85,6 +86,80 @@ function TimelineJour({ creneaux }: { creneaux: Creneau[] }) {
   );
 }
 
+function PointageJour({
+  feuille,
+  onChange,
+}: {
+  feuille: FeuilleTemps | null;
+  onChange: (
+    updates: Partial<
+      Pick<
+        FeuilleTemps,
+        "present" | "motif_absence" | "heure_arrivee_reelle" | "heure_depart_reelle"
+      >
+    >
+  ) => void;
+}) {
+  const present = feuille?.present ?? true;
+
+  return (
+    <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+          Pointage
+        </p>
+        <label className="flex items-center gap-2 text-sm text-zinc-700">
+          <input
+            type="checkbox"
+            checked={present}
+            onChange={(e) => onChange({ present: e.target.checked })}
+          />
+          Présent(e)
+        </label>
+      </div>
+
+      {present ? (
+        <div className="mt-2 flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs text-zinc-500">Arrivée réelle</label>
+            <input
+              type="time"
+              defaultValue={feuille?.heure_arrivee_reelle?.slice(0, 5) ?? ""}
+              onBlur={(e) =>
+                onChange({ heure_arrivee_reelle: e.target.value || null })
+              }
+              className="rounded-md border border-zinc-300 px-2 py-1 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500">Départ réel</label>
+            <input
+              type="time"
+              defaultValue={feuille?.heure_depart_reelle?.slice(0, 5) ?? ""}
+              onBlur={(e) =>
+                onChange({ heure_depart_reelle: e.target.value || null })
+              }
+              className="rounded-md border border-zinc-300 px-2 py-1 text-sm"
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="mt-2">
+          <label className="block text-xs text-zinc-500">
+            Motif de l&apos;absence
+          </label>
+          <input
+            type="text"
+            defaultValue={feuille?.motif_absence ?? ""}
+            onBlur={(e) => onChange({ motif_absence: e.target.value || null })}
+            className="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MonPlanningPage() {
   const profile = useProfile();
   const supabase = createClient();
@@ -95,8 +170,10 @@ export default function MonPlanningPage() {
   const [affectations, setAffectations] = useState<AffectationCreneau[]>([]);
   const [affectationsJour, setAffectationsJour] = useState<AffectationJour[]>([]);
   const [joursFermeture, setJoursFermeture] = useState<JourFermeture[]>([]);
+  const [feuilles, setFeuilles] = useState<FeuilleTemps[]>([]);
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [erreur, setErreur] = useState<string | null>(null);
 
   useEffect(() => {
     supabase
@@ -144,6 +221,17 @@ export default function MonPlanningPage() {
     [jours, joursFermesSet]
   );
 
+  async function chargerFeuilles() {
+    if (!moi || !periode) return;
+    const { data } = await supabase
+      .from("feuilles_temps")
+      .select("*")
+      .eq("animateur_id", moi.id)
+      .gte("date", periode.debut)
+      .lte("date", periode.fin);
+    setFeuilles((data as FeuilleTemps[]) ?? []);
+  }
+
   useEffect(() => {
     if (!moi || !periode) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -161,13 +249,66 @@ export default function MonPlanningPage() {
         .eq("animateur_id", moi.id)
         .gte("date", periode.debut)
         .lte("date", periode.fin),
-    ]).then(([{ data: c }, { data: j }]) => {
+      supabase
+        .from("feuilles_temps")
+        .select("*")
+        .eq("animateur_id", moi.id)
+        .gte("date", periode.debut)
+        .lte("date", periode.fin),
+    ]).then(([{ data: c }, { data: j }, { data: f }]) => {
       setAffectations((c as AffectationCreneau[]) ?? []);
       setAffectationsJour((j as AffectationJour[]) ?? []);
+      setFeuilles((f as FeuilleTemps[]) ?? []);
       setLoading(false);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moi, periode]);
+
+  async function majFeuille(
+    date: string,
+    updates: Partial<
+      Pick<
+        FeuilleTemps,
+        "present" | "motif_absence" | "heure_arrivee_reelle" | "heure_depart_reelle"
+      >
+    >
+  ) {
+    if (!moi) return;
+    setErreur(null);
+    const existante = feuilles.find((f) => f.date === date);
+    const payload = {
+      present: existante?.present ?? true,
+      motif_absence: existante?.motif_absence ?? null,
+      heure_arrivee_reelle: existante?.heure_arrivee_reelle ?? null,
+      heure_depart_reelle: existante?.heure_depart_reelle ?? null,
+      ...updates,
+    };
+
+    setFeuilles((prev) => [
+      ...prev.filter((f) => f.date !== date),
+      {
+        id: existante?.id ?? `optimistic-${date}`,
+        date,
+        animateur_id: moi.id,
+        commentaire: existante?.commentaire ?? null,
+        created_by: profile.id,
+        created_at: existante?.created_at ?? new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        ...payload,
+      },
+    ]);
+
+    const { error } = await supabase
+      .from("feuilles_temps")
+      .upsert(
+        { date, animateur_id: moi.id, created_by: profile.id, ...payload },
+        { onConflict: "date,animateur_id" }
+      );
+    if (error) {
+      setErreur(error.message);
+      chargerFeuilles();
+    }
+  }
 
   const totalHeures = useMemo(() => {
     let total = 0;
@@ -219,6 +360,12 @@ export default function MonPlanningPage() {
           {moi.prenom} {moi.nom}
         </p>
       </div>
+
+      {erreur && (
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+          {erreur}
+        </p>
+      )}
 
       <PeriodesVacances periodes={periodes} zone={zone} loading={loadingVacances} />
 
@@ -321,7 +468,13 @@ export default function MonPlanningPage() {
                         </div>
 
                         {assignesJour.length > 0 ? (
-                          <TimelineJour creneaux={assignesJour} />
+                          <>
+                            <TimelineJour creneaux={assignesJour} />
+                            <PointageJour
+                              feuille={feuilles.find((f) => f.date === j) ?? null}
+                              onChange={(updates) => majFeuille(j, updates)}
+                            />
+                          </>
                         ) : (
                           <p className="mt-3 text-xs text-zinc-400">
                             Affecté au groupe, pas encore d&apos;horaires précis.

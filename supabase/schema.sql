@@ -228,6 +228,51 @@ insert into public.paliers_encadrement (effectif_min, nb_animateurs) values
   (16, 2),
   (31, 3);
 
+-- Fiches horaires (pointage) : horaires réels + présence. Les horaires
+-- prévisionnels viennent déjà du planning (affectations_creneau), pas
+-- besoin de les dupliquer ici.
+create table public.feuilles_temps (
+  id uuid primary key default gen_random_uuid(),
+  date date not null,
+  animateur_id uuid not null references public.animateurs (id) on delete cascade,
+  present boolean not null default true,
+  motif_absence text,
+  heure_arrivee_reelle time,
+  heure_depart_reelle time,
+  commentaire text,
+  created_by uuid references public.profiles (id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (date, animateur_id)
+);
+
+alter table public.feuilles_temps enable row level security;
+
+-- Un animateur ne peut modifier que ses propres fiches.
+create or replace function public.est_mon_animateur(p_animateur_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.animateurs a
+    where a.id = p_animateur_id and a.profile_id = auth.uid()
+  );
+$$;
+
+create policy "feuilles_temps: readable by any signed-in user" on public.feuilles_temps
+  for select using (auth.role() = 'authenticated');
+
+create policy "feuilles_temps: directeur/coordinateur write" on public.feuilles_temps
+  for all using (public.current_role_name() in ('directeur', 'coordinateur'))
+  with check (public.current_role_name() in ('directeur', 'coordinateur'));
+
+create policy "feuilles_temps: animateur writes their own" on public.feuilles_temps
+  for all using (public.est_mon_animateur(animateur_id))
+  with check (public.est_mon_animateur(animateur_id));
+
 -- Communication interne (simple message board visible to all 3 espaces).
 create table public.messages (
   id uuid primary key default gen_random_uuid(),
