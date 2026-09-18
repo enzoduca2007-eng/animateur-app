@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
-import { estWeekend, joursDe, periodeEnCours } from "@/lib/vacances";
+import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
 import { formatHeures, heuresJour } from "@/lib/creneaux";
 import { PeriodesVacances } from "@/components/periodes-vacances";
 import {
@@ -94,6 +94,7 @@ export default function PlanningsPage() {
 
   const periode = periodeIndex !== null ? periodes[periodeIndex] : null;
   const jours = useMemo(() => (periode ? joursDe(periode) : []), [periode]);
+  const semaines = useMemo(() => semainesDe(jours), [jours]);
 
   async function loadAffectations(debut: string, fin: string) {
     setLoading(true);
@@ -419,97 +420,102 @@ export default function PlanningsPage() {
             </p>
           ) : (
             <div className="flex flex-col gap-6 print:gap-0">
-              {GROUPES.map((groupe) => (
-                <div key={groupe} className="print-page">
-                  <p className="rounded-t-xl border border-b-0 border-zinc-300 bg-zinc-100 py-2 text-center text-sm font-bold uppercase tracking-wide text-zinc-700 print:rounded-none print:border-black print:bg-gray-200 print:text-base">
-                    {GROUPE_LABELS[groupe]}
-                  </p>
-                  <div className="overflow-x-auto rounded-b-xl border border-zinc-300 bg-white shadow-sm print:overflow-visible print:rounded-none print:border-black print:shadow-none">
-                    <table className="w-full border-collapse text-left text-sm print:text-xs">
-                      <thead>
-                        <tr>
-                          <th className="sticky left-0 z-10 border border-zinc-300 bg-zinc-50 px-2 py-2 font-medium print:static print:border-black" />
-                          <th className="sticky left-10 z-10 border border-zinc-300 bg-zinc-50 px-3 py-2 font-medium print:static print:border-black">
-                            Créneau
-                          </th>
-                          {jours.map((j) => (
-                            <th
-                              key={j}
-                              className={`border border-zinc-300 px-2 py-2 text-center font-medium capitalize print:border-black ${
-                                estWeekend(j) ? "bg-zinc-100 text-zinc-400" : "bg-zinc-50"
-                              }`}
-                            >
-                              {formatJourCourt(j)}
+              {GROUPES.map((groupe) =>
+                semaines.map((semaineJours) => (
+                  <div key={`${groupe}-${semaineJours[0]}`} className="print-page">
+                    <p className="rounded-t-xl border border-b-0 border-zinc-300 bg-zinc-100 py-2 text-center text-sm font-bold uppercase tracking-wide text-zinc-700 print:rounded-none print:border-black print:bg-gray-200 print:text-base">
+                      {GROUPE_LABELS[groupe]}
+                      <span className="ml-2 font-normal normal-case text-zinc-500">
+                        · semaine du {formatJourCourt(semaineJours[0])}
+                      </span>
+                    </p>
+                    <div className="overflow-x-auto rounded-b-xl border border-zinc-300 bg-white shadow-sm print:overflow-visible print:rounded-none print:border-black print:shadow-none">
+                      <table className="w-full border-collapse text-left text-sm print:text-xs">
+                        <thead>
+                          <tr>
+                            <th className="sticky left-0 z-10 border border-zinc-300 bg-zinc-50 px-2 py-2 font-medium print:static print:border-black" />
+                            <th className="sticky left-10 z-10 border border-zinc-300 bg-zinc-50 px-3 py-2 font-medium print:static print:border-black">
+                              Créneau
                             </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {TYPES.flatMap((type) => {
-                          const lignes = creneaux.filter((c) => c.type === type);
-                          return lignes.map((c, idx) => (
-                            <tr
-                              key={c.id}
-                              className={
-                                type === "pause"
-                                  ? "bg-zinc-100 print:bg-gray-200"
-                                  : "bg-white"
-                              }
-                            >
-                              {idx === 0 && (
-                                <td
-                                  rowSpan={lignes.length}
-                                  className="sticky left-0 z-10 border border-zinc-300 bg-zinc-50 px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-500 print:static print:border-black print:bg-gray-200"
-                                  style={{ writingMode: "vertical-rl" }}
-                                >
-                                  <span className="inline-block rotate-180">
-                                    {TYPE_CRENEAU_LABELS[type]}
-                                  </span>
+                            {semaineJours.map((j) => (
+                              <th
+                                key={j}
+                                className={`border border-zinc-300 px-2 py-2 text-center font-medium capitalize print:border-black ${
+                                  estWeekend(j) ? "bg-zinc-100 text-zinc-400" : "bg-zinc-50"
+                                }`}
+                              >
+                                {formatJourCourt(j)}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {TYPES.flatMap((type) => {
+                            const lignes = creneaux.filter((c) => c.type === type);
+                            return lignes.map((c, idx) => (
+                              <tr
+                                key={c.id}
+                                className={
+                                  type === "pause"
+                                    ? "bg-zinc-100 print:bg-gray-200"
+                                    : "bg-white"
+                                }
+                              >
+                                {idx === 0 && (
+                                  <td
+                                    rowSpan={lignes.length}
+                                    className="sticky left-0 z-10 border border-zinc-300 bg-zinc-50 px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-500 print:static print:border-black print:bg-gray-200"
+                                    style={{ writingMode: "vertical-rl" }}
+                                  >
+                                    <span className="inline-block rotate-180">
+                                      {TYPE_CRENEAU_LABELS[type]}
+                                    </span>
+                                  </td>
+                                )}
+                                <td className="sticky left-10 z-10 whitespace-nowrap border border-zinc-300 bg-inherit px-3 py-2 font-medium text-zinc-900 print:static print:border-black">
+                                  {c.libelle}
                                 </td>
-                              )}
-                              <td className="sticky left-10 z-10 whitespace-nowrap border border-zinc-300 bg-inherit px-3 py-2 font-medium text-zinc-900 print:static print:border-black">
-                                {c.libelle}
-                              </td>
-                              {jours.map((j) => {
-                                if (estWeekend(j)) {
+                                {semaineJours.map((j) => {
+                                  if (estWeekend(j)) {
+                                    return (
+                                      <td
+                                        key={j}
+                                        className="border border-zinc-300 bg-zinc-200 px-2 py-2 text-center print:border-black"
+                                      />
+                                    );
+                                  }
+                                  const eligibles = animateursDuGroupe(groupe, j);
+                                  const ids = animateursDe(c.id, j).filter((id) =>
+                                    eligibles.includes(id)
+                                  );
+                                  const noms = ids
+                                    .map((id) => animateurs.find((a) => a.id === id))
+                                    .filter(Boolean)
+                                    .map((a) => a!.prenom);
                                   return (
                                     <td
                                       key={j}
-                                      className="border border-zinc-300 bg-zinc-200 px-2 py-2 text-center print:border-black"
-                                    />
+                                      onClick={() =>
+                                        editable &&
+                                        setCelluleOuverte({ creneauId: c.id, date: j, groupe })
+                                      }
+                                      className={`min-w-24 border border-zinc-300 px-2 py-2 text-center text-xs text-zinc-700 print:border-black ${
+                                        editable ? "cursor-pointer hover:bg-zinc-50/60" : ""
+                                      }`}
+                                    >
+                                      {noms.length > 0 ? noms.join(" / ") : editable ? "+" : ""}
+                                    </td>
                                   );
-                                }
-                                const eligibles = animateursDuGroupe(groupe, j);
-                                const ids = animateursDe(c.id, j).filter((id) =>
-                                  eligibles.includes(id)
-                                );
-                                const noms = ids
-                                  .map((id) => animateurs.find((a) => a.id === id))
-                                  .filter(Boolean)
-                                  .map((a) => a!.prenom);
-                                return (
-                                  <td
-                                    key={j}
-                                    onClick={() =>
-                                      editable &&
-                                      setCelluleOuverte({ creneauId: c.id, date: j, groupe })
-                                    }
-                                    className={`min-w-24 border border-zinc-300 px-2 py-2 text-center text-xs text-zinc-700 print:border-black ${
-                                      editable ? "cursor-pointer hover:bg-zinc-50/60" : ""
-                                    }`}
-                                  >
-                                    {noms.length > 0 ? noms.join(" / ") : editable ? "+" : ""}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ));
-                        })}
-                      </tbody>
-                    </table>
+                                })}
+                              </tr>
+                            ));
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           )}
 

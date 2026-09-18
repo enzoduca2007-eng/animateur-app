@@ -19,6 +19,23 @@ export function joursDe(periode: PeriodeVacances): string[] {
   return jours;
 }
 
+// Découpe une liste de jours consécutifs en semaines (lundi -> dimanche).
+export function semainesDe(jours: string[]): string[][] {
+  const parSemaine = new Map<string, string[]>();
+  for (const j of jours) {
+    const d = new Date(`${j}T00:00:00Z`);
+    const jourSemaine = d.getUTCDay(); // 0 = dimanche
+    const decalage = jourSemaine === 0 ? 6 : jourSemaine - 1; // jours depuis lundi
+    const lundi = new Date(d.getTime() - decalage * 86400000)
+      .toISOString()
+      .slice(0, 10);
+    parSemaine.set(lundi, [...(parSemaine.get(lundi) ?? []), j]);
+  }
+  return [...parSemaine.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, jrs]) => jrs);
+}
+
 export function estWeekend(dateISO: string) {
   const jour = new Date(`${dateISO}T00:00:00Z`).getUTCDay();
   return jour === 0 || jour === 6; // dimanche ou samedi
