@@ -36,10 +36,6 @@ export default function GoutersPage() {
   const { periodes, zone, loading: loadingVacances } = useVacances();
 
   const monGroupe = profile.role === "coordinateur" ? profile.groupe_coordinateur : null;
-  const groupesGeres = useMemo(
-    () => (monGroupe ? GROUPES.filter((g) => g === monGroupe) : GROUPES),
-    [monGroupe]
-  );
 
   function peutGererGroupe(groupe: Groupe) {
     if (profile.role === "directeur") return true;
@@ -110,6 +106,18 @@ export default function GoutersPage() {
           : joursOuvrables[0]
     );
   }, [joursOuvrables]);
+
+  // Un animateur (sans droits de gestion) ne voit que le groupe auquel il
+  // est affecté ce jour-là via la Répartition, pour ne pas s'encombrer des
+  // 2 autres groupes qu'il ne peut pas gérer de toute façon.
+  const groupesGeres = useMemo(() => {
+    if (monGroupe) return GROUPES.filter((g) => g === monGroupe);
+    if (profile.role !== "animateur") return GROUPES;
+    if (!jour) return [];
+    return GROUPES.filter((g) =>
+      mesAffectations.some((a) => a.groupe === g && a.date === jour)
+    );
+  }, [monGroupe, profile.role, jour, mesAffectations]);
 
   async function chargerGouters() {
     if (!jour) return;
@@ -262,6 +270,10 @@ export default function GoutersPage() {
 
           {loading ? (
             <p className="text-sm text-zinc-400">Chargement...</p>
+          ) : groupesGeres.length === 0 ? (
+            <p className="text-sm text-zinc-400">
+              Tu n&apos;es affecté à aucun groupe ce jour-là.
+            </p>
           ) : (
             <div className="flex flex-col gap-5">
               {groupesGeres.map((groupe) => {
