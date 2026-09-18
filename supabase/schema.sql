@@ -160,6 +160,25 @@ create policy "affectations_creneau: directeur/coordinateur write" on public.aff
   for all using (public.current_role_name() in ('directeur', 'coordinateur'))
   with check (public.current_role_name() in ('directeur', 'coordinateur'));
 
+-- Jours exceptionnellement fermés (en plus des week-ends), ex: un jour
+-- encore compté comme vacances par le calendrier officiel mais où le
+-- centre a en réalité déjà rouvert l'école.
+create table public.jours_fermeture (
+  id uuid primary key default gen_random_uuid(),
+  date date not null unique,
+  motif text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.jours_fermeture enable row level security;
+
+create policy "jours_fermeture: readable by any signed-in user" on public.jours_fermeture
+  for select using (auth.role() = 'authenticated');
+
+create policy "jours_fermeture: directeur/coordinateur write" on public.jours_fermeture
+  for all using (public.current_role_name() in ('directeur', 'coordinateur'))
+  with check (public.current_role_name() in ('directeur', 'coordinateur'));
+
 -- Communication interne (simple message board visible to all 3 espaces).
 create table public.messages (
   id uuid primary key default gen_random_uuid(),

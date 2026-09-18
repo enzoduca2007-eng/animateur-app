@@ -77,6 +77,13 @@ export interface AffectationCreneau {
   created_at: string;
 }
 
+export interface JourFermeture {
+  id: string;
+  date: string;
+  motif: string | null;
+  created_at: string;
+}
+
 export interface Message {
   id: string;
   auteur_id: string;

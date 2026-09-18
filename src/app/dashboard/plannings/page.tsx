@@ -18,6 +18,7 @@ import {
   type Animateur,
   type Creneau,
   type Groupe,
+  type JourFermeture,
   type TypeCreneau,
 } from "@/lib/types";
 
@@ -57,6 +58,10 @@ export default function PlanningsPage() {
   >(null);
   const [showCreneaux, setShowCreneaux] = useState(false);
   const [formCreneau, setFormCreneau] = useState(EMPTY_CRENEAU_FORM);
+  const [joursFermeture, setJoursFermeture] = useState<JourFermeture[]>([]);
+  const [showFermetures, setShowFermetures] = useState(false);
+  const [formFermeture, setFormFermeture] = useState({ date: "", motif: "" });
+  const [semaineIndex, setSemaineIndex] = useState(0);
 
   async function chargerCreneaux() {
     const { data } = await supabase
@@ -65,6 +70,14 @@ export default function PlanningsPage() {
       .order("type")
       .order("ordre");
     if (data) setCreneaux(data as Creneau[]);
+  }
+
+  async function chargerFermetures() {
+    const { data } = await supabase
+      .from("jours_fermeture")
+      .select("*")
+      .order("date");
+    if (data) setJoursFermeture(data as JourFermeture[]);
   }
 
   useEffect(() => {
@@ -78,6 +91,7 @@ export default function PlanningsPage() {
       });
     // eslint-disable-next-line react-hooks/set-state-in-effect
     chargerCreneaux();
+    chargerFermetures();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -94,7 +108,20 @@ export default function PlanningsPage() {
 
   const periode = periodeIndex !== null ? periodes[periodeIndex] : null;
   const jours = useMemo(() => (periode ? joursDe(periode) : []), [periode]);
-  const semaines = useMemo(() => semainesDe(jours), [jours]);
+
+  const joursFermesSet = useMemo(
+    () => new Set(joursFermeture.map((f) => f.date)),
+    [joursFermeture]
+  );
+
+  // Jours réellement travaillés : ni week-end, ni fermeture exceptionnelle.
+  const joursOuvres = useMemo(
+    () => jours.filter((j) => !estWeekend(j) && !joursFermesSet.has(j)),
+    [jours, joursFermesSet]
+  );
+
+  const semaines = useMemo(() => semainesDe(joursOuvres), [joursOuvres]);
+  const semaineIndexSafe = Math.min(semaineIndex, Math.max(0, semaines.length - 1));
 
   async function loadAffectations(debut: string, fin: string) {
     setLoading(true);
@@ -225,13 +252,32 @@ export default function PlanningsPage() {
     chargerCreneaux();
   }
 
+  async function ajouterFermeture(e: React.FormEvent) {
+    e.preventDefault();
+    if (!formFermeture.date) return;
+    const { error } = await supabase.from("jours_fermeture").insert({
+      date: formFermeture.date,
+      motif: formFermeture.motif || null,
+    });
+    if (error) {
+      setErreur(error.message);
+      return;
+    }
+    setFormFermeture({ date: "", motif: "" });
+    chargerFermetures();
+  }
+
+  async function supprimerFermeture(id: string) {
+    await supabase.from("jours_fermeture").delete().eq("id", id);
+    chargerFermetures();
+  }
+
   // Total d'heures par animateur sur la période affichée.
   const heuresParAnimateur = useMemo(() => {
     const totaux = new Map<string, number>();
     for (const a of animateurs) {
       let total = 0;
-      for (const j of jours) {
-        if (estWeekend(j)) continue;
+      for (const j of joursOuvres) {
         const ids = new Set(
           affectations
             .filter((aff) => aff.date === j && aff.animateur_id === a.id)
@@ -244,7 +290,7 @@ export default function PlanningsPage() {
       totaux.set(a.id, total);
     }
     return totaux;
-  }, [animateurs, jours, affectations, creneaux]);
+  }, [animateurs, joursOuvres, affectations, creneaux]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -270,6 +316,14 @@ export default function PlanningsPage() {
               className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
             >
               {showCreneaux ? "Fermer les créneaux" : "Gérer les créneaux"}
+            </button>
+          )}
+          {editable && (
+            <button
+              onClick={() => setShowFermetures((v) => !v)}
+              className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              {showFermetures ? "Fermer" : "Jours de fermeture"}
             </button>
           )}
         </div>
@@ -380,6 +434,70 @@ export default function PlanningsPage() {
         </div>
       )}
 
+      {showFermetures && editable && (
+        <div className="no-print rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <p className="mb-3 text-sm font-medium text-zinc-900">
+            Jours exceptionnellement fermés
+          </p>
+          <p className="mb-3 text-xs text-zinc-500">
+            En plus des week-ends — utile quand le calendrier officiel des
+            vacances compte encore un jour comme fermé alors que le centre a
+            déjà rouvert (ex: rentrée un lundi).
+          </p>
+          {joursFermeture.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {joursFermeture.map((f) => (
+                <span
+                  key={f.id}
+                  className="flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-700"
+                >
+                  {f.date}
+                  {f.motif && ` · ${f.motif}`}
+                  <button
+                    onClick={() => supprimerFermeture(f.id)}
+                    className="text-zinc-400 hover:text-red-600"
+                    title="Supprimer"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <form onSubmit={ajouterFermeture} className="flex flex-wrap items-end gap-2">
+            <div>
+              <label className="block text-xs text-zinc-500">Date</label>
+              <input
+                type="date"
+                required
+                value={formFermeture.date}
+                onChange={(e) =>
+                  setFormFermeture({ ...formFermeture, date: e.target.value })
+                }
+                className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-500">Motif (optionnel)</label>
+              <input
+                placeholder="Ex: Rentrée scolaire"
+                value={formFermeture.motif}
+                onChange={(e) =>
+                  setFormFermeture({ ...formFermeture, motif: e.target.value })
+                }
+                className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+              />
+            </div>
+            <button
+              type="submit"
+              className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              + Ajouter
+            </button>
+          </form>
+        </div>
+      )}
+
       <div className="no-print">
         <PeriodesVacances periodes={periodes} zone={zone} loading={loadingVacances} />
       </div>
@@ -412,6 +530,25 @@ export default function PlanningsPage() {
             </p>
           )}
 
+          {semaines.length > 0 && (
+            <div className="no-print">
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
+                Semaine
+              </p>
+              <select
+                value={semaineIndexSafe}
+                onChange={(e) => setSemaineIndex(Number(e.target.value))}
+                className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+              >
+                {semaines.map((s, i) => (
+                  <option key={s[0]} value={i}>
+                    Semaine {i + 1} ({formatJourCourt(s[0])} – {formatJourCourt(s[s.length - 1])})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {loading ? (
             <p className="text-sm text-zinc-400">Chargement...</p>
           ) : creneaux.length === 0 ? (
@@ -421,12 +558,17 @@ export default function PlanningsPage() {
           ) : (
             <div className="flex flex-col gap-6 print:gap-0">
               {GROUPES.map((groupe) =>
-                semaines.map((semaineJours) => (
-                  <div key={`${groupe}-${semaineJours[0]}`} className="print-page">
+                semaines.map((semaineJours, semaineIdx) => (
+                  <div
+                    key={`${groupe}-${semaineJours[0]}`}
+                    className={`print-page ${
+                      semaineIdx === semaineIndexSafe ? "" : "hidden print:block"
+                    }`}
+                  >
                     <p className="rounded-t-xl border border-b-0 border-zinc-300 bg-zinc-100 py-2 text-center text-sm font-bold uppercase tracking-wide text-zinc-700 print:rounded-none print:border-black print:bg-gray-200 print:text-base">
                       {GROUPE_LABELS[groupe]}
                       <span className="ml-2 font-normal normal-case text-zinc-500">
-                        · semaine du {formatJourCourt(semaineJours[0])}
+                        · semaine {semaineIdx + 1} du {formatJourCourt(semaineJours[0])}
                       </span>
                     </p>
                     <div className="overflow-x-auto rounded-b-xl border border-zinc-300 bg-white shadow-sm print:overflow-visible print:rounded-none print:border-black print:shadow-none">
@@ -440,9 +582,7 @@ export default function PlanningsPage() {
                             {semaineJours.map((j) => (
                               <th
                                 key={j}
-                                className={`border border-zinc-300 px-2 py-2 text-center font-medium capitalize print:border-black ${
-                                  estWeekend(j) ? "bg-zinc-100 text-zinc-400" : "bg-zinc-50"
-                                }`}
+                                className="border border-zinc-300 bg-zinc-50 px-2 py-2 text-center font-medium capitalize print:border-black"
                               >
                                 {formatJourCourt(j)}
                               </th>
@@ -476,14 +616,6 @@ export default function PlanningsPage() {
                                   {c.libelle}
                                 </td>
                                 {semaineJours.map((j) => {
-                                  if (estWeekend(j)) {
-                                    return (
-                                      <td
-                                        key={j}
-                                        className="border border-zinc-300 bg-zinc-200 px-2 py-2 text-center print:border-black"
-                                      />
-                                    );
-                                  }
                                   const eligibles = animateursDuGroupe(groupe, j);
                                   const ids = animateursDe(c.id, j).filter((id) =>
                                     eligibles.includes(id)
