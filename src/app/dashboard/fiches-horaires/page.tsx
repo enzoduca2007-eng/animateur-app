@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
-import { formatHeures, heuresJour, toMinutes } from "@/lib/creneaux";
+import { formatHeures, heuresJour, pauseMinutes, toMinutes } from "@/lib/creneaux";
 import { PointageJour } from "@/components/pointage-jour";
 import {
   canManage,
@@ -25,6 +25,26 @@ function formatPlage(creneaux: Creneau[]) {
   const arrivee = arrivees.reduce((min, c) => (c.heure_debut < min.heure_debut ? c : min));
   const depart = departs.reduce((max, c) => (c.heure_debut > max.heure_debut ? c : max));
   return `${arrivee.libelle} → ${depart.libelle}`;
+}
+
+function formatPauses(creneaux: Creneau[]) {
+  const pauses = creneaux.filter((c) => c.type === "pause");
+  if (pauses.length === 0) return "—";
+  return pauses.map((p) => p.libelle).join(", ");
+}
+
+/** Heures réellement présentes un jour donné : de l'arrivée réelle au
+ * départ réel, moins la durée des pauses prévues ce jour-là (on ne
+ * suit pas de pause "réelle" séparée). */
+function presenceReelleJour(
+  feuille: FeuilleTemps | undefined,
+  assignesPrevus: Creneau[]
+): number | null {
+  if (!feuille || !feuille.present) return null;
+  if (!feuille.heure_arrivee_reelle || !feuille.heure_depart_reelle) return null;
+  const duree =
+    toMinutes(feuille.heure_depart_reelle) - toMinutes(feuille.heure_arrivee_reelle);
+  return Math.max(0, (duree - pauseMinutes(assignesPrevus)) / 60);
 }
 
 function formatJourCourt(dateISO: string) {
@@ -272,8 +292,10 @@ export default function FichesHorairesPage() {
       : { lettre: "R", couleur: "bg-amber-100 text-amber-700" };
   }
 
-  function ecartSemaine(animateurId: string) {
-    let total = 0;
+  function totauxSemaine(animateurId: string) {
+    let ecart = 0;
+    let presence = 0;
+    let pause = 0;
     let complet = true;
     for (const j of semaineJours) {
       if (!aUneAffectation(animateurId, j)) continue;
@@ -285,15 +307,16 @@ export default function FichesHorairesPage() {
         continue;
       }
       if (!feuille.present) continue;
-      if (feuille.heure_arrivee_reelle && feuille.heure_depart_reelle) {
-        const reel =
-          (toMinutes(feuille.heure_depart_reelle) - toMinutes(feuille.heure_arrivee_reelle)) / 60;
-        total += reel - prevu;
+      const reel = presenceReelleJour(feuille, assignes);
+      if (reel !== null) {
+        ecart += reel - prevu;
+        presence += reel;
+        pause += pauseMinutes(assignes) / 60;
       } else {
         complet = false;
       }
     }
-    return { total, complet };
+    return { ecart, presence, pause, complet };
   }
 
   return (
@@ -401,13 +424,19 @@ export default function FichesHorairesPage() {
                       </th>
                     ))}
                     <th className="border border-zinc-300 bg-zinc-50 px-3 py-2 text-center font-medium">
+                      Total présence
+                    </th>
+                    <th className="border border-zinc-300 bg-zinc-50 px-3 py-2 text-center font-medium">
+                      Total pause
+                    </th>
+                    <th className="border border-zinc-300 bg-zinc-50 px-3 py-2 text-center font-medium">
                       Écart semaine
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {lignes.map((a) => {
-                    const { total, complet } = ecartSemaine(a.id);
+                    const { ecart, presence, pause, complet } = totauxSemaine(a.id);
                     return (
                       <tr key={a.id} className="border-b border-zinc-100 last:border-0">
                         <td className="sticky left-0 z-10 whitespace-nowrap border border-zinc-300 bg-white px-3 py-2 font-medium text-zinc-900">
@@ -450,19 +479,25 @@ export default function FichesHorairesPage() {
                             </td>
                           );
                         })}
+                        <td className="border border-zinc-300 px-3 py-2 text-center text-sm font-semibold text-zinc-900">
+                          {formatHeures(presence)}
+                        </td>
+                        <td className="border border-zinc-300 px-3 py-2 text-center text-sm text-zinc-600">
+                          {formatHeures(pause)}
+                        </td>
                         <td className="border border-zinc-300 px-3 py-2 text-center">
                           {complet ? (
                             <span
                               className={`text-sm font-semibold ${
-                                Math.abs(total) < 0.17
+                                Math.abs(ecart) < 0.17
                                   ? "text-zinc-400"
-                                  : total > 0
+                                  : ecart > 0
                                     ? "text-amber-600"
                                     : "text-red-600"
                               }`}
                             >
-                              {total > 0 ? "+" : ""}
-                              {formatHeures(total)}
+                              {ecart > 0 ? "+" : ""}
+                              {formatHeures(ecart)}
                             </span>
                           ) : (
                             <span className="text-xs text-zinc-300">incomplet</span>
@@ -479,7 +514,7 @@ export default function FichesHorairesPage() {
           {lignes.length > 0 && (
             <div className="hidden print:block">
               {lignes.map((a) => {
-                const { total, complet } = ecartSemaine(a.id);
+                const { ecart, presence, pause, complet } = totauxSemaine(a.id);
                 return (
                   <div key={a.id} className="print-page">
                     <h2 className="text-lg font-bold text-zinc-900">Fiche horaire</h2>
@@ -498,10 +533,12 @@ export default function FichesHorairesPage() {
                           <th className="border border-black px-2 py-1.5 font-semibold">
                             Prévisionnel
                           </th>
+                          <th className="border border-black px-2 py-1.5 font-semibold">Pause</th>
                           <th className="border border-black px-2 py-1.5 font-semibold">
                             Présence
                           </th>
                           <th className="border border-black px-2 py-1.5 font-semibold">Réel</th>
+                          <th className="border border-black px-2 py-1.5 font-semibold">Heures</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -519,10 +556,11 @@ export default function FichesHorairesPage() {
                                 <td className="border border-black bg-gray-100 px-2 py-1.5 capitalize">
                                   {formatJourCourt(j)}
                                 </td>
-                                <td className="border border-black bg-gray-100 px-2 py-1.5" colSpan={3} />
+                                <td className="border border-black bg-gray-100 px-2 py-1.5" colSpan={5} />
                               </tr>
                             );
                           }
+                          const heuresJourReel = presenceReelleJour(feuille, assignes);
                           return (
                             <tr key={j}>
                               <td className="border border-black px-2 py-1.5 capitalize">
@@ -533,6 +571,9 @@ export default function FichesHorairesPage() {
                               </td>
                               <td className="border border-black px-2 py-1.5">
                                 {formatPlage(assignes)}
+                              </td>
+                              <td className="border border-black px-2 py-1.5">
+                                {formatPauses(assignes)}
                               </td>
                               <td className="border border-black px-2 py-1.5">
                                 {!feuille
@@ -546,23 +587,32 @@ export default function FichesHorairesPage() {
                                   ? `${feuille.heure_arrivee_reelle?.slice(0, 5) ?? "—"} → ${feuille.heure_depart_reelle?.slice(0, 5) ?? "—"}`
                                   : "—"}
                               </td>
+                              <td className="border border-black px-2 py-1.5">
+                                {heuresJourReel !== null ? formatHeures(heuresJourReel) : "—"}
+                              </td>
                             </tr>
                           );
                         })}
                       </tbody>
                     </table>
 
-                    <p className="mt-3 text-sm font-semibold text-zinc-900">
-                      Écart total sur la semaine :{" "}
-                      {complet ? (
-                        <>
-                          {total > 0 ? "+" : ""}
-                          {formatHeures(total)}
-                        </>
-                      ) : (
-                        "à compléter"
-                      )}
-                    </p>
+                    <div className="mt-3 flex gap-8 text-sm">
+                      <p className="font-semibold text-zinc-900">
+                        Total présence : {formatHeures(presence)}
+                        {!complet && " (à compléter)"}
+                      </p>
+                      <p className="text-zinc-700">Total pause : {formatHeures(pause)}</p>
+                      <p className="text-zinc-700">
+                        Écart vs prévisionnel : {complet ? (
+                          <>
+                            {ecart > 0 ? "+" : ""}
+                            {formatHeures(ecart)}
+                          </>
+                        ) : (
+                          "à compléter"
+                        )}
+                      </p>
+                    </div>
 
                     <div className="mt-12 grid grid-cols-2 gap-8">
                       <div>
