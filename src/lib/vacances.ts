@@ -19,6 +19,11 @@ export function joursDe(periode: PeriodeVacances): string[] {
   return jours;
 }
 
+export function estWeekend(dateISO: string) {
+  const jour = new Date(`${dateISO}T00:00:00Z`).getUTCDay();
+  return jour === 0 || jour === 6; // dimanche ou samedi
+}
+
 export function periodeEnCours(
   periodes: PeriodeVacances[],
   aujourdhui: string
