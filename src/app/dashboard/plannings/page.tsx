@@ -346,6 +346,112 @@ export default function PlanningsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [animateurs, semaineKey, affectations, creneaux]);
 
+  // Animateurs qui travaillent (dans un groupe) au moins un jour cette
+  // semaine — sert à ne pas signaler de "0 ouverture" pour quelqu'un
+  // d'absent toute la semaine.
+  const animateursActifsSemaine = useMemo(() => {
+    const ids = new Set<string>();
+    for (const groupe of GROUPES) {
+      for (const j of semaineJoursSelectionnee) {
+        for (const id of animateursDuGroupe(groupe, j)) ids.add(id);
+      }
+    }
+    return ids;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [semaineKey, animateursParGroupeJour]);
+
+  // Nombre d'ouvertures/fermetures par animateur cette semaine.
+  const compteursOF = useMemo(() => {
+    const ouvertures = new Map<string, number>();
+    const fermetures = new Map<string, number>();
+    for (const aff of affectations) {
+      if (!semaineJoursSelectionnee.includes(aff.date)) continue;
+      if (creneauOuverture && aff.creneau_id === creneauOuverture.id) {
+        ouvertures.set(aff.animateur_id, (ouvertures.get(aff.animateur_id) ?? 0) + 1);
+      }
+      if (creneauFermeture && aff.creneau_id === creneauFermeture.id) {
+        fermetures.set(aff.animateur_id, (fermetures.get(aff.animateur_id) ?? 0) + 1);
+      }
+    }
+    return { ouvertures, fermetures };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [affectations, creneauOuverture, creneauFermeture, semaineKey]);
+
+  async function autoRepartirOuvertureFermeture() {
+    if (!creneauOuverture || !creneauFermeture) {
+      setErreur("Il faut au moins un créneau d'arrivée et un créneau de départ définis.");
+      return;
+    }
+    if (semaineJoursSelectionnee.length === 0) return;
+    if (
+      !confirm(
+        "Ça va remplacer les affectations actuelles des créneaux d'ouverture " +
+          `(${creneauOuverture.libelle}) et de fermeture (${creneauFermeture.libelle}) ` +
+          "pour cette semaine — les autres créneaux ne sont pas touchés. Continuer ?"
+      )
+    )
+      return;
+
+    const compteurOuverture = new Map<string, number>();
+    const compteurFermeture = new Map<string, number>();
+
+    function choisir(eligibles: string[], compteur: Map<string, number>) {
+      if (eligibles.length === 0) return null;
+      const nonStagiaires = eligibles.filter(
+        (id) => !animateurs.find((a) => a.id === id)?.est_stagiaire
+      );
+      const pool = nonStagiaires.length > 0 ? nonStagiaires : eligibles;
+      return pool.reduce((meilleur, id) =>
+        (compteur.get(id) ?? 0) < (compteur.get(meilleur) ?? 0) ? id : meilleur
+      );
+    }
+
+    const nouvelles: { date: string; creneau_id: string; animateur_id: string }[] = [];
+
+    for (const groupe of GROUPES) {
+      for (const j of semaineJoursSelectionnee) {
+        const eligibles = animateursDuGroupe(groupe, j);
+        if (eligibles.length === 0) continue;
+
+        const opener = choisir(eligibles, compteurOuverture);
+        if (opener) {
+          compteurOuverture.set(opener, (compteurOuverture.get(opener) ?? 0) + 1);
+          nouvelles.push({ date: j, creneau_id: creneauOuverture.id, animateur_id: opener });
+        }
+
+        const closer = choisir(eligibles, compteurFermeture);
+        if (closer) {
+          compteurFermeture.set(closer, (compteurFermeture.get(closer) ?? 0) + 1);
+          nouvelles.push({ date: j, creneau_id: creneauFermeture.id, animateur_id: closer });
+        }
+      }
+    }
+
+    setErreur(null);
+
+    const { error: errDel } = await supabase
+      .from("affectations_creneau")
+      .delete()
+      .in("creneau_id", [creneauOuverture.id, creneauFermeture.id])
+      .in("date", semaineJoursSelectionnee);
+    if (errDel) {
+      setErreur(errDel.message);
+      return;
+    }
+
+    if (nouvelles.length > 0) {
+      const { error: errIns } = await supabase
+        .from("affectations_creneau")
+        .insert(nouvelles.map((a) => ({ ...a, created_by: profile.id })));
+      if (errIns) {
+        setErreur(errIns.message);
+        return;
+      }
+    }
+
+    if (periode) loadAffectations(periode.debut, periode.fin);
+  }
+
   // Récapitulatif texte des alertes de la semaine affichée.
   const alertes = useMemo(() => {
     const liste: string[] = [];
@@ -383,6 +489,21 @@ export default function PlanningsPage() {
           } (${plafond}h)`
         );
       }
+
+      if (animateursActifsSemaine.has(a.id)) {
+        const nbOuvertures = compteursOF.ouvertures.get(a.id) ?? 0;
+        const nbFermetures = compteursOF.fermetures.get(a.id) ?? 0;
+        if (nbOuvertures === 0) {
+          liste.push(`${a.prenom} ${a.nom} : n'ouvre jamais cette semaine (minimum 1 fois)`);
+        } else if (nbOuvertures > 2) {
+          liste.push(`${a.prenom} ${a.nom} : ouvre ${nbOuvertures} fois cette semaine (maximum 2)`);
+        }
+        if (nbFermetures === 0) {
+          liste.push(`${a.prenom} ${a.nom} : ne ferme jamais cette semaine (minimum 1 fois)`);
+        } else if (nbFermetures > 2) {
+          liste.push(`${a.prenom} ${a.nom} : ferme ${nbFermetures} fois cette semaine (maximum 2)`);
+        }
+      }
     }
 
     return liste;
@@ -397,6 +518,8 @@ export default function PlanningsPage() {
     finSemaineSelectionnee,
     animateursParGroupeJour,
     animateursParCellule,
+    animateursActifsSemaine,
+    compteursOF,
   ]);
 
   return (
@@ -638,21 +761,31 @@ export default function PlanningsPage() {
           )}
 
           {semaines.length > 0 && (
-            <div className="no-print">
-              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
-                Semaine
-              </p>
-              <select
-                value={semaineIndexSafe}
-                onChange={(e) => setSemaineIndex(Number(e.target.value))}
-                className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
-              >
-                {semaines.map((s, i) => (
-                  <option key={s[0]} value={i}>
-                    Semaine {i + 1} ({formatJourCourt(s[0])} – {formatJourCourt(s[s.length - 1])})
-                  </option>
-                ))}
-              </select>
+            <div className="no-print flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
+                  Semaine
+                </p>
+                <select
+                  value={semaineIndexSafe}
+                  onChange={(e) => setSemaineIndex(Number(e.target.value))}
+                  className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                >
+                  {semaines.map((s, i) => (
+                    <option key={s[0]} value={i}>
+                      Semaine {i + 1} ({formatJourCourt(s[0])} – {formatJourCourt(s[s.length - 1])})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {editable && creneauOuverture && creneauFermeture && (
+                <button
+                  onClick={autoRepartirOuvertureFermeture}
+                  className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  Répartir automatiquement ouverture/fermeture
+                </button>
+              )}
             </div>
           )}
 
