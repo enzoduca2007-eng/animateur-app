@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
@@ -9,10 +10,14 @@ import { formatHeures, heuresJour } from "@/lib/creneaux";
 import { PeriodesVacances } from "@/components/periodes-vacances";
 import {
   canManage,
+  GROUPES,
+  GROUPE_LABELS,
   TYPE_CRENEAU_LABELS,
   type AffectationCreneau,
+  type AffectationJour,
   type Animateur,
   type Creneau,
+  type Groupe,
   type TypeCreneau,
 } from "@/lib/types";
 
@@ -43,11 +48,12 @@ export default function PlanningsPage() {
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
   const [creneaux, setCreneaux] = useState<Creneau[]>([]);
   const [affectations, setAffectations] = useState<AffectationCreneau[]>([]);
+  const [affectationsJour, setAffectationsJour] = useState<AffectationJour[]>([]);
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [celluleOuverte, setCelluleOuverte] = useState<
-    { creneauId: string; date: string } | null
+    { creneauId: string; date: string; groupe: Groupe } | null
   >(null);
   const [showCreneaux, setShowCreneaux] = useState(false);
   const [formCreneau, setFormCreneau] = useState(EMPTY_CRENEAU_FORM);
@@ -91,12 +97,20 @@ export default function PlanningsPage() {
 
   async function loadAffectations(debut: string, fin: string) {
     setLoading(true);
-    const { data } = await supabase
-      .from("affectations_creneau")
-      .select("*")
-      .gte("date", debut)
-      .lte("date", fin);
-    setAffectations((data as AffectationCreneau[]) ?? []);
+    const [{ data: c }, { data: j }] = await Promise.all([
+      supabase
+        .from("affectations_creneau")
+        .select("*")
+        .gte("date", debut)
+        .lte("date", fin),
+      supabase
+        .from("affectations_jour")
+        .select("*")
+        .gte("date", debut)
+        .lte("date", fin),
+    ]);
+    setAffectations((c as AffectationCreneau[]) ?? []);
+    setAffectationsJour((j as AffectationJour[]) ?? []);
     setLoading(false);
   }
 
@@ -117,6 +131,19 @@ export default function PlanningsPage() {
 
   function animateursDe(creneauId: string, date: string) {
     return animateursParCellule.get(`${creneauId}|${date}`) ?? [];
+  }
+
+  const animateursParGroupeJour = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const a of affectationsJour) {
+      const cle = `${a.groupe}|${a.date}`;
+      map.set(cle, [...(map.get(cle) ?? []), a.animateur_id]);
+    }
+    return map;
+  }, [affectationsJour]);
+
+  function animateursDuGroupe(groupe: Groupe, date: string) {
+    return animateursParGroupeJour.get(`${groupe}|${date}`) ?? [];
   }
 
   async function toggleAffectation(
@@ -376,76 +403,89 @@ export default function PlanningsPage() {
               Aucun créneau défini. {editable && "Clique \"Gérer les créneaux\" pour en créer."}
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
-              <table className="text-left text-sm">
-                <thead className="border-b border-zinc-200 bg-zinc-50 text-zinc-500">
-                  <tr>
-                    <th className="sticky left-0 z-10 bg-zinc-50 px-4 py-3 font-medium">
-                      Créneau
-                    </th>
-                    {jours.map((j) => (
-                      <th
-                        key={j}
-                        className={`px-2 py-3 text-center font-medium capitalize ${
-                          estWeekend(j) ? "bg-zinc-100 text-zinc-400" : ""
-                        }`}
-                      >
-                        {formatJourCourt(j)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {TYPES.map((type) => {
-                    const lignes = creneaux.filter((c) => c.type === type);
-                    if (lignes.length === 0) return null;
-                    return (
-                      <Fragment key={type}>
-                        <tr className="bg-zinc-50/70">
-                          <td
-                            colSpan={jours.length + 1}
-                            className="sticky left-0 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-400"
-                          >
-                            {TYPE_CRENEAU_LABELS[type]}
-                          </td>
+            <div className="flex flex-col gap-6">
+              {GROUPES.map((groupe) => (
+                <div key={groupe}>
+                  <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                    {GROUPE_LABELS[groupe]}
+                  </h2>
+                  <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
+                    <table className="text-left text-sm">
+                      <thead className="border-b border-zinc-200 bg-zinc-50 text-zinc-500">
+                        <tr>
+                          <th className="sticky left-0 z-10 bg-zinc-50 px-4 py-3 font-medium">
+                            Créneau
+                          </th>
+                          {jours.map((j) => (
+                            <th
+                              key={j}
+                              className={`px-2 py-3 text-center font-medium capitalize ${
+                                estWeekend(j) ? "bg-zinc-100 text-zinc-400" : ""
+                              }`}
+                            >
+                              {formatJourCourt(j)}
+                            </th>
+                          ))}
                         </tr>
-                        {lignes.map((c) => (
-                          <tr key={c.id} className="border-b border-zinc-100 last:border-0">
-                            <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-zinc-900">
-                              {c.libelle}
-                            </td>
-                            {jours.map((j) => {
-                              if (estWeekend(j)) {
-                                return (
-                                  <td key={j} className="bg-zinc-100 px-2 py-2 text-center" />
-                                );
-                              }
-                              const ids = animateursDe(c.id, j);
-                              const noms = ids
-                                .map((id) => animateurs.find((a) => a.id === id))
-                                .filter(Boolean)
-                                .map((a) => a!.prenom);
-                              return (
+                      </thead>
+                      <tbody>
+                        {TYPES.map((type) => {
+                          const lignes = creneaux.filter((c) => c.type === type);
+                          if (lignes.length === 0) return null;
+                          return (
+                            <Fragment key={type}>
+                              <tr className="bg-zinc-50/70">
                                 <td
-                                  key={j}
-                                  onClick={() =>
-                                    editable && setCelluleOuverte({ creneauId: c.id, date: j })
-                                  }
-                                  className={`min-w-24 px-2 py-2 text-center text-xs text-zinc-700 ${
-                                    editable ? "cursor-pointer hover:bg-zinc-50" : ""
-                                  }`}
+                                  colSpan={jours.length + 1}
+                                  className="sticky left-0 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-400"
                                 >
-                                  {noms.length > 0 ? noms.join(" / ") : editable ? "+" : ""}
+                                  {TYPE_CRENEAU_LABELS[type]}
                                 </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
+                              </tr>
+                              {lignes.map((c) => (
+                                <tr key={c.id} className="border-b border-zinc-100 last:border-0">
+                                  <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-zinc-900">
+                                    {c.libelle}
+                                  </td>
+                                  {jours.map((j) => {
+                                    if (estWeekend(j)) {
+                                      return (
+                                        <td key={j} className="bg-zinc-100 px-2 py-2 text-center" />
+                                      );
+                                    }
+                                    const eligibles = animateursDuGroupe(groupe, j);
+                                    const ids = animateursDe(c.id, j).filter((id) =>
+                                      eligibles.includes(id)
+                                    );
+                                    const noms = ids
+                                      .map((id) => animateurs.find((a) => a.id === id))
+                                      .filter(Boolean)
+                                      .map((a) => a!.prenom);
+                                    return (
+                                      <td
+                                        key={j}
+                                        onClick={() =>
+                                          editable &&
+                                          setCelluleOuverte({ creneauId: c.id, date: j, groupe })
+                                        }
+                                        className={`min-w-24 px-2 py-2 text-center text-xs text-zinc-700 ${
+                                          editable ? "cursor-pointer hover:bg-zinc-50" : ""
+                                        }`}
+                                      >
+                                        {noms.length > 0 ? noms.join(" / ") : editable ? "+" : ""}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -483,6 +523,7 @@ export default function PlanningsPage() {
           >
             <div className="mb-3 flex items-center justify-between">
               <p className="text-sm font-medium text-zinc-900">
+                {GROUPE_LABELS[celluleOuverte.groupe]} ·{" "}
                 {creneaux.find((c) => c.id === celluleOuverte.creneauId)?.libelle} ·{" "}
                 {formatJourCourt(celluleOuverte.date)}
               </p>
@@ -493,34 +534,56 @@ export default function PlanningsPage() {
                 ✕
               </button>
             </div>
-            <div className="flex max-h-72 flex-col gap-1 overflow-y-auto">
-              {animateurs.map((a) => {
-                const assigne = animateursDe(
-                  celluleOuverte.creneauId,
-                  celluleOuverte.date
-                ).includes(a.id);
+            {(() => {
+              const eligibles = animateursDuGroupe(
+                celluleOuverte.groupe,
+                celluleOuverte.date
+              );
+              if (eligibles.length === 0) {
                 return (
-                  <label
-                    key={a.id}
-                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-zinc-50"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={assigne}
-                      onChange={(e) =>
-                        toggleAffectation(
-                          celluleOuverte.creneauId,
-                          celluleOuverte.date,
-                          a.id,
-                          e.target.checked
-                        )
-                      }
-                    />
-                    {a.prenom} {a.nom}
-                  </label>
+                  <p className="text-sm text-zinc-500">
+                    Aucun animateur affecté au groupe {GROUPE_LABELS[celluleOuverte.groupe]}{" "}
+                    ce jour-là. Commence par la page{" "}
+                    <Link href="/dashboard/repartition" className="underline">
+                      Répartition
+                    </Link>
+                    .
+                  </p>
                 );
-              })}
-            </div>
+              }
+              return (
+                <div className="flex max-h-72 flex-col gap-1 overflow-y-auto">
+                  {animateurs
+                    .filter((a) => eligibles.includes(a.id))
+                    .map((a) => {
+                      const assigne = animateursDe(
+                        celluleOuverte.creneauId,
+                        celluleOuverte.date
+                      ).includes(a.id);
+                      return (
+                        <label
+                          key={a.id}
+                          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-zinc-50"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={assigne}
+                            onChange={(e) =>
+                              toggleAffectation(
+                                celluleOuverte.creneauId,
+                                celluleOuverte.date,
+                                a.id,
+                                e.target.checked
+                              )
+                            }
+                          />
+                          {a.prenom} {a.nom}
+                        </label>
+                      );
+                    })}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
