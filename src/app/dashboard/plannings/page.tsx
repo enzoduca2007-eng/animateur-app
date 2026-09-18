@@ -1528,7 +1528,13 @@ export default function PlanningsPage() {
                                           : "border border-zinc-300"
                                       } ${editable ? "cursor-pointer hover:bg-zinc-50/60" : ""}`}
                                     >
-                                      {noms.length > 0 ? noms.join(" / ") : editable ? "+" : ""}
+                                      {noms.length > 0 ? (
+                                        noms.join(" / ")
+                                      ) : editable ? (
+                                        <span className="print:hidden">+</span>
+                                      ) : (
+                                        ""
+                                      )}
                                     </td>
                                   );
                                 })}
