@@ -115,9 +115,9 @@ alter table public.animateurs enable row level security;
 create policy "animateurs: readable by any signed-in user" on public.animateurs
   for select using (auth.role() = 'authenticated');
 
-create policy "animateurs: directeur/coordinateur write" on public.animateurs
-  for all using (public.current_role_name() in ('directeur', 'coordinateur'))
-  with check (public.current_role_name() in ('directeur', 'coordinateur'));
+create policy "animateurs: directeur write" on public.animateurs
+  for all using (public.current_role_name() = 'directeur')
+  with check (public.current_role_name() = 'directeur');
 
 -- Répartition quotidienne des animateurs sur les 3 groupes (Lutins /
 -- Trolls / Géants), un animateur ne peut être que dans un seul groupe

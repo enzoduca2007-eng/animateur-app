@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
-import { canManage, type Animateur, type Profile } from "@/lib/types";
+import { type Animateur, type Profile } from "@/lib/types";
 import { estMineur } from "@/lib/regles";
 
 const EMPTY_FORM = {
@@ -24,7 +24,7 @@ const EMPTY_FORM = {
 export default function AnimateursPage() {
   const profile = useProfile();
   const supabase = createClient();
-  const editable = canManage(profile.role);
+  const editable = profile.role === "directeur";
 
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
   const [comptesAnimateur, setComptesAnimateur] = useState<Profile[]>([]);
