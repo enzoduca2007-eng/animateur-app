@@ -49,6 +49,7 @@ export default function RepartitionPage() {
   const [affectations, setAffectations] = useState<AffectationJour[]>([]);
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [erreur, setErreur] = useState<string | null>(null);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
@@ -111,7 +112,11 @@ export default function RepartitionPage() {
 
   async function assigner(animateurId: string, date: string, lettre: string) {
     const groupe = GROUPE_PAR_LETTRE[lettre] ?? null;
+    const precedente = affectations.find(
+      (a) => a.animateur_id === animateurId && a.date === date
+    );
 
+    setErreur(null);
     setAffectations((prev) => {
       const sansCelle = prev.filter(
         (a) => !(a.animateur_id === animateurId && a.date === date)
@@ -130,21 +135,40 @@ export default function RepartitionPage() {
       ];
     });
 
+    function annulerOptimiste() {
+      setAffectations((prev) => {
+        const sansCelle = prev.filter(
+          (a) => !(a.animateur_id === animateurId && a.date === date)
+        );
+        return precedente ? [...sansCelle, precedente] : sansCelle;
+      });
+    }
+
     if (!groupe) {
-      await supabase
+      const { error } = await supabase
         .from("affectations_jour")
         .delete()
         .eq("date", date)
         .eq("animateur_id", animateurId);
+      if (error) {
+        annulerOptimiste();
+        setErreur(error.message);
+      }
       return;
     }
 
-    await supabase
+    const { error } = await supabase
       .from("affectations_jour")
       .upsert(
         { date, animateur_id: animateurId, groupe, created_by: profile.id },
         { onConflict: "date,animateur_id" }
       );
+
+    if (error) {
+      annulerOptimiste();
+      setErreur(error.message);
+      return;
+    }
 
     const indexCourant = joursOuvrables.indexOf(date);
     const prochain = joursOuvrables[indexCourant + 1];
@@ -180,6 +204,12 @@ export default function RepartitionPage() {
         </p>
       ) : (
         <>
+          {erreur && (
+            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+              {erreur}
+            </p>
+          )}
+
           <div className="flex flex-wrap items-center gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
             <div>
               <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
