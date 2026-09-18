@@ -79,9 +79,10 @@ export default function EquipePage() {
         <h1 className="text-2xl font-semibold text-zinc-900">Équipe</h1>
         <p className="mt-1 text-sm text-zinc-500">
           Gère les espaces de chaque compte. Pour un coordinateur, tu peux le
-          rattacher à un seul groupe : il ne pourra alors gérer que la
-          répartition, le planning, les effectifs et les fiches horaires de
-          ce groupe.
+          rattacher à un seul groupe : il ne pourra alors gérer que le
+          planning, les effectifs et les fiches horaires de ce groupe (la
+          Répartition et la fiche des animateurs restent réservées au
+          directeur).
         </p>
       </div>
 

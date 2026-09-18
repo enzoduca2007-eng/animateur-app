@@ -188,23 +188,13 @@ as $$
     );
 $$;
 
--- Un coordinateur restreint peut créer/modifier une ligne du moment
--- que le résultat appartient à son groupe (peu importe l'ancien
--- groupe, pour pouvoir "récupérer" un animateur d'un autre groupe),
--- mais ne peut pas supprimer une ligne d'un groupe qui n'est pas le
--- sien.
-create policy "affectations_jour: directeur/coordinateur insert" on public.affectations_jour
-  for insert
-  with check (public.peut_gerer_groupe(groupe));
-
-create policy "affectations_jour: directeur/coordinateur update" on public.affectations_jour
-  for update
-  using (public.current_role_name() in ('directeur', 'coordinateur'))
-  with check (public.peut_gerer_groupe(groupe));
-
-create policy "affectations_jour: directeur/coordinateur delete" on public.affectations_jour
-  for delete
-  using (public.peut_gerer_groupe(groupe));
+-- La Répartition (qui décide du groupe de chacun) est réservée au
+-- directeur : un coordinateur, même rattaché à un groupe, ne peut pas
+-- y toucher (il gère seulement le planning/effectifs/fiches horaires
+-- de son groupe une fois la répartition faite par le directeur).
+create policy "affectations_jour: directeur write" on public.affectations_jour
+  for all using (public.current_role_name() = 'directeur')
+  with check (public.current_role_name() = 'directeur');
 
 -- Créneaux horaires configurables (arrivées / pauses / départs) qui
 -- forment les lignes de la grille de planning.

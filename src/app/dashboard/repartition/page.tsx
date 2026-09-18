@@ -6,8 +6,6 @@ import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours } from "@/lib/vacances";
 import {
-  canManage,
-  GROUPE_LABELS,
   type AffectationJour,
   type Animateur,
   type Groupe,
@@ -43,8 +41,7 @@ function formatJourCourt(dateISO: string) {
 export default function RepartitionPage() {
   const profile = useProfile();
   const supabase = createClient();
-  const editable = canManage(profile.role);
-  const monGroupe = profile.role === "coordinateur" ? profile.groupe_coordinateur : null;
+  const editable = profile.role === "directeur";
   const { periodes, zone, loading: loadingVacances } = useVacances();
 
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
@@ -184,7 +181,6 @@ export default function RepartitionPage() {
   ) {
     const lettre = e.target.value.trim().toUpperCase().slice(-1);
     if (lettre && !GROUPE_PAR_LETTRE[lettre]) return; // caractère invalide ignoré
-    if (monGroupe && lettre && GROUPE_PAR_LETTRE[lettre] !== monGroupe) return; // hors de son groupe
     assigner(animateurId, date, lettre);
   }
 
@@ -194,9 +190,7 @@ export default function RepartitionPage() {
         <h1 className="text-2xl font-semibold text-zinc-900">Répartition</h1>
         <p className="mt-1 text-sm text-zinc-500">
           {editable
-            ? monGroupe
-              ? `Tu ne peux affecter qu'au groupe ${GROUPE_LABELS[monGroupe]} : tape ${LETTRE_PAR_GROUPE[monGroupe]} pour affecter un animateur (même s'il est déjà dans un autre groupe). Tu ne peux pas retirer quelqu'un d'un autre groupe.`
-              : "Tape L (Lutins), T (Trolls) ou G (Géants) dans chaque case — la saisie avance automatiquement au jour suivant."
+            ? "Tape L (Lutins), T (Trolls) ou G (Géants) dans chaque case — la saisie avance automatiquement au jour suivant."
             : "Consulte la répartition des animateurs par groupe."}
         </p>
       </div>
