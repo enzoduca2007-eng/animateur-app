@@ -1319,9 +1319,12 @@ export default function PlanningsPage() {
             <div className="no-print rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <p className="mb-4 text-sm font-semibold text-zinc-900">
                 Heures · semaine {semaineIndexSafe + 1}
+                {monGroupe && ` · ${GROUPE_LABELS[monGroupe]}`}
               </p>
               <div className="flex flex-col gap-3">
-                {animateurs.map((a) => {
+                {animateurs
+                  .filter((a) => !monGroupe || animateursActifsSemaine.has(a.id))
+                  .map((a) => {
                   const mineur = estMineur(a.date_naissance, finSemaineSelectionnee);
                   const plafond = plafondHeuresSemaine(mineur);
                   const total = heuresSemaineParAnimateur.get(a.id) ?? 0;
