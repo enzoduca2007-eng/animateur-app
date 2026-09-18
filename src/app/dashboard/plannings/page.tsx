@@ -63,6 +63,7 @@ export default function PlanningsPage() {
   const [showFermetures, setShowFermetures] = useState(false);
   const [formFermeture, setFormFermeture] = useState({ date: "", motif: "" });
   const [semaineIndex, setSemaineIndex] = useState(0);
+  const [groupeSelectionne, setGroupeSelectionne] = useState<Groupe>(GROUPES[0]);
 
   async function chargerCreneaux() {
     const { data } = await supabase
@@ -772,6 +773,22 @@ export default function PlanningsPage() {
                   ))}
                 </select>
               </div>
+              <div>
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
+                  Groupe
+                </p>
+                <select
+                  value={groupeSelectionne}
+                  onChange={(e) => setGroupeSelectionne(e.target.value as Groupe)}
+                  className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                >
+                  {GROUPES.map((g) => (
+                    <option key={g} value={g}>
+                      {GROUPE_LABELS[g]}
+                    </option>
+                  ))}
+                </select>
+              </div>
               {editable && creneauOuverture && creneauFermeture && (
                 <button
                   onClick={autoRepartirOuvertureFermeture}
@@ -796,7 +813,9 @@ export default function PlanningsPage() {
                   <div
                     key={`${groupe}-${semaineJours[0]}`}
                     className={`print-page ${
-                      semaineIdx === semaineIndexSafe ? "" : "hidden print:block"
+                      semaineIdx === semaineIndexSafe && groupe === groupeSelectionne
+                        ? ""
+                        : "hidden print:block"
                     }`}
                   >
                     <p className="rounded-t-xl border border-b-0 border-zinc-300 bg-zinc-100 py-2 text-center text-sm font-bold uppercase tracking-wide text-zinc-700 print:rounded-none print:border-black print:bg-gray-200 print:text-base">
