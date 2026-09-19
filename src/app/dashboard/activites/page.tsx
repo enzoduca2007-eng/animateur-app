@@ -6,12 +6,15 @@ import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
 import { PeriodesVacances } from "@/components/periodes-vacances";
+import { toMinutes } from "@/lib/creneaux";
 import {
   GROUPES,
   GROUPE_LABELS,
   MOMENTS_ACTIVITE,
+  type AffectationCreneau,
   type AffectationJour,
   type Animateur,
+  type Creneau,
   type Groupe,
   type MomentActivite,
   type PlanningActivite,
@@ -22,6 +25,19 @@ function formatEnTeteJour(dateISO: string) {
   return new Date(`${dateISO}T00:00:00Z`)
     .toLocaleDateString("fr-FR", { weekday: "long", day: "2-digit", timeZone: "UTC" })
     .toUpperCase();
+}
+
+function formatJourLong(dateISO: string) {
+  return new Date(`${dateISO}T00:00:00Z`).toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: "UTC",
+  });
+}
+
+function formatHeure(heure: string) {
+  return heure.slice(0, 5);
 }
 
 // Le lundi de la semaine contenant cette date (clé utilisée pour le thème
@@ -68,6 +84,8 @@ export default function ActivitesPage() {
   const [modalLibelle, setModalLibelle] = useState("");
   const [modalAnimateurs, setModalAnimateurs] = useState<string[]>([]);
   const [monAnimateur, setMonAnimateur] = useState<Animateur | null>(null);
+  const [creneaux, setCreneaux] = useState<Creneau[]>([]);
+  const [mesAffectationsCreneau, setMesAffectationsCreneau] = useState<AffectationCreneau[]>([]);
 
   useEffect(() => {
     supabase
@@ -96,6 +114,25 @@ export default function ActivitesPage() {
   );
   const semaines = useMemo(() => semainesDe(joursOuvres), [joursOuvres]);
   const semaineIndexSafe = Math.min(semaineIndex, Math.max(0, semaines.length - 1));
+
+  // Horaires perso, uniquement utiles pour la vue "un animateur" (page par
+  // jour) — pas besoin de charger ça pour le directeur/coordinateur.
+  useEffect(() => {
+    if (profile.role !== "animateur" || !monAnimateur || !periode) return;
+    Promise.all([
+      supabase.from("creneaux").select("*"),
+      supabase
+        .from("affectations_creneau")
+        .select("*")
+        .eq("animateur_id", monAnimateur.id)
+        .gte("date", periode.debut)
+        .lte("date", periode.fin),
+    ]).then(([{ data: c }, { data: ac }]) => {
+      setCreneaux((c as Creneau[]) ?? []);
+      setMesAffectationsCreneau((ac as AffectationCreneau[]) ?? []);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.role, monAnimateur, periode]);
 
   async function chargerDonnees() {
     if (!periode) return;
@@ -149,6 +186,30 @@ export default function ActivitesPage() {
       .map((id) => animateurs.find((a) => a.id === id))
       .filter((a): a is Animateur => !!a)
       .map((a) => a.prenom);
+  }
+
+  function groupeDuJour(date: string) {
+    return affectationsJour.find((a) => a.animateur_id === monAnimateur?.id && a.date === date)
+      ?.groupe;
+  }
+
+  function horairesDuJour(date: string) {
+    const ids = new Set(
+      mesAffectationsCreneau.filter((a) => a.date === date).map((a) => a.creneau_id)
+    );
+    const assignes = creneaux.filter((c) => ids.has(c.id));
+    const arrivees = assignes.filter((c) => c.type === "arrivee");
+    const departs = assignes.filter((c) => c.type === "depart");
+    if (arrivees.length === 0 && departs.length === 0) return null;
+    const debut = arrivees.length
+      ? arrivees.reduce((min, c) => (toMinutes(c.heure_debut) < toMinutes(min.heure_debut) ? c : min))
+          .heure_debut
+      : null;
+    const fin = departs.length
+      ? departs.reduce((max, c) => (toMinutes(c.heure_debut) > toMinutes(max.heure_debut) ? c : max))
+          .heure_debut
+      : null;
+    return { debut, fin };
   }
 
   function ouvrirAjout(date: string, moment: MomentActivite, groupe: Groupe) {
@@ -259,6 +320,82 @@ export default function ActivitesPage() {
         <p className="text-sm text-zinc-400">Chargement...</p>
       ) : periodes.length === 0 ? (
         <p className="text-sm text-zinc-400">Aucune période de vacances trouvée.</p>
+      ) : profile.role === "animateur" ? (
+        <div className="flex flex-col gap-4">
+          {!monAnimateur ? (
+            <p className="text-sm text-amber-700">
+              Ton compte n&apos;est pas encore relié à une fiche animateur.
+            </p>
+          ) : joursOuvres.every((j) => !groupeDuJour(j)) ? (
+            <p className="text-sm text-zinc-400">
+              Aucune affectation trouvée sur cette période.
+            </p>
+          ) : (
+            joursOuvres
+              .filter((j) => groupeDuJour(j))
+              .map((j) => {
+                const groupe = groupeDuJour(j)!;
+                const horaires = horairesDuJour(j);
+                return (
+                  <div
+                    key={j}
+                    className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-lg font-bold capitalize text-zinc-900">
+                        {formatJourLong(j)}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
+                          {GROUPE_LABELS[groupe]}
+                        </span>
+                        {horaires && (horaires.debut || horaires.fin) && (
+                          <span className="rounded-full bg-zinc-900 px-3 py-1 text-xs font-bold text-white">
+                            {horaires.debut ? formatHeure(horaires.debut) : "?"} →{" "}
+                            {horaires.fin ? formatHeure(horaires.fin) : "?"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {MOMENTS_ACTIVITE.map((m) => {
+                        const mesActivites = activitesDe(groupe, j, m.cle);
+                        return (
+                          <div key={m.cle}>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                              {m.label}
+                            </p>
+                            {mesActivites.length === 0 ? (
+                              <p className="mt-1 text-xs text-zinc-300">—</p>
+                            ) : (
+                              <ul className="mt-1 flex flex-col gap-1.5">
+                                {mesActivites.map((act) => {
+                                  const cAssigne = act.animateur_ids.includes(monAnimateur.id);
+                                  return (
+                                    <li
+                                      key={act.id}
+                                      className={`rounded px-1.5 py-1 text-sm ${
+                                        cAssigne
+                                          ? "bg-emerald-100 font-medium text-emerald-800"
+                                          : "text-zinc-500"
+                                      }`}
+                                    >
+                                      {act.libelle}
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })
+          )}
+        </div>
       ) : (
         <>
           <div className="no-print flex flex-wrap items-end gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
@@ -426,8 +563,8 @@ export default function ActivitesPage() {
                                             )}
                                           </div>
                                           {act.animateur_ids.length > 0 && (
-                                            <p className="pl-3 text-[11px] italic text-zinc-500">
-                                              └&gt; {nomsDe(act.animateur_ids).join(", ")}
+                                            <p className="pl-3 text-xs font-semibold text-emerald-700">
+                                              → {nomsDe(act.animateur_ids).join(", ")}
                                             </p>
                                           )}
                                         </li>
