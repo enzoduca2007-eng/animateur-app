@@ -570,32 +570,38 @@ export default function MonPlanningPage() {
                                 {acts.length === 0 ? (
                                   <p className="mt-1 text-xs text-zinc-300">—</p>
                                 ) : (
-                                  <ul className="mt-1 flex flex-col gap-1.5">
+                                  <ul className="mt-1 flex flex-col gap-2">
                                     {acts.map((act) => {
                                       const cAssigne = act.animateur_ids.includes(moi.id);
                                       return (
                                         <li
                                           key={act.id}
-                                          className={`rounded px-1.5 py-1 text-sm ${
+                                          className={`rounded-lg px-2 py-1.5 text-sm ${
                                             cAssigne
-                                              ? "bg-emerald-100 font-medium text-emerald-800"
+                                              ? "border-l-4 border-emerald-500 bg-white shadow-sm"
                                               : "text-zinc-500"
                                           }`}
                                         >
-                                          {act.type_activite && (
-                                            <span
-                                              className="mr-1"
-                                              title={TYPE_ACTIVITE_LABELS[act.type_activite]}
-                                            >
-                                              {TYPE_ACTIVITE_EMOJIS[act.type_activite]}
+                                          <div className="flex items-start gap-1">
+                                            {act.type_activite && (
+                                              <span title={TYPE_ACTIVITE_LABELS[act.type_activite]}>
+                                                {TYPE_ACTIVITE_EMOJIS[act.type_activite]}
+                                              </span>
+                                            )}
+                                            <span className={cAssigne ? "font-medium text-zinc-900" : ""}>
+                                              {act.libelle}
                                             </span>
-                                          )}
-                                          {act.libelle}
-                                          {act.duree && (
-                                            <span className="text-zinc-400"> ({act.duree})</span>
-                                          )}
+                                            {act.duree && (
+                                              <span className="text-zinc-400">({act.duree})</span>
+                                            )}
+                                            {cAssigne && (
+                                              <span className="ml-auto shrink-0 text-xs font-medium text-emerald-600">
+                                                ✓ Toi
+                                              </span>
+                                            )}
+                                          </div>
                                           {act.animateur_ids.length > 0 && (
-                                            <p className="text-xs font-semibold text-emerald-700">
+                                            <p className="mt-0.5 text-xs text-zinc-500">
                                               → {nomsDe(act.animateur_ids).join(", ")}
                                             </p>
                                           )}
