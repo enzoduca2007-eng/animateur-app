@@ -564,7 +564,7 @@ export default function FichesHorairesPage() {
           )}
 
           {lignes.length > 0 && (
-            <div className="hidden print:block">
+            <div className="print-portrait hidden print:block">
               {lignes.map((a) => {
                 return (
                   <div key={a.id} className="print-page">
@@ -574,7 +574,14 @@ export default function FichesHorairesPage() {
                       {formatJourCourt(semaineJours[semaineJours.length - 1])} · Zone {zone}
                     </p>
 
-                    <table className="mt-4 w-full border-collapse text-left text-sm">
+                    <table className="mt-4 w-full table-fixed border-collapse text-left text-sm">
+                      <colgroup>
+                        <col className="w-[15%]" />
+                        <col className="w-[21.25%]" />
+                        <col className="w-[21.25%]" />
+                        <col className="w-[21.25%]" />
+                        <col className="w-[21.25%]" />
+                      </colgroup>
                       <thead>
                         <tr>
                           <th
@@ -595,16 +602,16 @@ export default function FichesHorairesPage() {
                           </th>
                         </tr>
                         <tr>
-                          <th className="border border-black bg-zinc-700 px-2 py-1 text-center font-medium text-white">
+                          <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-medium text-white">
                             Présence
                           </th>
-                          <th className="border border-black bg-zinc-700 px-2 py-1 text-center font-medium text-white">
+                          <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-medium text-white">
                             Pause
                           </th>
-                          <th className="border border-black bg-zinc-700 px-2 py-1 text-center font-medium text-white">
+                          <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-medium text-white">
                             Présence
                           </th>
-                          <th className="border border-black bg-zinc-700 px-2 py-1 text-center font-medium text-white">
+                          <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-medium text-white">
                             Pause
                           </th>
                         </tr>
@@ -653,7 +660,11 @@ export default function FichesHorairesPage() {
                       </div>
                     </div>
 
-                    <table className="mt-8 w-full border-collapse text-left text-sm">
+                    <table className="mt-8 w-full table-fixed border-collapse text-left text-sm">
+                      <colgroup>
+                        <col className="w-[15%]" />
+                        <col className="w-[85%]" />
+                      </colgroup>
                       <thead>
                         <tr>
                           <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-semibold text-white">
@@ -667,10 +678,10 @@ export default function FichesHorairesPage() {
                       <tbody>
                         {semaineJours.map((j) => (
                           <tr key={j}>
-                            <td className="border border-black bg-zinc-200 px-2 py-3 capitalize">
+                            <td className="border border-black bg-zinc-200 px-2 py-2 capitalize">
                               {formatJourCourt(j)}
                             </td>
-                            <td className="border border-black px-2 py-3" />
+                            <td className="border border-black px-2 py-2" />
                           </tr>
                         ))}
                       </tbody>
