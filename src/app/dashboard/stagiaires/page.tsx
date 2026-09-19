@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import {
@@ -38,8 +38,10 @@ const NIVEAUX: NiveauCritere[] = ["a_travailler", "en_cours", "acquis", "depasse
 // stagiaire).
 function GrilleCriteresPrint({
   criteres,
+  appreciations,
 }: {
   criteres: Partial<Record<string, NiveauCritere>> | null;
+  appreciations?: Partial<Record<string, string>> | null;
 }) {
   return (
     <>
@@ -63,37 +65,50 @@ function GrilleCriteresPrint({
           </tr>
         </thead>
         <tbody>
-          {CRITERES_STAGIAIRE.map((cat) => (
-            <>
-              <tr key={cat.categorie}>
-                <td
-                  colSpan={1 + NIVEAUX.length}
-                  className="border border-black bg-zinc-200 px-2 py-1 font-semibold"
-                >
-                  {cat.categorie}
-                </td>
-              </tr>
-              {cat.criteres.map((c, idx) => {
-                const dernier = idx === cat.criteres.length - 1;
-                const bordureBas = dernier ? "border-b border-black" : "";
-                return (
-                  <tr key={c.cle}>
-                    <td className={`border-x border-black px-2 py-1.5 ${bordureBas}`}>
-                      {c.label}
-                    </td>
-                    {NIVEAUX.map((niveau) => (
-                      <td
-                        key={niveau}
-                        className={`border-x border-black px-2 py-1.5 text-center ${bordureBas}`}
-                      >
-                        {criteres?.[c.cle] === niveau ? "X" : ""}
+          {CRITERES_STAGIAIRE.map((cat) => {
+            const texteAppreciation = appreciations?.[cat.cle];
+            return (
+              <Fragment key={cat.cle}>
+                <tr>
+                  <td
+                    colSpan={1 + NIVEAUX.length}
+                    className="border border-black bg-zinc-200 px-2 py-1 font-semibold"
+                  >
+                    {cat.categorie}
+                  </td>
+                </tr>
+                {cat.criteres.map((c, idx) => {
+                  const dernier = idx === cat.criteres.length - 1 && !texteAppreciation;
+                  const bordureBas = dernier ? "border-b border-black" : "";
+                  return (
+                    <tr key={c.cle}>
+                      <td className={`border-x border-black px-2 py-1.5 ${bordureBas}`}>
+                        {c.label}
                       </td>
-                    ))}
+                      {NIVEAUX.map((niveau) => (
+                        <td
+                          key={niveau}
+                          className={`border-x border-black px-2 py-1.5 text-center ${bordureBas}`}
+                        >
+                          {criteres?.[c.cle] === niveau ? "X" : ""}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+                {texteAppreciation && (
+                  <tr>
+                    <td
+                      colSpan={1 + NIVEAUX.length}
+                      className="border-x border-b border-black px-2 py-1 text-[11px] italic text-zinc-700"
+                    >
+                      Appréciation : {texteAppreciation}
+                    </td>
                   </tr>
-                );
-              })}
-            </>
-          ))}
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </>
@@ -145,13 +160,21 @@ export default function StagiairesPage() {
   async function majEvaluation(
     animateurId: string,
     updates: Partial<
-      Pick<EvaluationStagiaire, "criteres" | "avis_final" | "appreciation_generale" | "axes_progres">
+      Pick<
+        EvaluationStagiaire,
+        | "criteres"
+        | "appreciations_categories"
+        | "avis_final"
+        | "appreciation_generale"
+        | "axes_progres"
+      >
     >
   ) {
     setErreur(null);
     const existante = evaluationDe(animateurId);
     const payload = {
       criteres: existante?.criteres ?? {},
+      appreciations_categories: existante?.appreciations_categories ?? {},
       avis_final: existante?.avis_final ?? null,
       appreciation_generale: existante?.appreciation_generale ?? null,
       axes_progres: existante?.axes_progres ?? null,
@@ -186,6 +209,13 @@ export default function StagiairesPage() {
     const existante = evaluationDe(animateurId);
     majEvaluation(animateurId, {
       criteres: { ...(existante?.criteres ?? {}), [critere]: niveau },
+    });
+  }
+
+  function majAppreciationCategorie(animateurId: string, categorieCle: string, texte: string) {
+    const existante = evaluationDe(animateurId);
+    majEvaluation(animateurId, {
+      appreciations_categories: { ...(existante?.appreciations_categories ?? {}), [categorieCle]: texte },
     });
   }
 
@@ -281,7 +311,7 @@ export default function StagiairesPage() {
                   <div className="flex flex-col gap-5 border-t border-zinc-100 px-4 py-4">
                     <div className="flex flex-col gap-4">
                       {CRITERES_STAGIAIRE.map((cat) => (
-                        <div key={cat.categorie}>
+                        <div key={cat.cle}>
                           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
                             {cat.categorie}
                           </p>
@@ -315,6 +345,16 @@ export default function StagiairesPage() {
                               );
                             })}
                           </div>
+                          <textarea
+                            key={`${s.id}-${cat.cle}-appreciation`}
+                            defaultValue={evaluation?.appreciations_categories?.[cat.cle] ?? ""}
+                            onBlur={(e) =>
+                              majAppreciationCategorie(s.id, cat.cle, e.target.value)
+                            }
+                            placeholder={`Appréciation — ${cat.categorie}`}
+                            rows={2}
+                            className="mt-2 w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm"
+                          />
                         </div>
                       ))}
                     </div>
@@ -397,7 +437,10 @@ export default function StagiairesPage() {
                 <p className="mt-3 text-sm font-semibold text-zinc-900">
                   Évaluation par la direction
                 </p>
-                <GrilleCriteresPrint criteres={evaluation?.criteres ?? null} />
+                <GrilleCriteresPrint
+                  criteres={evaluation?.criteres ?? null}
+                  appreciations={evaluation?.appreciations_categories}
+                />
 
                 <p className="mt-4 text-sm">
                   <span className="font-semibold">Avis final : </span>

@@ -177,12 +177,14 @@ export const NIVEAU_CRITERE_ABBREV: Record<NiveauCritere, string> = {
 };
 
 export interface CategorieCriteresStagiaire {
+  cle: string;
   categorie: string;
   criteres: { cle: string; label: string }[];
 }
 
 export const CRITERES_STAGIAIRE: CategorieCriteresStagiaire[] = [
   {
+    cle: "securite_cadre",
     categorie: "Sécurité et cadre",
     criteres: [
       { cle: "securite", label: "Assure la sécurité physique et morale des mineurs" },
@@ -191,6 +193,7 @@ export const CRITERES_STAGIAIRE: CategorieCriteresStagiaire[] = [
     ],
   },
   {
+    cle: "vie_quotidienne_groupe",
     categorie: "Vie quotidienne et vie de groupe",
     criteres: [
       { cle: "vie_quotidienne", label: "Encadre et anime la vie quotidienne (repas, temps calme, rangement...)" },
@@ -199,6 +202,7 @@ export const CRITERES_STAGIAIRE: CategorieCriteresStagiaire[] = [
     ],
   },
   {
+    cle: "relation_mineurs_familles",
     categorie: "Relation aux mineurs et aux familles",
     criteres: [
       { cle: "relation_mineurs", label: "Construit une relation de qualité avec les mineurs (écoute, respect)" },
@@ -207,6 +211,7 @@ export const CRITERES_STAGIAIRE: CategorieCriteresStagiaire[] = [
     ],
   },
   {
+    cle: "animation_pedagogie",
     categorie: "Animation et pédagogie",
     criteres: [
       { cle: "activites", label: "Conçoit, propose et met en œuvre des activités adaptées" },
@@ -216,6 +221,7 @@ export const CRITERES_STAGIAIRE: CategorieCriteresStagiaire[] = [
     ],
   },
   {
+    cle: "posture_professionnelle",
     categorie: "Posture professionnelle",
     criteres: [
       { cle: "vie_equipe", label: "S'implique dans la vie de l'équipe (communication, entraide)" },
@@ -239,6 +245,8 @@ export interface EvaluationStagiaire {
   id: string;
   animateur_id: string;
   criteres: Partial<Record<string, NiveauCritere>>;
+  // Une appréciation par grande catégorie (clé = CategorieCriteresStagiaire.cle).
+  appreciations_categories: Partial<Record<string, string>>;
   avis_final: AvisFinal | null;
   appreciation_generale: string | null;
   axes_progres: string | null;

@@ -709,6 +709,9 @@ create table public.evaluations_stagiaire (
   -- 'a_travailler' | 'en_cours' | 'acquis'), stocké en jsonb plutôt qu'en
   -- colonnes pour ne pas avoir à migrer le schéma si la grille évolue.
   criteres jsonb not null default '{}'::jsonb,
+  -- Une appréciation par grande catégorie (clé = code de la catégorie),
+  -- en plus de l'appréciation générale ci-dessous.
+  appreciations_categories jsonb not null default '{}'::jsonb,
   avis_final text check (avis_final in ('favorable', 'reserve', 'defavorable')),
   appreciation_generale text,
   axes_progres text,
