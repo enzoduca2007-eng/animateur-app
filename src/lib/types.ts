@@ -156,6 +156,47 @@ export interface PresenceDirectionJour {
   created_at: string;
 }
 
+// Grille d'évaluation BAFA (stage pratique) — inspirée des domaines de
+// compétences officiels, simplifiée à 3 niveaux par critère.
+export type NiveauCritere = "a_travailler" | "en_cours" | "acquis";
+
+export const NIVEAU_CRITERE_LABELS: Record<NiveauCritere, string> = {
+  a_travailler: "À travailler",
+  en_cours: "En cours d'acquisition",
+  acquis: "Acquis",
+};
+
+export const CRITERES_STAGIAIRE: { cle: string; label: string }[] = [
+  { cle: "securite", label: "Assure la sécurité physique et morale des mineurs" },
+  { cle: "vie_equipe", label: "S'implique dans la vie de l'équipe (communication, entraide)" },
+  { cle: "relation_mineurs", label: "Construit une relation de qualité avec les mineurs (écoute, respect)" },
+  { cle: "vie_quotidienne", label: "Encadre et anime la vie quotidienne (repas, temps calme, rangement...)" },
+  { cle: "activites", label: "Conçoit, propose et met en œuvre des activités adaptées" },
+  { cle: "rythmes_besoins", label: "Prend en compte les rythmes et besoins de chaque enfant" },
+  { cle: "relation_familles", label: "Participe à la relation avec les familles" },
+  { cle: "cadre_reglementaire", label: "Respecte le cadre réglementaire et les règles de vie" },
+];
+
+export type AvisFinal = "favorable" | "reserve" | "defavorable";
+
+export const AVIS_FINAL_LABELS: Record<AvisFinal, string> = {
+  favorable: "Favorable",
+  reserve: "Réservé",
+  defavorable: "Défavorable",
+};
+
+export interface EvaluationStagiaire {
+  id: string;
+  animateur_id: string;
+  criteres: Partial<Record<string, NiveauCritere>>;
+  avis_final: AvisFinal | null;
+  appreciation_generale: string | null;
+  axes_progres: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PalierEncadrement {
   id: string;
   effectif_min: number;
