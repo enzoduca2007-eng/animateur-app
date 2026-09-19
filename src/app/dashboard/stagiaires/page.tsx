@@ -193,6 +193,28 @@ function GrilleCriteresPrint({
               </Fragment>
             );
           })}
+          {(() => {
+            const { matches, total, niveau } = concordance(criteresDirection, criteresStagiaire);
+            return (
+              <tr>
+                <td className="border-x border-b border-black bg-zinc-200 px-2 py-1.5 font-semibold">
+                  Niveau d&apos;acquisition global (déduit automatiquement de la concordance
+                  auto-éval. / direction{total > 0 ? ` — ${matches}/${total} critères` : ""})
+                </td>
+                {NIVEAUX.map((n) => (
+                  <td
+                    key={n}
+                    className="border-x border-b border-black bg-zinc-200 px-1 py-1.5 text-center"
+                  >
+                    {niveau === n ? (
+                      <span className="text-sm font-bold text-zinc-900">X</span>
+                    ) : null}
+                  </td>
+                ))}
+                <td className="border-x border-b border-black bg-zinc-200 px-2 py-1.5" />
+              </tr>
+            );
+          })()}
         </tbody>
       </table>
     </>
@@ -533,7 +555,6 @@ export default function StagiairesPage() {
             .map((s) => {
               const evaluation = evaluationDe(s.id);
               const autoEvaluation = autoEvaluationDe(s.id);
-              const concordanceStagiaire = concordance(evaluation?.criteres, autoEvaluation?.criteres);
               return (
                 <div key={s.id} className="print-page">
                   <div className="flex items-baseline justify-between">
@@ -556,13 +577,6 @@ export default function StagiairesPage() {
                     <p className="col-span-2">
                       <span className="font-semibold">Avis final : </span>
                       {evaluation?.avis_final ? AVIS_FINAL_LABELS[evaluation.avis_final] : "—"}
-                      {concordanceStagiaire.niveau && (
-                        <span className="ml-4">
-                          <span className="font-semibold">Concordance auto-éval. / direction : </span>
-                          {NIVEAU_CRITERE_LABELS[concordanceStagiaire.niveau]} (
-                          {concordanceStagiaire.matches}/{concordanceStagiaire.total} critères)
-                        </span>
-                      )}
                     </p>
 
                     <div>
