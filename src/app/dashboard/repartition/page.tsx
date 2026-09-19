@@ -284,6 +284,29 @@ export default function RepartitionPage() {
     if (error) setErreur(error.message);
   }
 
+  // Effectif Lutins : modifiable uniquement ici (verrouillé en lecture
+  // seule sur Plannings) pour éviter d'avoir deux endroits où le saisir.
+  async function majEffectifLutins(date: string, valeur: number) {
+    setEffectifs((prev) => [
+      ...prev.filter((e) => !(e.groupe === "lutins" && e.date === date)),
+      {
+        id: `optimistic-lutins-${date}`,
+        date,
+        groupe: "lutins",
+        effectif: valeur,
+        created_by: profile.id,
+        created_at: new Date().toISOString(),
+      },
+    ]);
+    const { error } = await supabase
+      .from("effectifs_jour")
+      .upsert(
+        { date, groupe: "lutins", effectif: valeur, created_by: profile.id },
+        { onConflict: "date,groupe" }
+      );
+    if (error) setErreur(error.message);
+  }
+
   function rosterDe(animateurId: string) {
     return directionRoster.find((d) => d.animateur_id === animateurId);
   }
@@ -575,8 +598,10 @@ export default function RepartitionPage() {
           {editable && (
             <div className="no-print overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
               <p className="border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                Effectifs enfants Trolls / Géants (feuille imprimable — l&apos;effectif
-                Lutins se saisit sur Plannings)
+                Effectifs enfants (feuille imprimable) — Lutins modifiable
+                uniquement ici (verrouillé sur Plannings) ; l&apos;effectif Trolls
+                global pour le calcul d&apos;encadrement continue de se saisir sur
+                Plannings
               </p>
               <table className="text-left text-sm">
                 <thead className="border-b border-zinc-200 bg-zinc-50 text-zinc-500">
@@ -597,6 +622,30 @@ export default function RepartitionPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  <tr className="border-b border-zinc-100 last:border-0">
+                    <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-zinc-900">
+                      {GROUPE_LABELS.lutins}
+                    </td>
+                    {joursOuvrables.map((j) => {
+                      if (estWeekend(j)) {
+                        return <td key={j} className="bg-zinc-100 px-2 py-2 text-center" />;
+                      }
+                      return (
+                        <td key={j} className="px-2 py-2 text-center">
+                          <input
+                            type="number"
+                            min={0}
+                            defaultValue={effectifDe("lutins", j) ?? ""}
+                            onBlur={(e) => {
+                              const v = Number(e.target.value);
+                              if (!Number.isNaN(v)) majEffectifLutins(j, v);
+                            }}
+                            className="w-14 rounded-md border border-zinc-300 px-1 py-1 text-center text-xs"
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
                   {(["trolls", "geants"] as const).map((sg) => (
                     <tr key={sg} className="border-b border-zinc-100 last:border-0">
                       <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-zinc-900">

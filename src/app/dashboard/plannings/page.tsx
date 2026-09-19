@@ -1498,7 +1498,7 @@ export default function PlanningsPage() {
                                             {GROUPE_LABELS[g].slice(0, 3)}
                                           </span>
                                         )}
-                                        {editable ? (
+                                        {editable && g !== "lutins" ? (
                                           <input
                                             type="number"
                                             min={0}
@@ -1510,7 +1510,14 @@ export default function PlanningsPage() {
                                             className="w-14 rounded-md border border-zinc-300 px-1 py-0.5 text-center text-xs"
                                           />
                                         ) : (
-                                          <span className="text-xs text-zinc-500">
+                                          <span
+                                            className="text-xs text-zinc-500"
+                                            title={
+                                              g === "lutins"
+                                                ? "Modifiable uniquement sur Répartition"
+                                                : undefined
+                                            }
+                                          >
                                             {effectifDe(g, j) ?? "—"}
                                           </span>
                                         )}
