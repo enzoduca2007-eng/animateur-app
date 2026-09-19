@@ -52,20 +52,13 @@ body {
     break-after: auto;
   }
 
-  /* Tableaux imprimés (feuille de présence Répartition, Fiches horaires...) :
-     s'ils dépassent une page, répète l'en-tête sur chaque page suivante et
-     évite qu'une ligne (ou une cellule fusionnée rowSpan) soit coupée en
-     deux entre deux pages — sans ça, la mise en page devient illisible dès
-     que le tableau s'allonge (ex. ajout de lignes Direction/Animation). */
-  table {
-    break-inside: auto;
-  }
-
+  /* NB : "break-inside: avoid" sur les <tr> a été tenté ici pour éviter
+     qu'une ligne se coupe entre deux pages, mais combiné aux cellules
+     fusionnées (rowSpan) du tableau Répartition, ça fait carrément
+     disparaître le reste du tableau à l'impression sur Chrome (bug moteur
+     d'impression connu avec rowSpan + break-inside). Retiré : mieux vaut
+     une ligne coupée qu'un tableau tronqué. */
   thead {
     display: table-header-group;
-  }
-
-  tr {
-    break-inside: avoid;
   }
 }
