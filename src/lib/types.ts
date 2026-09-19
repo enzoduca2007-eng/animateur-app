@@ -255,6 +255,18 @@ export interface EvaluationStagiaire {
   updated_at: string;
 }
 
+// Auto-évaluation du stagiaire, remplie en ligne par lui-même — même
+// grille de critères, fusionnée avec celle de la direction sur la
+// feuille imprimée.
+export interface AutoEvaluationStagiaire {
+  id: string;
+  animateur_id: string;
+  criteres: Partial<Record<string, NiveauCritere>>;
+  commentaire: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PalierEncadrement {
   id: string;
   effectif_min: number;

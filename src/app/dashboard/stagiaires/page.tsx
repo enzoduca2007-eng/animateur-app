@@ -10,6 +10,7 @@ import {
   NIVEAU_CRITERE_LABELS,
   canManage,
   type Animateur,
+  type AutoEvaluationStagiaire,
   type AvisFinal,
   type EvaluationStagiaire,
   type NiveauCritere,
@@ -30,18 +31,49 @@ const COULEUR_NIVEAU: Record<NiveauCritere, string> = {
 
 const NIVEAUX: NiveauCritere[] = ["a_travailler", "en_cours", "acquis", "depasse"];
 
-// Grille imprimable à 4 colonnes (AT/ECA/A/D, initiales pour rester
-// compact sur papier), une case cochée par critère. Pas de ligne entre
-// les critères d'une même catégorie — seulement les colonnes restent
-// séparées et un trait ferme chaque catégorie. criteres=null : grille
-// entièrement vierge (auto-évaluation à remplir à la main par le
-// stagiaire).
-function GrilleCriteresPrint({
-  criteres,
-  appreciations,
+// Marque d'un critère : D (direction, orange) et/ou S (stagiaire, bleu).
+// Quand les deux ont choisi le même niveau, la marque D est entourée
+// d'un anneau bleu — les deux couleurs indiquent l'accord en un coup
+// d'œil, sans dupliquer la case.
+function MarqueNiveau({
+  dir,
+  stag,
+  niveau,
 }: {
-  criteres: Partial<Record<string, NiveauCritere>> | null;
-  appreciations?: Partial<Record<string, string>> | null;
+  dir?: NiveauCritere;
+  stag?: NiveauCritere;
+  niveau: NiveauCritere;
+}) {
+  const dirMatch = dir === niveau;
+  const stagMatch = stag === niveau;
+  if (dirMatch && stagMatch) {
+    return (
+      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border-2 border-sky-500 bg-orange-200 text-[9px] font-bold text-orange-800">
+        D
+      </span>
+    );
+  }
+  if (dirMatch) {
+    return <span className="text-[11px] font-bold text-orange-700">D</span>;
+  }
+  if (stagMatch) {
+    return <span className="text-[11px] font-bold text-sky-700">S</span>;
+  }
+  return null;
+}
+
+// Grille imprimable à colonnes de même largeur (AT/ECA/A/D, initiales
+// pour rester compact sur papier) fusionnant l'évaluation de la
+// direction et l'auto-évaluation du stagiaire dans la même case (voir
+// MarqueNiveau) — plus besoin de deux grilles séparées. Pas de ligne
+// entre les critères d'une même catégorie, seulement les colonnes
+// restent séparées, et un trait ferme chaque catégorie.
+function GrilleCriteresPrint({
+  criteresDirection,
+  criteresStagiaire,
+}: {
+  criteresDirection: Partial<Record<string, NiveauCritere>> | null;
+  criteresStagiaire?: Partial<Record<string, NiveauCritere>> | null;
 }) {
   return (
     <>
@@ -49,8 +81,17 @@ function GrilleCriteresPrint({
         {NIVEAUX.map((n) => `${NIVEAU_CRITERE_ABBREV[n]} = ${NIVEAU_CRITERE_LABELS[n]}`).join(
           " · "
         )}
+        {" — "}
+        <span className="font-bold text-orange-700">D</span> = Direction ·{" "}
+        <span className="font-bold text-sky-700">S</span> = Stagiaire · anneau bleu = même avis
       </p>
-      <table className="mt-1 w-full border-collapse text-left text-xs">
+      <table className="mt-1 w-full table-fixed border-collapse text-left text-xs">
+        <colgroup>
+          <col className="w-[40%]" />
+          {NIVEAUX.map((n) => (
+            <col key={n} className="w-[15%]" />
+          ))}
+        </colgroup>
         <thead>
           <tr>
             <th className="border border-black px-2 py-1.5 font-semibold">Critère</th>
@@ -65,50 +106,41 @@ function GrilleCriteresPrint({
           </tr>
         </thead>
         <tbody>
-          {CRITERES_STAGIAIRE.map((cat) => {
-            const texteAppreciation = appreciations?.[cat.cle];
-            return (
-              <Fragment key={cat.cle}>
-                <tr>
-                  <td
-                    colSpan={1 + NIVEAUX.length}
-                    className="border border-black bg-zinc-200 px-2 py-1 font-semibold"
-                  >
-                    {cat.categorie}
-                  </td>
-                </tr>
-                {cat.criteres.map((c, idx) => {
-                  const dernier = idx === cat.criteres.length - 1 && !texteAppreciation;
-                  const bordureBas = dernier ? "border-b border-black" : "";
-                  return (
-                    <tr key={c.cle}>
-                      <td className={`border-x border-black px-2 py-1.5 ${bordureBas}`}>
-                        {c.label}
-                      </td>
-                      {NIVEAUX.map((niveau) => (
-                        <td
-                          key={niveau}
-                          className={`border-x border-black px-2 py-1.5 text-center ${bordureBas}`}
-                        >
-                          {criteres?.[c.cle] === niveau ? "X" : ""}
-                        </td>
-                      ))}
-                    </tr>
-                  );
-                })}
-                {texteAppreciation && (
-                  <tr>
-                    <td
-                      colSpan={1 + NIVEAUX.length}
-                      className="border-x border-b border-black px-2 py-1 text-[11px] italic text-zinc-700"
-                    >
-                      Appréciation : {texteAppreciation}
+          {CRITERES_STAGIAIRE.map((cat) => (
+            <Fragment key={cat.cle}>
+              <tr>
+                <td
+                  colSpan={1 + NIVEAUX.length}
+                  className="border border-black bg-zinc-200 px-2 py-1 font-semibold"
+                >
+                  {cat.categorie}
+                </td>
+              </tr>
+              {cat.criteres.map((c, idx) => {
+                const dernier = idx === cat.criteres.length - 1;
+                const bordureBas = dernier ? "border-b border-black" : "";
+                return (
+                  <tr key={c.cle}>
+                    <td className={`border-x border-black px-2 py-1.5 ${bordureBas}`}>
+                      {c.label}
                     </td>
+                    {NIVEAUX.map((niveau) => (
+                      <td
+                        key={niveau}
+                        className={`border-x border-black px-2 py-1.5 text-center ${bordureBas}`}
+                      >
+                        <MarqueNiveau
+                          dir={criteresDirection?.[c.cle]}
+                          stag={criteresStagiaire?.[c.cle]}
+                          niveau={niveau}
+                        />
+                      </td>
+                    ))}
                   </tr>
-                )}
-              </Fragment>
-            );
-          })}
+                );
+              })}
+            </Fragment>
+          ))}
         </tbody>
       </table>
     </>
@@ -122,6 +154,7 @@ export default function StagiairesPage() {
 
   const [stagiaires, setStagiaires] = useState<Animateur[]>([]);
   const [evaluations, setEvaluations] = useState<EvaluationStagiaire[]>([]);
+  const [autoEvaluations, setAutoEvaluations] = useState<AutoEvaluationStagiaire[]>([]);
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [ouvert, setOuvert] = useState<string | null>(null);
@@ -138,12 +171,14 @@ export default function StagiairesPage() {
 
   async function charger() {
     setLoading(true);
-    const [{ data: a }, { data: e }] = await Promise.all([
+    const [{ data: a }, { data: e }, { data: ae }] = await Promise.all([
       supabase.from("animateurs").select("*").eq("est_stagiaire", true).order("nom"),
       supabase.from("evaluations_stagiaire").select("*"),
+      supabase.from("auto_evaluations_stagiaire").select("*"),
     ]);
     setStagiaires((a as Animateur[]) ?? []);
     setEvaluations((e as EvaluationStagiaire[]) ?? []);
+    setAutoEvaluations((ae as AutoEvaluationStagiaire[]) ?? []);
     setLoading(false);
   }
 
@@ -155,6 +190,10 @@ export default function StagiairesPage() {
 
   function evaluationDe(animateurId: string) {
     return evaluations.find((e) => e.animateur_id === animateurId);
+  }
+
+  function autoEvaluationDe(animateurId: string) {
+    return autoEvaluations.find((e) => e.animateur_id === animateurId);
   }
 
   async function majEvaluation(
@@ -265,6 +304,7 @@ export default function StagiairesPage() {
         <div className="no-print flex flex-col gap-3">
           {stagiaires.map((s) => {
             const evaluation = evaluationDe(s.id);
+            const autoEvaluation = autoEvaluationDe(s.id);
             const estOuvert = ouvert === s.id;
             return (
               <div
@@ -289,6 +329,11 @@ export default function StagiairesPage() {
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${COULEUR_AVIS[evaluation.avis_final]}`}
                       >
                         {AVIS_FINAL_LABELS[evaluation.avis_final]}
+                      </span>
+                    )}
+                    {autoEvaluation && Object.keys(autoEvaluation.criteres).length > 0 && (
+                      <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-600">
+                        Auto-éval reçue
                       </span>
                     )}
                   </button>
@@ -345,15 +390,17 @@ export default function StagiairesPage() {
                               );
                             })}
                           </div>
+                          <p className="mb-1 mt-3 text-xs text-zinc-400">
+                            Appréciation pour cette catégorie
+                          </p>
                           <textarea
                             key={`${s.id}-${cat.cle}-appreciation`}
                             defaultValue={evaluation?.appreciations_categories?.[cat.cle] ?? ""}
                             onBlur={(e) =>
                               majAppreciationCategorie(s.id, cat.cle, e.target.value)
                             }
-                            placeholder={`Appréciation — ${cat.categorie}`}
                             rows={2}
-                            className="mt-2 w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm"
+                            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm"
                           />
                         </div>
                       ))}
@@ -423,64 +470,74 @@ export default function StagiairesPage() {
           {stagiaires
             .filter((s) => !impressionCiblee || s.id === impressionCiblee)
             .map((s) => {
-            const evaluation = evaluationDe(s.id);
-            return (
-              <div key={s.id} className="print-page">
-                <h2 className="text-lg font-bold text-zinc-900">
-                  Fiche d&apos;évaluation BAFA — stage pratique
-                </h2>
-                <p className="mt-1 text-sm text-zinc-600">
-                  {s.prenom} {s.nom}
-                  {s.stagiaire_confiance ? " · Autonomie de confiance" : ""}
-                </p>
-
-                <p className="mt-3 text-sm font-semibold text-zinc-900">
-                  Évaluation par la direction
-                </p>
-                <GrilleCriteresPrint
-                  criteres={evaluation?.criteres ?? null}
-                  appreciations={evaluation?.appreciations_categories}
-                />
-
-                <p className="mt-4 text-sm">
-                  <span className="font-semibold">Avis final : </span>
-                  {evaluation?.avis_final ? AVIS_FINAL_LABELS[evaluation.avis_final] : "—"}
-                </p>
-
-                <div className="mt-3">
-                  <p className="text-sm font-semibold">Appréciation générale</p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700">
-                    {evaluation?.appreciation_generale || "—"}
-                  </p>
-                </div>
-
-                <div className="mt-3">
-                  <p className="text-sm font-semibold">Axes de progrès</p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700">
-                    {evaluation?.axes_progres || "—"}
-                  </p>
-                </div>
-
-                {/* Grille vierge, à remplir à la main par le stagiaire
-                    lui-même — sur sa propre page pour ne pas se mélanger
-                    avec l'évaluation de la direction. */}
-                <div className="print:break-before-page">
+              const evaluation = evaluationDe(s.id);
+              const autoEvaluation = autoEvaluationDe(s.id);
+              const categoriesAvecAppreciation = CRITERES_STAGIAIRE.filter(
+                (cat) => evaluation?.appreciations_categories?.[cat.cle]
+              );
+              return (
+                <div key={s.id} className="print-page">
                   <h2 className="text-lg font-bold text-zinc-900">
-                    Auto-évaluation du stagiaire
+                    Fiche d&apos;évaluation BAFA — stage pratique
                   </h2>
                   <p className="mt-1 text-sm text-zinc-600">
-                    {s.prenom} {s.nom} — à remplir par le stagiaire lui-même
+                    {s.prenom} {s.nom}
+                    {s.stagiaire_confiance ? " · Autonomie de confiance" : ""}
                   </p>
-                  <GrilleCriteresPrint criteres={null} />
+
+                  <GrilleCriteresPrint
+                    criteresDirection={evaluation?.criteres ?? null}
+                    criteresStagiaire={autoEvaluation?.criteres ?? null}
+                  />
+
+                  {/* Appréciations par catégorie : bloc à part sous la
+                      grille (plutôt que coincées dans une ligne de tableau),
+                      une seule fois par catégorie qui en a une. */}
+                  {categoriesAvecAppreciation.length > 0 && (
+                    <div className="mt-4 flex flex-col gap-2">
+                      {categoriesAvecAppreciation.map((cat) => (
+                        <div key={cat.cle}>
+                          <p className="text-sm font-semibold text-zinc-900">
+                            {cat.categorie}
+                          </p>
+                          <p className="mt-0.5 whitespace-pre-wrap text-sm text-zinc-700">
+                            {evaluation?.appreciations_categories?.[cat.cle]}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <p className="mt-4 text-sm">
+                    <span className="font-semibold">Avis final : </span>
+                    {evaluation?.avis_final ? AVIS_FINAL_LABELS[evaluation.avis_final] : "—"}
+                  </p>
 
                   <div className="mt-3">
-                    <p className="text-sm font-semibold">Commentaires du stagiaire</p>
-                    <div className="mt-2 h-24 border border-black" />
+                    <p className="text-sm font-semibold">Appréciation générale</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700">
+                      {evaluation?.appreciation_generale || "—"}
+                    </p>
                   </div>
+
+                  <div className="mt-3">
+                    <p className="text-sm font-semibold">Axes de progrès</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700">
+                      {evaluation?.axes_progres || "—"}
+                    </p>
+                  </div>
+
+                  {autoEvaluation?.commentaire && (
+                    <div className="mt-3">
+                      <p className="text-sm font-semibold">Commentaire du stagiaire</p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700">
+                        {autoEvaluation.commentaire}
+                      </p>
+                    </div>
+                  )}
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
       )}
     </div>
