@@ -20,6 +20,48 @@ const COULEUR_AVIS: Record<AvisFinal, string> = {
   defavorable: "bg-red-100 text-red-700",
 };
 
+const NIVEAUX: NiveauCritere[] = ["a_travailler", "en_cours", "acquis"];
+
+// Grille imprimable à 3 colonnes (À travailler / En cours / Acquis), une
+// case cochée par critère — même mise en page que la saisie à l'écran.
+// criteres=null : grille entièrement vierge (auto-évaluation à remplir
+// à la main par le stagiaire).
+function GrilleCriteresPrint({
+  criteres,
+}: {
+  criteres: Partial<Record<string, NiveauCritere>> | null;
+}) {
+  return (
+    <table className="mt-2 w-full border-collapse text-left text-xs">
+      <thead>
+        <tr>
+          <th className="border border-black px-2 py-1.5 font-semibold">Critère</th>
+          {NIVEAUX.map((niveau) => (
+            <th
+              key={niveau}
+              className="border border-black px-2 py-1.5 text-center font-semibold"
+            >
+              {NIVEAU_CRITERE_LABELS[niveau]}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {CRITERES_STAGIAIRE.map((c) => (
+          <tr key={c.cle}>
+            <td className="border border-black px-2 py-1.5">{c.label}</td>
+            {NIVEAUX.map((niveau) => (
+              <td key={niveau} className="border border-black px-2 py-1.5 text-center">
+                {criteres?.[c.cle] === niveau ? "X" : ""}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export default function StagiairesPage() {
   const profile = useProfile();
   const supabase = createClient();
@@ -287,26 +329,10 @@ export default function StagiairesPage() {
                   {s.stagiaire_confiance ? " · Autonomie de confiance" : ""}
                 </p>
 
-                <table className="mt-4 w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr>
-                      <th className="border border-black px-2 py-1.5 font-semibold">Critère</th>
-                      <th className="border border-black px-2 py-1.5 font-semibold">Niveau</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {CRITERES_STAGIAIRE.map((c) => (
-                      <tr key={c.cle}>
-                        <td className="border border-black px-2 py-1.5">{c.label}</td>
-                        <td className="border border-black px-2 py-1.5">
-                          {evaluation?.criteres?.[c.cle]
-                            ? NIVEAU_CRITERE_LABELS[evaluation.criteres[c.cle] as NiveauCritere]
-                            : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <p className="mt-3 text-sm font-semibold text-zinc-900">
+                  Évaluation par la direction
+                </p>
+                <GrilleCriteresPrint criteres={evaluation?.criteres ?? null} />
 
                 <p className="mt-4 text-sm">
                   <span className="font-semibold">Avis final : </span>
@@ -337,6 +363,35 @@ export default function StagiairesPage() {
                       Signature du directeur / de la coordination
                     </p>
                     <div className="mt-10 border-t border-black" />
+                  </div>
+                </div>
+
+                {/* Grille vierge, à remplir à la main par le stagiaire
+                    lui-même — sur sa propre page pour ne pas se mélanger
+                    avec l'évaluation de la direction. */}
+                <div className="print:break-before-page">
+                  <h2 className="text-lg font-bold text-zinc-900">
+                    Auto-évaluation du stagiaire
+                  </h2>
+                  <p className="mt-1 text-sm text-zinc-600">
+                    {s.prenom} {s.nom} — à remplir par le stagiaire lui-même
+                  </p>
+                  <GrilleCriteresPrint criteres={null} />
+
+                  <div className="mt-3">
+                    <p className="text-sm font-semibold">Commentaires du stagiaire</p>
+                    <div className="mt-2 h-24 border border-black" />
+                  </div>
+
+                  <div className="mt-12 grid grid-cols-2 gap-8">
+                    <div>
+                      <p className="text-sm text-zinc-700">Date</p>
+                      <div className="mt-10 border-t border-black" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-zinc-700">Signature du stagiaire</p>
+                      <div className="mt-10 border-t border-black" />
+                    </div>
                   </div>
                 </div>
               </div>
