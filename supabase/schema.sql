@@ -652,7 +652,7 @@ create policy "effectifs_sous_groupe: directeur write" on public.effectifs_sous_
 create table public.direction_roster (
   id uuid primary key default gen_random_uuid(),
   animateur_id uuid not null unique references public.animateurs (id) on delete cascade,
-  role_affiche text not null check (role_affiche in ('directeur', 'coordinateur')),
+  role_affiche text not null check (role_affiche in ('directeur', 'directeur_adjoint', 'coordinateur')),
   sections text[] not null default '{}',
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
@@ -668,6 +668,30 @@ create policy "direction_roster: readable by any signed-in user" on public.direc
   for select using (auth.role() = 'authenticated');
 
 create policy "direction_roster: directeur write" on public.direction_roster
+  for all
+  using (public.current_role_name() = 'directeur')
+  with check (public.current_role_name() = 'directeur');
+
+-- Présence jour par jour du directeur/directeur adjoint sur la feuille
+-- imprimable (saisie D/A dans la grille de Répartition, comme L/T/G pour
+-- les groupes) — distincte d'affectations_jour car un directeur
+-- n'appartient à aucun groupe réel (lutins/trolls).
+create table public.presence_direction_jour (
+  id uuid primary key default gen_random_uuid(),
+  date date not null,
+  animateur_id uuid not null references public.animateurs (id) on delete cascade,
+  role text not null check (role in ('directeur', 'adjoint')),
+  created_by uuid references public.profiles (id),
+  created_at timestamptz not null default now(),
+  unique (date, animateur_id)
+);
+
+alter table public.presence_direction_jour enable row level security;
+
+create policy "presence_direction_jour: readable by any signed-in user" on public.presence_direction_jour
+  for select using (auth.role() = 'authenticated');
+
+create policy "presence_direction_jour: directeur write" on public.presence_direction_jour
   for all
   using (public.current_role_name() = 'directeur')
   with check (public.current_role_name() = 'directeur');

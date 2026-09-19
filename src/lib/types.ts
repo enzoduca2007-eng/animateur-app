@@ -129,7 +129,7 @@ export interface EffectifSousGroupe {
 }
 
 export type SectionDirection = "lutins" | "trolls" | "geants";
-export type RoleAffiche = "directeur" | "coordinateur";
+export type RoleAffiche = "directeur" | "directeur_adjoint" | "coordinateur";
 
 export interface DirectionRoster {
   id: string;
@@ -140,6 +140,20 @@ export interface DirectionRoster {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Présence jour par jour du directeur/directeur adjoint sur la feuille de
+// Répartition (saisie D/A dans la grille) — distincte des affectations de
+// groupe (L/T/G) car un directeur n'appartient à aucun groupe réel.
+export type RoleDirectionJour = "directeur" | "adjoint";
+
+export interface PresenceDirectionJour {
+  id: string;
+  date: string;
+  animateur_id: string;
+  role: RoleDirectionJour;
+  created_by: string | null;
+  created_at: string;
 }
 
 export interface PalierEncadrement {
