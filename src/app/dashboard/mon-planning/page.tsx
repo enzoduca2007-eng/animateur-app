@@ -291,7 +291,7 @@ export default function MonPlanningPage() {
     if (!groupe) return [];
     return activites
       .filter((a) => a.groupe === groupe && a.date === date && a.moment === moment)
-      .sort((a, b) => a.ordre - b.ordre);
+      .sort((a, b) => (a.heure ?? "99:99").localeCompare(b.heure ?? "99:99") || a.ordre - b.ordre);
   }
 
   if (moi === undefined) {
@@ -480,6 +480,9 @@ export default function MonPlanningPage() {
                                               : "text-zinc-500"
                                           }`}
                                         >
+                                          {act.heure && (
+                                            <span className="font-semibold">{act.heure.slice(0, 5)} </span>
+                                          )}
                                           {act.libelle}
                                           {act.animateur_ids.length > 0 && (
                                             <p className="text-xs font-semibold text-emerald-700">

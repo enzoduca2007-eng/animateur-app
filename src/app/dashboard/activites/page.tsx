@@ -67,6 +67,7 @@ export default function ActivitesPage() {
     activite: PlanningActivite | null;
   } | null>(null);
   const [modalLibelle, setModalLibelle] = useState("");
+  const [modalHeure, setModalHeure] = useState("");
   const [modalAnimateurs, setModalAnimateurs] = useState<string[]>([]);
   const [monAnimateur, setMonAnimateur] = useState<Animateur | null>(null);
 
@@ -142,7 +143,7 @@ export default function ActivitesPage() {
   function activitesDe(groupe: Groupe, date: string, moment: MomentActivite) {
     return activites
       .filter((a) => a.groupe === groupe && a.date === date && a.moment === moment)
-      .sort((a, b) => a.ordre - b.ordre);
+      .sort((a, b) => (a.heure ?? "99:99").localeCompare(b.heure ?? "99:99") || a.ordre - b.ordre);
   }
 
   function nomsDe(ids: string[]) {
@@ -156,6 +157,7 @@ export default function ActivitesPage() {
   function ouvrirAjout(date: string, moment: MomentActivite, groupe: Groupe) {
     setModal({ date, moment, groupe, activite: null });
     setModalLibelle("");
+    setModalHeure("");
     setModalAnimateurs([]);
   }
 
@@ -167,6 +169,7 @@ export default function ActivitesPage() {
       activite,
     });
     setModalLibelle(activite.libelle);
+    setModalHeure(activite.heure?.slice(0, 5) ?? "");
     setModalAnimateurs(activite.animateur_ids);
   }
 
@@ -176,7 +179,11 @@ export default function ActivitesPage() {
     if (modal.activite) {
       const { error } = await supabase
         .from("planning_activites")
-        .update({ libelle: modalLibelle.trim(), animateur_ids: modalAnimateurs })
+        .update({
+          libelle: modalLibelle.trim(),
+          heure: modalHeure || null,
+          animateur_ids: modalAnimateurs,
+        })
         .eq("id", modal.activite.id);
       if (error) {
         setErreur(error.message);
@@ -189,6 +196,7 @@ export default function ActivitesPage() {
         groupe: modal.groupe,
         moment: modal.moment,
         ordre,
+        heure: modalHeure || null,
         libelle: modalLibelle.trim(),
         animateur_ids: modalAnimateurs,
         created_by: profile.id,
@@ -416,7 +424,14 @@ export default function ActivitesPage() {
                                           }`}
                                         >
                                           <div className="flex items-start justify-between gap-1">
-                                            <span>– {act.libelle}</span>
+                                            <span>
+                                              – {act.heure && (
+                                                <span className="font-semibold">
+                                                  {act.heure.slice(0, 5)}{" "}
+                                                </span>
+                                              )}
+                                              {act.libelle}
+                                            </span>
                                             {peutGererGroupe(groupe) && (
                                               <span className="no-print hidden shrink-0 gap-1 group-hover:flex">
                                                 <button
@@ -490,14 +505,27 @@ export default function ActivitesPage() {
               </button>
             </div>
 
-            <label className="text-xs font-medium text-zinc-500">Activité</label>
-            <input
-              autoFocus
-              value={modalLibelle}
-              onChange={(e) => setModalLibelle(e.target.value)}
-              placeholder="Ex: Chasse au trésor"
-              className="mt-1 mb-3 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
-            />
+            <div className="mb-3 flex gap-2">
+              <div className="flex-1">
+                <label className="text-xs font-medium text-zinc-500">Activité</label>
+                <input
+                  autoFocus
+                  value={modalLibelle}
+                  onChange={(e) => setModalLibelle(e.target.value)}
+                  placeholder="Ex: Chasse au trésor"
+                  className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-zinc-500">Heure</label>
+                <input
+                  type="time"
+                  value={modalHeure}
+                  onChange={(e) => setModalHeure(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-2 text-sm"
+                />
+              </div>
+            </div>
 
             <label className="text-xs font-medium text-zinc-500">
               Animateur(s) affecté(s) ce jour-là

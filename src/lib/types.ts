@@ -159,6 +159,7 @@ export interface PlanningActivite {
   groupe: Groupe;
   moment: MomentActivite;
   ordre: number;
+  heure: string | null;
   libelle: string;
   animateur_ids: string[];
   created_by: string | null;

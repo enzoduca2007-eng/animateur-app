@@ -494,6 +494,7 @@ create table public.planning_activites (
   groupe text not null check (groupe in ('lutins', 'trolls')),
   moment text not null check (moment in ('matin', 'temps_calme', 'apres_midi')),
   ordre integer not null default 0,
+  heure time,
   libelle text not null,
   animateur_ids uuid[] not null default '{}',
   created_by uuid references public.profiles (id),
