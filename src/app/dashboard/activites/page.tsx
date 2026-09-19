@@ -365,13 +365,13 @@ export default function ActivitesPage() {
                   return (
                     <div
                       key={`${groupe}-${semaineJours[0]}`}
-                      className={`print-page pt-6 ${affichee ? "" : "hidden"}`}
+                      className={`print-page print:pt-8 ${affichee ? "" : "hidden"}`}
                     >
                       <div className="relative rounded-t-xl border border-b-0 border-zinc-300 bg-zinc-100 px-4 py-3 print:rounded-none print:border-black">
                         <p className="text-center text-sm font-bold uppercase tracking-wide text-zinc-700 print:text-base">
                           {GROUPE_LABELS[groupe]} · Semaine {semaineIdx + 1}
                         </p>
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="absolute -top-8 right-3">
                           <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 border-zinc-400 bg-white p-2 print:border-black">
                             {peutGererGroupe(groupe) ? (
                               <div
