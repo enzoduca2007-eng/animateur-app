@@ -1375,7 +1375,7 @@ export default function PlanningsPage() {
                   return (
                     <div key={a.id} className="flex items-center gap-3">
                       <span className="w-36 shrink-0 truncate text-sm font-medium text-zinc-800">
-                        {a.prenom} {a.nom}
+                        {a.prenom}
                       </span>
                       <div className="h-3 flex-1 overflow-hidden rounded-full bg-zinc-100">
                         <div
@@ -1693,7 +1693,7 @@ export default function PlanningsPage() {
                               )
                             }
                           />
-                          {a.prenom} {a.nom}
+                          {a.prenom}
                         </label>
                       );
                     })}

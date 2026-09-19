@@ -372,7 +372,7 @@ export default function MonPlanningPage() {
     return ids
       .map((id) => animateurs.find((a) => a.id === id))
       .filter((a): a is Animateur => !!a)
-      .map((a) => `${a.prenom} ${a.nom}`);
+      .map((a) => a.prenom);
   }
 
   function activitesDuJour(date: string, groupe: Groupe | undefined, moment: MomentActivite) {

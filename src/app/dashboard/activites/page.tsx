@@ -610,7 +610,7 @@ export default function ActivitesPage() {
                           )
                         }
                       />
-                      {a.prenom} {a.nom}
+                      {a.prenom}
                     </label>
                   ))
               )}
