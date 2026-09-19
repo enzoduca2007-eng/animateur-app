@@ -826,7 +826,7 @@ export default function RepartitionPage() {
                 {directionRoster.some(
                   (d) => d.role_affiche === "directeur" || d.role_affiche === "directeur_adjoint"
                 ) && (
-                  <tr>
+                  <tr className="print:break-after-avoid">
                     <td
                       colSpan={3 + joursOuvrables.length}
                       className="border border-black bg-zinc-300 px-1 py-1 font-bold"
@@ -921,7 +921,7 @@ export default function RepartitionPage() {
                   return (
                     <>
                       {afficherAnimation && (
-                        <tr>
+                        <tr className="print:break-after-avoid">
                           <td
                             colSpan={3 + joursOuvrables.length}
                             className="border border-black bg-zinc-300 px-1 py-1 font-bold"
