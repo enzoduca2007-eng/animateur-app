@@ -418,19 +418,6 @@ export default function StagiairesPage() {
                   </p>
                 </div>
 
-                <div className="mt-12 grid grid-cols-2 gap-8">
-                  <div>
-                    <p className="text-sm text-zinc-700">Signature du stagiaire</p>
-                    <div className="mt-10 border-t border-black" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-zinc-700">
-                      Signature du directeur / de la coordination
-                    </p>
-                    <div className="mt-10 border-t border-black" />
-                  </div>
-                </div>
-
                 {/* Grille vierge, à remplir à la main par le stagiaire
                     lui-même — sur sa propre page pour ne pas se mélanger
                     avec l'évaluation de la direction. */}
@@ -446,17 +433,6 @@ export default function StagiairesPage() {
                   <div className="mt-3">
                     <p className="text-sm font-semibold">Commentaires du stagiaire</p>
                     <div className="mt-2 h-24 border border-black" />
-                  </div>
-
-                  <div className="mt-12 grid grid-cols-2 gap-8">
-                    <div>
-                      <p className="text-sm text-zinc-700">Date</p>
-                      <div className="mt-10 border-t border-black" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-zinc-700">Signature du stagiaire</p>
-                      <div className="mt-10 border-t border-black" />
-                    </div>
                   </div>
                 </div>
               </div>
