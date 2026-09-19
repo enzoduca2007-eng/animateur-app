@@ -56,13 +56,20 @@ body {
      couleur volontaire de la feuille imprimée — ça ressortait gris sur
      toutes les feuilles. Fond blanc forcé pour ces gris neutres ; les
      couleurs volontaires (bandeaux de section bg-zinc-200, lignes ambre/
-     bleu/orange/jaune/teal des rôles et semaines...) restent inchangées. */
-  .bg-zinc-50,
-  .bg-zinc-100,
-  .bg-gray-50,
-  .bg-gray-100,
-  .bg-slate-50,
-  .bg-slate-100 {
+     bleu/orange/jaune/teal des rôles et semaines...) restent inchangées.
+     :not([class*="print:bg-"]) exclut les éléments qui ont déjà leur
+     propre couleur voulue à l'impression (ex. les lignes de pause sur
+     Plannings, bg-zinc-100 print:bg-gray-200) — sans ça, cette règle
+     hors-layer gagnait quand même contre le print:bg-gray-200 de
+     Tailwind (même souci que le bug de fond noir en mode sombre : le
+     CSS hors-layer bat toujours le CSS en layer, quelle que soit la
+     spécificité). */
+  .bg-zinc-50:not([class*="print:bg-"]),
+  .bg-zinc-100:not([class*="print:bg-"]),
+  .bg-gray-50:not([class*="print:bg-"]),
+  .bg-gray-100:not([class*="print:bg-"]),
+  .bg-slate-50:not([class*="print:bg-"]),
+  .bg-slate-100:not([class*="print:bg-"]) {
     background-color: #fff !important;
   }
 
