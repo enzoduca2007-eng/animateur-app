@@ -559,18 +559,24 @@ export default function MonPlanningPage() {
                           </p>
                         )}
 
-                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <div className="mt-4 flex flex-col gap-3">
                           {MOMENTS_ACTIVITE.map((m) => {
                             const acts = activitesDuJour(j, groupe, m.cle);
                             return (
-                              <div key={m.cle}>
-                                <p className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+                              <div
+                                key={m.cle}
+                                className="overflow-hidden rounded-xl border border-zinc-200"
+                              >
+                                <p className="bg-zinc-100 py-2 text-center text-sm font-bold uppercase tracking-wide text-zinc-600">
                                   {m.label}
                                 </p>
+                                <div className="p-3">
                                 {acts.length === 0 ? (
-                                  <p className="mt-1 text-xs text-zinc-300">—</p>
+                                  <p className="text-center text-sm text-zinc-300">
+                                    Aucune activité
+                                  </p>
                                 ) : (
-                                  <ul className="mt-1 flex flex-col gap-2">
+                                  <ul className="flex flex-col gap-2">
                                     {acts.map((act) => {
                                       const cAssigne = act.animateur_ids.includes(moi.id);
                                       return (
@@ -621,6 +627,7 @@ export default function MonPlanningPage() {
                                     })}
                                   </ul>
                                 )}
+                                </div>
                               </div>
                             );
                           })}
