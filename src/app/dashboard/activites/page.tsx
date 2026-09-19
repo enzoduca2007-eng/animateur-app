@@ -365,9 +365,9 @@ export default function ActivitesPage() {
                   return (
                     <div
                       key={`${groupe}-${semaineJours[0]}`}
-                      className={`print-page ${affichee ? "" : "hidden"}`}
+                      className={`print-page pt-6 ${affichee ? "" : "hidden"}`}
                     >
-                      <div className="relative flex min-h-24 items-center justify-center rounded-t-xl border border-b-0 border-zinc-300 bg-zinc-100 px-4 py-3 print:rounded-none print:border-black">
+                      <div className="relative rounded-t-xl border border-b-0 border-zinc-300 bg-zinc-100 px-4 py-3 print:rounded-none print:border-black">
                         <p className="text-center text-sm font-bold uppercase tracking-wide text-zinc-700 print:text-base">
                           {GROUPE_LABELS[groupe]} · Semaine {semaineIdx + 1}
                         </p>
