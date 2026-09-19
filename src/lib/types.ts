@@ -56,6 +56,10 @@ export interface AffectationJour {
   date: string;
   animateur_id: string;
   groupe: Groupe;
+  // Sous-étiquette purement visuelle (Répartition) pour distinguer Trolls
+  // de Géants ; null pour Lutins. Le groupe réel reste "trolls" pour les
+  // deux — ce champ n'affecte rien d'autre dans l'application.
+  sous_groupe: "trolls" | "geants" | null;
   created_by: string | null;
   created_at: string;
 }

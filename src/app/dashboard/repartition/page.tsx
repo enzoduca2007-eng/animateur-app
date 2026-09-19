@@ -11,20 +11,29 @@ import {
   type Groupe,
 } from "@/lib/types";
 
-const LETTRE_PAR_GROUPE: Record<Groupe, string> = {
-  lutins: "L",
-  trolls: "T",
+// Lutins/Trolls/Géants à la saisie (L/T/G), mais Trolls et Géants
+// partagent le même groupe réel "trolls" partout ailleurs dans
+// l'application — sous_groupe est une étiquette purement visuelle,
+// propre à cette page.
+type Lettre = "L" | "T" | "G";
+
+const CONFIG_PAR_LETTRE: Record<Lettre, { groupe: Groupe; sous_groupe: "trolls" | "geants" | null }> = {
+  L: { groupe: "lutins", sous_groupe: null },
+  T: { groupe: "trolls", sous_groupe: "trolls" },
+  G: { groupe: "trolls", sous_groupe: "geants" },
 };
 
-const GROUPE_PAR_LETTRE: Record<string, Groupe> = {
-  L: "lutins",
-  T: "trolls",
+const COULEUR_PAR_LETTRE: Record<Lettre, string> = {
+  L: "bg-sky-100 text-sky-700",
+  T: "bg-emerald-100 text-emerald-700",
+  G: "bg-amber-100 text-amber-700",
 };
 
-const COULEUR_PAR_GROUPE: Record<Groupe, string> = {
-  lutins: "bg-sky-100 text-sky-700",
-  trolls: "bg-emerald-100 text-emerald-700",
-};
+function lettreDe(a: AffectationJour | undefined): Lettre | null {
+  if (!a) return null;
+  if (a.groupe === "lutins") return "L";
+  return a.sous_groupe === "geants" ? "G" : "T";
+}
 
 function formatJourCourt(dateISO: string) {
   return new Date(`${dateISO}T00:00:00Z`).toLocaleDateString("fr-FR", {
@@ -97,8 +106,8 @@ export default function RepartitionPage() {
   }, [periode]);
 
   const parCle = useMemo(() => {
-    const map = new Map<string, Groupe>();
-    for (const a of affectations) map.set(`${a.date}|${a.animateur_id}`, a.groupe);
+    const map = new Map<string, AffectationJour>();
+    for (const a of affectations) map.set(`${a.date}|${a.animateur_id}`, a);
     return map;
   }, [affectations]);
 
@@ -107,7 +116,7 @@ export default function RepartitionPage() {
   }
 
   async function assigner(animateurId: string, date: string, lettre: string) {
-    const groupe = GROUPE_PAR_LETTRE[lettre] ?? null;
+    const config = lettre ? CONFIG_PAR_LETTRE[lettre as Lettre] : null;
     const precedente = affectations.find(
       (a) => a.animateur_id === animateurId && a.date === date
     );
@@ -117,14 +126,15 @@ export default function RepartitionPage() {
       const sansCelle = prev.filter(
         (a) => !(a.animateur_id === animateurId && a.date === date)
       );
-      if (!groupe) return sansCelle;
+      if (!config) return sansCelle;
       return [
         ...sansCelle,
         {
           id: `optimistic-${animateurId}-${date}`,
           date,
           animateur_id: animateurId,
-          groupe,
+          groupe: config.groupe,
+          sous_groupe: config.sous_groupe,
           created_by: profile.id,
           created_at: new Date().toISOString(),
         },
@@ -140,7 +150,7 @@ export default function RepartitionPage() {
       });
     }
 
-    if (!groupe) {
+    if (!config) {
       const { error } = await supabase
         .from("affectations_jour")
         .delete()
@@ -156,7 +166,13 @@ export default function RepartitionPage() {
     const { error } = await supabase
       .from("affectations_jour")
       .upsert(
-        { date, animateur_id: animateurId, groupe, created_by: profile.id },
+        {
+          date,
+          animateur_id: animateurId,
+          groupe: config.groupe,
+          sous_groupe: config.sous_groupe,
+          created_by: profile.id,
+        },
         { onConflict: "date,animateur_id" }
       );
 
@@ -177,7 +193,7 @@ export default function RepartitionPage() {
     e: React.ChangeEvent<HTMLInputElement>
   ) {
     const lettre = e.target.value.trim().toUpperCase().slice(-1);
-    if (lettre && !GROUPE_PAR_LETTRE[lettre]) return; // caractère invalide ignoré
+    if (lettre && !CONFIG_PAR_LETTRE[lettre as Lettre]) return; // caractère invalide ignoré
     assigner(animateurId, date, lettre);
   }
 
@@ -187,7 +203,7 @@ export default function RepartitionPage() {
         <h1 className="text-2xl font-semibold text-zinc-900">Répartition</h1>
         <p className="mt-1 text-sm text-zinc-500">
           {editable
-            ? "Tape L (Lutins) ou T (Trolls & Géants) dans chaque case — la saisie avance automatiquement au jour suivant."
+            ? "Tape L (Lutins), T (Trolls) ou G (Géants) dans chaque case — la saisie avance automatiquement au jour suivant. Trolls et Géants restent gérés comme un seul groupe partout ailleurs (Planning, Effectifs, Goûters...), cette distinction est propre à cette page."
             : "Consulte la répartition des animateurs par groupe."}
         </p>
       </div>
@@ -228,8 +244,10 @@ export default function RepartitionPage() {
                 <span className="inline-block h-3 w-3 rounded bg-sky-100" /> L = Lutins
               </span>
               <span className="flex items-center gap-1">
-                <span className="inline-block h-3 w-3 rounded bg-emerald-100" /> T = Trolls &
-                Géants
+                <span className="inline-block h-3 w-3 rounded bg-emerald-100" /> T = Trolls
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-3 w-3 rounded bg-amber-100" /> G = Géants
               </span>
               <span className="flex items-center gap-1">
                 <span className="inline-block h-3 w-3 rounded bg-zinc-200" /> Week-end (fermé)
@@ -275,7 +293,7 @@ export default function RepartitionPage() {
                             <td key={j} className="bg-zinc-100 px-2 py-2 text-center" />
                           );
                         }
-                        const groupe = parCle.get(`${j}|${a.id}`);
+                        const lettre = lettreDe(parCle.get(`${j}|${a.id}`));
                         return (
                           <td key={j} className="px-2 py-2 text-center">
                             {editable ? (
@@ -283,21 +301,21 @@ export default function RepartitionPage() {
                                 ref={(el) => {
                                   inputRefs.current[`${a.id}|${j}`] = el;
                                 }}
-                                value={groupe ? LETTRE_PAR_GROUPE[groupe] : ""}
+                                value={lettre ?? ""}
                                 onChange={(e) => handleChange(a.id, j, e)}
                                 onFocus={(e) => e.target.select()}
                                 maxLength={1}
                                 className={`h-8 w-8 rounded-md border border-zinc-300 text-center text-sm font-semibold uppercase focus:border-zinc-500 focus:outline-none ${
-                                  groupe ? COULEUR_PAR_GROUPE[groupe] : ""
+                                  lettre ? COULEUR_PAR_LETTRE[lettre] : ""
                                 }`}
                               />
                             ) : (
                               <span
                                 className={`inline-flex h-8 w-8 items-center justify-center rounded-md text-sm font-semibold ${
-                                  groupe ? COULEUR_PAR_GROUPE[groupe] : "text-zinc-300"
+                                  lettre ? COULEUR_PAR_LETTRE[lettre] : "text-zinc-300"
                                 }`}
                               >
-                                {groupe ? LETTRE_PAR_GROUPE[groupe] : "—"}
+                                {lettre ?? "—"}
                               </span>
                             )}
                           </td>

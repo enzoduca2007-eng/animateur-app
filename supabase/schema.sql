@@ -129,6 +129,11 @@ create table public.affectations_jour (
   date date not null,
   animateur_id uuid not null references public.animateurs (id) on delete cascade,
   groupe text not null check (groupe in ('lutins', 'trolls')),
+  -- Sous-étiquette purement visuelle pour distinguer Trolls de Géants sur la
+  -- page Répartition (saisie L/T/G) : ne change rien ailleurs dans
+  -- l'application, qui continue de traiter les deux comme un seul groupe
+  -- réel "trolls" (staffing, effectifs, goûters, scoping coordinateur...).
+  sous_groupe text check (sous_groupe in ('trolls', 'geants')),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
   unique (date, animateur_id)
