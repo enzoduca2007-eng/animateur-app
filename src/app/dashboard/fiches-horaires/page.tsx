@@ -248,6 +248,24 @@ export default function FichesHorairesPage() {
     }
   }
 
+  async function supprimerFeuille(animateurId: string, date: string) {
+    setErreur(null);
+    setFeuilles((prev) =>
+      prev.filter((f) => !(f.date === date && f.animateur_id === animateurId))
+    );
+    const { error } = await supabase
+      .from("feuilles_temps")
+      .delete()
+      .eq("date", date)
+      .eq("animateur_id", animateurId);
+    if (error) {
+      setErreur(error.message);
+      const debut = semaineJours[0];
+      const fin = semaineJours[semaineJours.length - 1];
+      if (debut && fin) chargerFeuilles(debut, fin);
+    }
+  }
+
   function focusCellule(animateurId: string, date: string) {
     inputRefs.current[`${animateurId}|${date}`]?.focus();
   }
@@ -500,6 +518,16 @@ export default function FichesHorairesPage() {
                                     ✎
                                   </button>
                                 )}
+                                {peutModifier && lettre && (
+                                  <button
+                                    type="button"
+                                    onClick={() => supprimerFeuille(a.id, j)}
+                                    title="Supprimer ce pointage"
+                                    className="text-xs text-zinc-400 hover:text-red-600"
+                                  >
+                                    🗑
+                                  </button>
+                                )}
                               </div>
                             </td>
                           );
@@ -693,6 +721,22 @@ export default function FichesHorairesPage() {
                 majFeuille(celluleOuverte.animateurId, celluleOuverte.date, updates)
               }
             />
+            {feuilles.some(
+              (f) =>
+                f.date === celluleOuverte.date &&
+                f.animateur_id === celluleOuverte.animateurId
+            ) && (
+              <button
+                type="button"
+                onClick={() => {
+                  supprimerFeuille(celluleOuverte.animateurId, celluleOuverte.date);
+                  setCelluleOuverte(null);
+                }}
+                className="mt-3 text-sm font-medium text-red-600 hover:text-red-700"
+              >
+                🗑 Supprimer ce pointage
+              </button>
+            )}
           </div>
         </div>
       )}
