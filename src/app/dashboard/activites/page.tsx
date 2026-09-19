@@ -67,6 +67,17 @@ export default function ActivitesPage() {
   } | null>(null);
   const [modalLibelle, setModalLibelle] = useState("");
   const [modalAnimateurs, setModalAnimateurs] = useState<string[]>([]);
+  const [monAnimateur, setMonAnimateur] = useState<Animateur | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from("animateurs")
+      .select("*")
+      .eq("profile_id", profile.id)
+      .maybeSingle()
+      .then(({ data }) => setMonAnimateur((data as Animateur) ?? null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (loadingVacances || periodes.length === 0 || periodeIndex !== null) return;
@@ -383,8 +394,16 @@ export default function ActivitesPage() {
                                     className="align-top border border-zinc-300 p-2 text-xs print:border-black"
                                   >
                                     <ul className="flex flex-col gap-1.5">
-                                      {activitesDe(groupe, j, m.cle).map((act) => (
-                                        <li key={act.id} className="group">
+                                      {activitesDe(groupe, j, m.cle).map((act) => {
+                                        const cAssigne =
+                                          !!monAnimateur && act.animateur_ids.includes(monAnimateur.id);
+                                        return (
+                                        <li
+                                          key={act.id}
+                                          className={`group rounded px-1 -mx-1 ${
+                                            cAssigne ? "bg-emerald-200 print:bg-emerald-200" : ""
+                                          }`}
+                                        >
                                           <div className="flex items-start justify-between gap-1">
                                             <span>– {act.libelle}</span>
                                             {peutGererGroupe(groupe) && (
@@ -412,7 +431,8 @@ export default function ActivitesPage() {
                                             </p>
                                           )}
                                         </li>
-                                      ))}
+                                        );
+                                      })}
                                     </ul>
                                     {peutGererGroupe(groupe) && (
                                       <button
