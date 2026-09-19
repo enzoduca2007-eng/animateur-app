@@ -9,7 +9,6 @@ import { formatHeures, heuresJour, pauseMinutes, toMinutes } from "@/lib/creneau
 import { PointageJour } from "@/components/pointage-jour";
 import {
   canManage,
-  GROUPE_LABELS,
   type AffectationCreneau,
   type AffectationJour,
   type Animateur,
@@ -567,7 +566,6 @@ export default function FichesHorairesPage() {
           {lignes.length > 0 && (
             <div className="hidden print:block">
               {lignes.map((a) => {
-                const { ecart, presence, pause, complet } = totauxSemaine(a.id);
                 return (
                   <div key={a.id} className="print-page">
                     <h2 className="text-lg font-bold text-zinc-900">Fiche horaire</h2>
@@ -579,69 +577,64 @@ export default function FichesHorairesPage() {
                     <table className="mt-4 w-full border-collapse text-left text-sm">
                       <thead>
                         <tr>
-                          <th className="border border-black px-2 py-1.5 font-semibold capitalize">
-                            Jour
-                          </th>
-                          <th className="border border-black px-2 py-1.5 font-semibold">Groupe</th>
-                          <th className="border border-black px-2 py-1.5 font-semibold">
+                          <th
+                            rowSpan={2}
+                            className="border border-black bg-zinc-700 px-2 py-1.5 text-white"
+                          />
+                          <th
+                            colSpan={2}
+                            className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-semibold text-white"
+                          >
                             Prévisionnel
                           </th>
-                          <th className="border border-black px-2 py-1.5 font-semibold">Pause</th>
-                          <th className="border border-black px-2 py-1.5 font-semibold">
+                          <th
+                            colSpan={2}
+                            className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-semibold text-white"
+                          >
+                            Réel
+                          </th>
+                        </tr>
+                        <tr>
+                          <th className="border border-black bg-zinc-700 px-2 py-1 text-center font-medium text-white">
                             Présence
                           </th>
-                          <th className="border border-black px-2 py-1.5 font-semibold">Réel</th>
-                          <th className="border border-black px-2 py-1.5 font-semibold">Heures</th>
+                          <th className="border border-black bg-zinc-700 px-2 py-1 text-center font-medium text-white">
+                            Pause
+                          </th>
+                          <th className="border border-black bg-zinc-700 px-2 py-1 text-center font-medium text-white">
+                            Présence
+                          </th>
+                          <th className="border border-black bg-zinc-700 px-2 py-1 text-center font-medium text-white">
+                            Pause
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
                         {semaineJours.map((j) => {
                           const assignes = assignesDe(a.id, j);
-                          const groupe = affectationsJour.find(
-                            (aff) => aff.date === j && aff.animateur_id === a.id
-                          )?.groupe;
                           const feuille = feuilles.find(
                             (f) => f.date === j && f.animateur_id === a.id
                           );
-                          if (!aUneAffectation(a.id, j)) {
-                            return (
-                              <tr key={j}>
-                                <td className="border border-black bg-gray-100 px-2 py-1.5 capitalize">
-                                  {formatJourCourt(j)}
-                                </td>
-                                <td className="border border-black bg-gray-100 px-2 py-1.5" colSpan={5} />
-                              </tr>
-                            );
-                          }
-                          const heuresJourReel = presenceReelleJour(feuille, assignes);
+                          const aAffectation = aUneAffectation(a.id, j);
+                          const reelPresence = !feuille
+                            ? ""
+                            : !feuille.present
+                              ? `Absent${feuille.motif_absence ? ` (${feuille.motif_absence})` : ""}`
+                              : `${feuille.heure_arrivee_reelle?.slice(0, 5) ?? "—"} → ${feuille.heure_depart_reelle?.slice(0, 5) ?? "—"}`;
                           return (
                             <tr key={j}>
-                              <td className="border border-black px-2 py-1.5 capitalize">
+                              <td className="border border-black bg-zinc-200 px-2 py-2 capitalize">
                                 {formatJourCourt(j)}
                               </td>
-                              <td className="border border-black px-2 py-1.5">
-                                {groupe ? GROUPE_LABELS[groupe] : "—"}
+                              <td className="border border-black px-2 py-2">
+                                {aAffectation ? formatPlage(assignes) : ""}
                               </td>
-                              <td className="border border-black px-2 py-1.5">
-                                {formatPlage(assignes)}
+                              <td className="border border-black px-2 py-2">
+                                {aAffectation ? formatPauses(assignes) : ""}
                               </td>
-                              <td className="border border-black px-2 py-1.5">
-                                {formatPauses(assignes)}
-                              </td>
-                              <td className="border border-black px-2 py-1.5">
-                                {!feuille
-                                  ? "—"
-                                  : feuille.present
-                                    ? "Présent"
-                                    : `Absent${feuille.motif_absence ? ` (${feuille.motif_absence})` : ""}`}
-                              </td>
-                              <td className="border border-black px-2 py-1.5">
-                                {feuille?.present
-                                  ? `${feuille.heure_arrivee_reelle?.slice(0, 5) ?? "—"} → ${feuille.heure_depart_reelle?.slice(0, 5) ?? "—"}`
-                                  : "—"}
-                              </td>
-                              <td className="border border-black px-2 py-1.5">
-                                {heuresJourReel !== null ? formatHeures(heuresJourReel) : "—"}
+                              <td className="border border-black px-2 py-2">{reelPresence}</td>
+                              <td className="border border-black px-2 py-2">
+                                {aAffectation ? formatPauses(assignes) : ""}
                               </td>
                             </tr>
                           );
@@ -649,34 +642,48 @@ export default function FichesHorairesPage() {
                       </tbody>
                     </table>
 
-                    <div className="mt-3 flex gap-8 text-sm">
-                      <p className="font-semibold text-zinc-900">
-                        Total présence : {formatHeures(presence)}
-                        {!complet && " (à compléter)"}
-                      </p>
-                      <p className="text-zinc-700">Total pause : {formatHeures(pause)}</p>
-                      <p className="text-zinc-700">
-                        Écart vs prévisionnel : {complet ? (
-                          <>
-                            {ecart > 0 ? "+" : ""}
-                            {formatHeures(ecart)}
-                          </>
-                        ) : (
-                          "à compléter"
-                        )}
-                      </p>
+                    <div className="mt-8 grid grid-cols-2 gap-8">
+                      <div className="border border-black px-3 py-2">
+                        <p className="text-sm text-zinc-700">Signature de l&apos;employé</p>
+                        <div className="h-14" />
+                      </div>
+                      <div className="border border-black px-3 py-2">
+                        <p className="text-sm text-zinc-700">Signature de l&apos;employeur</p>
+                        <div className="h-14" />
+                      </div>
                     </div>
 
-                    <div className="mt-12 grid grid-cols-2 gap-8">
-                      <div>
-                        <p className="text-sm text-zinc-700">Signature de l&apos;animateur</p>
-                        <div className="mt-10 border-t border-black" />
+                    <table className="mt-8 w-full border-collapse text-left text-sm">
+                      <thead>
+                        <tr>
+                          <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-semibold text-white">
+                            Jour
+                          </th>
+                          <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-semibold text-white">
+                            Présence (signature)
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {semaineJours.map((j) => (
+                          <tr key={j}>
+                            <td className="border border-black bg-zinc-200 px-2 py-3 capitalize">
+                              {formatJourCourt(j)}
+                            </td>
+                            <td className="border border-black px-2 py-3" />
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    <div className="mt-8 grid grid-cols-2 gap-8">
+                      <div className="border border-black px-3 py-2">
+                        <p className="text-sm text-zinc-700">Signature de l&apos;employé</p>
+                        <div className="h-14" />
                       </div>
-                      <div>
-                        <p className="text-sm text-zinc-700">
-                          Signature du directeur / de la coordination
-                        </p>
-                        <div className="mt-10 border-t border-black" />
+                      <div className="border border-black px-3 py-2">
+                        <p className="text-sm text-zinc-700">Signature de l&apos;employeur</p>
+                        <div className="h-14" />
                       </div>
                     </div>
                   </div>
