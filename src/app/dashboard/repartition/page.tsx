@@ -527,31 +527,53 @@ export default function RepartitionPage() {
                 Effectifs enfants Trolls / Géants (feuille imprimable — l&apos;effectif
                 Lutins se saisit sur Plannings)
               </p>
-              {(["trolls", "geants"] as const).map((sg) => (
-                <table key={sg} className="text-left text-sm">
-                  <tbody>
-                    <tr className="border-b border-zinc-100 last:border-0">
+              <table className="text-left text-sm">
+                <thead className="border-b border-zinc-200 bg-zinc-50 text-zinc-500">
+                  <tr>
+                    <th className="sticky left-0 z-10 bg-zinc-50 px-4 py-3 font-medium">
+                      Groupe
+                    </th>
+                    {joursOuvrables.map((j) => (
+                      <th
+                        key={j}
+                        className={`px-2 py-3 text-center font-medium capitalize ${
+                          estWeekend(j) ? "bg-zinc-100 text-zinc-400" : ""
+                        }`}
+                      >
+                        {formatJourCourt(j)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(["trolls", "geants"] as const).map((sg) => (
+                    <tr key={sg} className="border-b border-zinc-100 last:border-0">
                       <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-zinc-900">
                         {sg === "trolls" ? "Trolls" : "Géants"}
                       </td>
-                      {joursOuvrables.map((j) => (
-                        <td key={j} className="px-2 py-2 text-center">
-                          <input
-                            type="number"
-                            min={0}
-                            defaultValue={effectifSousGroupeDe(sg, j) ?? ""}
-                            onBlur={(e) => {
-                              const v = Number(e.target.value);
-                              if (!Number.isNaN(v)) majEffectifSousGroupe(sg, j, v);
-                            }}
-                            className="w-14 rounded-md border border-zinc-300 px-1 py-1 text-center text-xs"
-                          />
-                        </td>
-                      ))}
+                      {joursOuvrables.map((j) => {
+                        if (estWeekend(j)) {
+                          return <td key={j} className="bg-zinc-100 px-2 py-2 text-center" />;
+                        }
+                        return (
+                          <td key={j} className="px-2 py-2 text-center">
+                            <input
+                              type="number"
+                              min={0}
+                              defaultValue={effectifSousGroupeDe(sg, j) ?? ""}
+                              onBlur={(e) => {
+                                const v = Number(e.target.value);
+                                if (!Number.isNaN(v)) majEffectifSousGroupe(sg, j, v);
+                              }}
+                              className="w-14 rounded-md border border-zinc-300 px-1 py-1 text-center text-xs"
+                            />
+                          </td>
+                        );
+                      })}
                     </tr>
-                  </tbody>
-                </table>
-              ))}
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
 
