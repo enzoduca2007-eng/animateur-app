@@ -104,6 +104,7 @@ create table public.animateurs (
   stagiaire_confiance boolean not null default false,
   date_naissance date,
   notes text,
+  formation text,
   profile_id uuid unique references public.profiles (id) on delete set null,
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
@@ -616,26 +617,3 @@ create policy "presence_jour: directeur write" on public.presence_jour
   using (public.current_role_name() = 'directeur')
   with check (public.current_role_name() = 'directeur');
 
--- Formation suivie par un animateur sur une période de vacances donnée
--- (clé = date de début de la période), affichée en colonne sur la
--- feuille de présence imprimable.
-create table public.formations_periode (
-  id uuid primary key default gen_random_uuid(),
-  animateur_id uuid not null references public.animateurs (id) on delete cascade,
-  periode_debut date not null,
-  formation text,
-  created_by uuid references public.profiles (id),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (animateur_id, periode_debut)
-);
-
-alter table public.formations_periode enable row level security;
-
-create policy "formations_periode: readable by any signed-in user" on public.formations_periode
-  for select using (auth.role() = 'authenticated');
-
-create policy "formations_periode: directeur write" on public.formations_periode
-  for all
-  using (public.current_role_name() = 'directeur')
-  with check (public.current_role_name() = 'directeur');

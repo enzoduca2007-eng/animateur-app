@@ -36,6 +36,7 @@ export interface Animateur {
   stagiaire_confiance: boolean;
   date_naissance: string | null;
   notes: string | null;
+  formation: string | null;
   profile_id: string | null;
   created_by: string | null;
   created_at: string;
@@ -114,16 +115,6 @@ export interface PresenceJour {
   present: boolean;
   created_by: string | null;
   created_at: string;
-}
-
-export interface FormationPeriode {
-  id: string;
-  animateur_id: string;
-  periode_debut: string;
-  formation: string | null;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
 }
 
 export interface PalierEncadrement {

@@ -4,13 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
-import { estWeekend, joursDe, periodeEnCours } from "@/lib/vacances";
+import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
 import {
   GROUPE_LABELS,
   type AffectationJour,
   type Animateur,
   type EffectifJour,
-  type FormationPeriode,
   type Groupe,
   type PresenceJour,
   type Profile,
@@ -59,7 +58,6 @@ export default function RepartitionPage() {
   const [affectations, setAffectations] = useState<AffectationJour[]>([]);
   const [profilesEquipe, setProfilesEquipe] = useState<Profile[]>([]);
   const [presences, setPresences] = useState<PresenceJour[]>([]);
-  const [formations, setFormations] = useState<FormationPeriode[]>([]);
   const [effectifs, setEffectifs] = useState<EffectifJour[]>([]);
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,17 +102,31 @@ export default function RepartitionPage() {
     [jours]
   );
 
+  // Bandeau de fond alterné par semaine (bleu/beige) sur la feuille
+  // imprimable, comme le document papier — et bordure épaisse au début
+  // de chaque nouvelle semaine.
+  const BANDE_PAR_SEMAINE = ["bg-sky-50", "bg-amber-50"];
+  const semaineIndexParJour = useMemo(() => {
+    const map = new Map<string, number>();
+    semainesDe(joursOuvrables).forEach((semaine, i) => {
+      for (const j of semaine) map.set(j, i);
+    });
+    return map;
+  }, [joursOuvrables]);
+  const premierJourDeSemaine = useMemo(
+    () => new Set(semainesDe(joursOuvrables).map((s) => s[0])),
+    [joursOuvrables]
+  );
+
   async function loadAffectations(debut: string, fin: string) {
     setLoading(true);
-    const [{ data: aj }, { data: pj }, { data: fp }, { data: ej }] = await Promise.all([
+    const [{ data: aj }, { data: pj }, { data: ej }] = await Promise.all([
       supabase.from("affectations_jour").select("*").gte("date", debut).lte("date", fin),
       supabase.from("presence_jour").select("*").gte("date", debut).lte("date", fin),
-      supabase.from("formations_periode").select("*").eq("periode_debut", debut),
       supabase.from("effectifs_jour").select("*").gte("date", debut).lte("date", fin),
     ]);
     setAffectations((aj as AffectationJour[]) ?? []);
     setPresences((pj as PresenceJour[]) ?? []);
-    setFormations((fp as FormationPeriode[]) ?? []);
     setEffectifs((ej as EffectifJour[]) ?? []);
     setLoading(false);
   }
@@ -250,29 +262,17 @@ export default function RepartitionPage() {
   }
 
   function formationDe(animateurId: string) {
-    return formations.find((f) => f.animateur_id === animateurId)?.formation ?? "";
+    return animateurs.find((a) => a.id === animateurId)?.formation ?? "";
   }
 
   async function majFormation(animateurId: string, valeur: string) {
-    if (!periode) return;
-    setFormations((prev) => [
-      ...prev.filter((f) => f.animateur_id !== animateurId),
-      {
-        id: `optimistic-${animateurId}`,
-        animateur_id: animateurId,
-        periode_debut: periode.debut,
-        formation: valeur || null,
-        created_by: profile.id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-    ]);
+    setAnimateurs((prev) =>
+      prev.map((a) => (a.id === animateurId ? { ...a, formation: valeur || null } : a))
+    );
     const { error } = await supabase
-      .from("formations_periode")
-      .upsert(
-        { animateur_id: animateurId, periode_debut: periode.debut, formation: valeur || null, created_by: profile.id },
-        { onConflict: "animateur_id,periode_debut" }
-      );
+      .from("animateurs")
+      .update({ formation: valeur || null })
+      .eq("id", animateurId);
     if (error) setErreur(error.message);
   }
 
@@ -291,6 +291,15 @@ export default function RepartitionPage() {
 
   function effectifDe(groupe: Groupe, date: string) {
     return effectifs.find((e) => e.groupe === groupe && e.date === date)?.effectif ?? null;
+  }
+
+  function bandeSemaine(date: string) {
+    const i = semaineIndexParJour.get(date) ?? 0;
+    return BANDE_PAR_SEMAINE[i % BANDE_PAR_SEMAINE.length];
+  }
+
+  function bordureSemaine(date: string, premiereColonne: boolean) {
+    return !premiereColonne && premierJourDeSemaine.has(date) ? "border-l-4 border-l-amber-700" : "";
   }
 
   const animateursParProfileId = useMemo(() => {
@@ -550,7 +559,7 @@ export default function RepartitionPage() {
                   {joursOuvrables.map((j) => (
                     <th
                       key={j}
-                      className="border border-black px-1 py-1 text-center font-semibold capitalize"
+                      className={`border border-black px-1 py-1 text-center font-semibold capitalize ${bandeSemaine(j)} ${bordureSemaine(j, false)}`}
                     >
                       {formatJourCourt(j)}
                     </th>
@@ -563,7 +572,7 @@ export default function RepartitionPage() {
                   <tr>
                     <td
                       colSpan={2 + joursOuvrables.length + 1}
-                      className="border border-black bg-zinc-200 px-1 py-1 font-bold"
+                      className="border border-black bg-zinc-300 px-1 py-1 font-bold"
                     >
                       Direction
                     </td>
@@ -572,18 +581,28 @@ export default function RepartitionPage() {
                 {profilesEquipe.map((p) => {
                   const a = animateursParProfileId.get(p.id);
                   if (!a) return null;
+                  const couleur =
+                    p.role === "directeur" ? "bg-orange-200" : !a.est_stagiaire ? "bg-yellow-200" : "";
                   return (
                     <tr key={p.id}>
-                      <td className="border border-black px-1 py-1 font-semibold uppercase">
+                      <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
                         {a.nom}
                       </td>
-                      <td className="border border-black px-1 py-1">{a.prenom}</td>
-                      {joursOuvrables.map((j) => (
-                        <td key={j} className="border border-black px-1 py-1 text-center">
-                          {presentCeJour(a.id, j) === true ? "X" : ""}
-                        </td>
-                      ))}
-                      <td className="border border-black px-1 py-1">{formationDe(a.id)}</td>
+                      <td className={`border border-black px-1 py-1 ${couleur}`}>{a.prenom}</td>
+                      {joursOuvrables.map((j) => {
+                        const present = presentCeJour(a.id, j) === true;
+                        return (
+                          <td
+                            key={j}
+                            className={`border border-black px-1 py-1 text-center ${
+                              present ? couleur || bandeSemaine(j) : bandeSemaine(j)
+                            } ${bordureSemaine(j, false)}`}
+                          >
+                            {present ? "X" : ""}
+                          </td>
+                        );
+                      })}
+                      <td className={`border border-black px-1 py-1 ${couleur}`}>{formationDe(a.id)}</td>
                     </tr>
                   );
                 })}
@@ -596,7 +615,7 @@ export default function RepartitionPage() {
                       <tr key={`titre-${lettre}`}>
                         <td
                           colSpan={2 + joursOuvrables.length + 1}
-                          className="border border-black bg-zinc-200 px-1 py-1 font-bold"
+                          className="border border-black bg-zinc-300 px-1 py-1 font-bold"
                         >
                           {lettre === "L"
                             ? GROUPE_LABELS.lutins
@@ -605,23 +624,35 @@ export default function RepartitionPage() {
                               : "Géants"}
                         </td>
                       </tr>
-                      {liste.map((a) => (
-                        <tr key={`${lettre}-${a.id}`}>
-                          <td className="border border-black px-1 py-1 font-semibold uppercase">
-                            {a.nom}
-                          </td>
-                          <td className="border border-black px-1 py-1">{a.prenom}</td>
-                          {joursOuvrables.map((j) => (
-                            <td key={j} className="border border-black px-1 py-1 text-center">
-                              {lettreDe(parCle.get(`${j}|${a.id}`)) === lettre &&
-                              presentCeJour(a.id, j) === true
-                                ? "X"
-                                : ""}
+                      {liste.map((a) => {
+                        const couleur = !a.est_stagiaire ? "bg-yellow-200" : "";
+                        return (
+                          <tr key={`${lettre}-${a.id}`}>
+                            <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
+                              {a.nom}
                             </td>
-                          ))}
-                          <td className="border border-black px-1 py-1">{formationDe(a.id)}</td>
-                        </tr>
-                      ))}
+                            <td className={`border border-black px-1 py-1 ${couleur}`}>{a.prenom}</td>
+                            {joursOuvrables.map((j) => {
+                              const present =
+                                lettreDe(parCle.get(`${j}|${a.id}`)) === lettre &&
+                                presentCeJour(a.id, j) === true;
+                              return (
+                                <td
+                                  key={j}
+                                  className={`border border-black px-1 py-1 text-center ${
+                                    present ? couleur || bandeSemaine(j) : bandeSemaine(j)
+                                  } ${bordureSemaine(j, false)}`}
+                                >
+                                  {present ? "X" : ""}
+                                </td>
+                              );
+                            })}
+                            <td className={`border border-black px-1 py-1 ${couleur}`}>
+                              {formationDe(a.id)}
+                            </td>
+                          </tr>
+                        );
+                      })}
                       {lettre !== "G" && (
                         <tr key={`effectif-${lettre}`}>
                           <td
@@ -633,7 +664,7 @@ export default function RepartitionPage() {
                           {joursOuvrables.map((j) => (
                             <td
                               key={j}
-                              className="border border-black bg-teal-100 px-1 py-1 text-center font-semibold"
+                              className={`border border-black bg-teal-100 px-1 py-1 text-center font-semibold ${bordureSemaine(j, false)}`}
                             >
                               {effectifDe(lettre === "L" ? "lutins" : "trolls", j) ?? ""}
                             </td>
