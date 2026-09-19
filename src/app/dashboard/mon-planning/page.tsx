@@ -294,6 +294,16 @@ export default function MonPlanningPage() {
       .sort((a, b) => a.ordre - b.ordre);
   }
 
+  async function majMateriel(activiteId: string, valeur: string) {
+    setActivites((prev) =>
+      prev.map((a) => (a.id === activiteId ? { ...a, materiel: valeur || null } : a))
+    );
+    await supabase
+      .from("planning_activites")
+      .update({ materiel: valeur || null })
+      .eq("id", activiteId);
+  }
+
   if (moi === undefined) {
     return <p className="text-sm text-zinc-400">Chargement...</p>;
   }
@@ -494,10 +504,22 @@ export default function MonPlanningPage() {
                                               → {nomsDe(act.animateur_ids).join(", ")}
                                             </p>
                                           )}
-                                          {act.materiel && (
-                                            <p className="text-[11px] text-zinc-400">
-                                              🧰 {act.materiel}
-                                            </p>
+                                          {cAssigne ? (
+                                            <div className="mt-1 flex items-center gap-1">
+                                              <span className="text-[11px] text-zinc-400">🧰</span>
+                                              <input
+                                                defaultValue={act.materiel ?? ""}
+                                                placeholder="Matériel à prévoir..."
+                                                onBlur={(e) => majMateriel(act.id, e.target.value)}
+                                                className="w-full rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-[11px] text-zinc-700"
+                                              />
+                                            </div>
+                                          ) : (
+                                            act.materiel && (
+                                              <p className="text-[11px] text-zinc-400">
+                                                🧰 {act.materiel}
+                                              </p>
+                                            )
                                           )}
                                         </li>
                                       );

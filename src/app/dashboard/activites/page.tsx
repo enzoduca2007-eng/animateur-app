@@ -372,15 +372,23 @@ export default function ActivitesPage() {
                           {GROUPE_LABELS[groupe]} · Semaine {semaineIdx + 1}
                         </p>
                         <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                          <div className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-zinc-400 bg-white print:border-black">
-                            <input
-                              type="text"
-                              value={themeDe(groupe, semaineDebut)}
-                              readOnly={!peutGererGroupe(groupe)}
-                              onChange={(e) => majTheme(groupe, semaineDebut, e.target.value)}
-                              placeholder={peutGererGroupe(groupe) ? "Thème" : ""}
-                              className="w-20 border-0 bg-transparent text-center text-xs font-medium leading-tight text-zinc-700 focus:outline-none"
-                            />
+                          <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 border-zinc-400 bg-white p-2 print:border-black">
+                            {peutGererGroupe(groupe) ? (
+                              <div
+                                contentEditable
+                                suppressContentEditableWarning
+                                onBlur={(e) =>
+                                  majTheme(groupe, semaineDebut, e.currentTarget.textContent ?? "")
+                                }
+                                data-placeholder="Thème"
+                                dangerouslySetInnerHTML={{ __html: themeDe(groupe, semaineDebut) }}
+                                className="max-h-full w-full overflow-hidden text-center text-[10px] font-medium leading-tight text-zinc-700 outline-none empty:before:text-zinc-300 empty:before:content-[attr(data-placeholder)]"
+                              />
+                            ) : (
+                              <div className="max-h-full w-full overflow-hidden text-center text-[10px] font-medium leading-tight text-zinc-700">
+                                {themeDe(groupe, semaineDebut)}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
