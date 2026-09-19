@@ -54,15 +54,27 @@ function GrilleCriteresPrint({
         </tr>
       </thead>
       <tbody>
-        {CRITERES_STAGIAIRE.map((c) => (
-          <tr key={c.cle}>
-            <td className="border border-black px-2 py-1.5">{c.label}</td>
-            {NIVEAUX.map((niveau) => (
-              <td key={niveau} className="border border-black px-2 py-1.5 text-center">
-                {criteres?.[c.cle] === niveau ? "X" : ""}
+        {CRITERES_STAGIAIRE.map((cat) => (
+          <>
+            <tr key={cat.categorie}>
+              <td
+                colSpan={1 + NIVEAUX.length}
+                className="border border-black bg-zinc-200 px-2 py-1 font-semibold"
+              >
+                {cat.categorie}
               </td>
+            </tr>
+            {cat.criteres.map((c) => (
+              <tr key={c.cle}>
+                <td className="border border-black px-2 py-1.5">{c.label}</td>
+                {NIVEAUX.map((niveau) => (
+                  <td key={niveau} className="border border-black px-2 py-1.5 text-center">
+                    {criteres?.[c.cle] === niveau ? "X" : ""}
+                  </td>
+                ))}
+              </tr>
             ))}
-          </tr>
+          </>
         ))}
       </tbody>
     </table>
@@ -248,35 +260,44 @@ export default function StagiairesPage() {
 
                 {estOuvert && (
                   <div className="flex flex-col gap-5 border-t border-zinc-100 px-4 py-4">
-                    <div className="flex flex-col divide-y divide-zinc-100">
-                      {CRITERES_STAGIAIRE.map((c) => {
-                        const niveauActuel = evaluation?.criteres?.[c.cle];
-                        return (
-                          <div
-                            key={c.cle}
-                            className="flex items-center justify-between gap-3 py-2"
-                          >
-                            <span className="text-sm text-zinc-700">{c.label}</span>
-                            <div className="flex shrink-0 gap-1">
-                              {NIVEAUX.map((niveau) => (
-                                <button
-                                  key={niveau}
-                                  type="button"
-                                  title={NIVEAU_CRITERE_LABELS[niveau]}
-                                  onClick={() => majCritere(s.id, c.cle, niveau)}
-                                  className={`h-7 w-11 rounded-md border text-xs font-semibold ${
-                                    niveauActuel === niveau
-                                      ? COULEUR_NIVEAU[niveau]
-                                      : "border-zinc-300 bg-white text-zinc-400 hover:bg-zinc-50"
-                                  }`}
+                    <div className="flex flex-col gap-4">
+                      {CRITERES_STAGIAIRE.map((cat) => (
+                        <div key={cat.categorie}>
+                          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                            {cat.categorie}
+                          </p>
+                          <div className="flex flex-col divide-y divide-zinc-100">
+                            {cat.criteres.map((c) => {
+                              const niveauActuel = evaluation?.criteres?.[c.cle];
+                              return (
+                                <div
+                                  key={c.cle}
+                                  className="flex items-center justify-between gap-3 py-2"
                                 >
-                                  {NIVEAU_CRITERE_ABBREV[niveau]}
-                                </button>
-                              ))}
-                            </div>
+                                  <span className="text-sm text-zinc-700">{c.label}</span>
+                                  <div className="flex shrink-0 gap-1">
+                                    {NIVEAUX.map((niveau) => (
+                                      <button
+                                        key={niveau}
+                                        type="button"
+                                        title={NIVEAU_CRITERE_LABELS[niveau]}
+                                        onClick={() => majCritere(s.id, c.cle, niveau)}
+                                        className={`h-7 w-11 rounded-md border text-xs font-semibold ${
+                                          niveauActuel === niveau
+                                            ? COULEUR_NIVEAU[niveau]
+                                            : "border-zinc-300 bg-white text-zinc-400 hover:bg-zinc-50"
+                                        }`}
+                                      >
+                                        {NIVEAU_CRITERE_ABBREV[niveau]}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
+                        </div>
+                      ))}
                     </div>
 
                     <div>
