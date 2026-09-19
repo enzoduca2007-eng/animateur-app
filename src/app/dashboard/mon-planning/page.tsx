@@ -564,7 +564,7 @@ export default function MonPlanningPage() {
                             const acts = activitesDuJour(j, groupe, m.cle);
                             return (
                               <div key={m.cle}>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                                <p className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
                                   {m.label}
                                 </p>
                                 {acts.length === 0 ? (
@@ -588,7 +588,9 @@ export default function MonPlanningPage() {
                                                 {TYPE_ACTIVITE_EMOJIS[act.type_activite]}
                                               </span>
                                             )}
-                                            <span className={cAssigne ? "font-medium text-zinc-900" : ""}>
+                                            <span
+                                              className={`font-bold ${cAssigne ? "text-zinc-900" : ""}`}
+                                            >
                                               {act.libelle}
                                             </span>
                                             {act.duree && (
