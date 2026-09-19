@@ -31,6 +31,33 @@ const COULEUR_NIVEAU: Record<NiveauCritere, string> = {
 
 const NIVEAUX: NiveauCritere[] = ["a_travailler", "en_cours", "acquis", "depasse"];
 
+// Niveau de concordance auto-évaluation / évaluation : se déduit
+// automatiquement (pas de saisie) du nombre de critères où le
+// stagiaire et la direction ont choisi le même niveau, parmi les
+// critères que les deux ont notés — plus il y a d'accord, plus le
+// stagiaire se connaît bien lui-même.
+function concordance(
+  criteresDirection: Partial<Record<string, NiveauCritere>> | null | undefined,
+  criteresStagiaire: Partial<Record<string, NiveauCritere>> | null | undefined
+): { matches: number; total: number; niveau: NiveauCritere | null } {
+  let matches = 0;
+  let total = 0;
+  for (const cat of CRITERES_STAGIAIRE) {
+    for (const c of cat.criteres) {
+      const dir = criteresDirection?.[c.cle];
+      const stag = criteresStagiaire?.[c.cle];
+      if (!dir || !stag) continue;
+      total += 1;
+      if (dir === stag) matches += 1;
+    }
+  }
+  if (total === 0) return { matches, total, niveau: null };
+  const ratio = matches / total;
+  const niveau: NiveauCritere =
+    ratio >= 0.9 ? "depasse" : ratio >= 0.6 ? "acquis" : ratio >= 0.34 ? "en_cours" : "a_travailler";
+  return { matches, total, niveau };
+}
+
 // Marque d'un critère : X orange (direction) et/ou X bleu (stagiaire).
 // Quand les deux ont choisi le même niveau, la croix est entourée d'un
 // anneau bleu — les deux couleurs indiquent l'accord en un coup d'œil,
@@ -330,6 +357,7 @@ export default function StagiairesPage() {
           {stagiaires.map((s) => {
             const evaluation = evaluationDe(s.id);
             const autoEvaluation = autoEvaluationDe(s.id);
+            const concordanceStagiaire = concordance(evaluation?.criteres, autoEvaluation?.criteres);
             const estOuvert = ouvert === s.id;
             return (
               <div
@@ -359,6 +387,14 @@ export default function StagiairesPage() {
                     {autoEvaluation && Object.keys(autoEvaluation.criteres).length > 0 && (
                       <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-600">
                         Auto-éval reçue
+                      </span>
+                    )}
+                    {concordanceStagiaire.niveau && (
+                      <span
+                        title={`Concordance : ${concordanceStagiaire.matches}/${concordanceStagiaire.total} critères en commun avec le même niveau`}
+                        className={`rounded-full border px-2 py-0.5 text-xs font-medium ${COULEUR_NIVEAU[concordanceStagiaire.niveau]}`}
+                      >
+                        Concordance {NIVEAU_CRITERE_ABBREV[concordanceStagiaire.niveau]}
                       </span>
                     )}
                   </button>
@@ -497,6 +533,7 @@ export default function StagiairesPage() {
             .map((s) => {
               const evaluation = evaluationDe(s.id);
               const autoEvaluation = autoEvaluationDe(s.id);
+              const concordanceStagiaire = concordance(evaluation?.criteres, autoEvaluation?.criteres);
               return (
                 <div key={s.id} className="print-page">
                   <div className="flex items-baseline justify-between">
@@ -519,6 +556,13 @@ export default function StagiairesPage() {
                     <p className="col-span-2">
                       <span className="font-semibold">Avis final : </span>
                       {evaluation?.avis_final ? AVIS_FINAL_LABELS[evaluation.avis_final] : "—"}
+                      {concordanceStagiaire.niveau && (
+                        <span className="ml-4">
+                          <span className="font-semibold">Concordance auto-éval. / direction : </span>
+                          {NIVEAU_CRITERE_LABELS[concordanceStagiaire.niveau]} (
+                          {concordanceStagiaire.matches}/{concordanceStagiaire.total} critères)
+                        </span>
+                      )}
                     </p>
 
                     <div>
