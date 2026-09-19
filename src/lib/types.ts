@@ -157,19 +157,23 @@ export interface PresenceDirectionJour {
 }
 
 // Grille d'évaluation BAFA (stage pratique) — inspirée des domaines de
-// compétences officiels, simplifiée à 3 niveaux par critère.
-export type NiveauCritere = "a_travailler" | "en_cours" | "acquis";
+// compétences officiels, simplifiée à 4 niveaux par critère.
+export type NiveauCritere = "a_travailler" | "en_cours" | "acquis" | "depasse";
+
+export const NIVEAUX_CRITERE: NiveauCritere[] = ["a_travailler", "en_cours", "acquis", "depasse"];
 
 export const NIVEAU_CRITERE_LABELS: Record<NiveauCritere, string> = {
   a_travailler: "À travailler",
   en_cours: "En cours d'acquisition",
   acquis: "Acquis",
+  depasse: "Dépassé",
 };
 
 export const NIVEAU_CRITERE_ABBREV: Record<NiveauCritere, string> = {
   a_travailler: "AT",
   en_cours: "ECA",
   acquis: "A",
+  depasse: "D",
 };
 
 export interface CategorieCriteresStagiaire {

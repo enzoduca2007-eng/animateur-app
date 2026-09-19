@@ -25,59 +25,78 @@ const COULEUR_NIVEAU: Record<NiveauCritere, string> = {
   a_travailler: "border-red-300 bg-red-100 text-red-700",
   en_cours: "border-amber-300 bg-amber-100 text-amber-700",
   acquis: "border-emerald-300 bg-emerald-100 text-emerald-700",
+  depasse: "border-indigo-300 bg-indigo-100 text-indigo-700",
 };
 
-const NIVEAUX: NiveauCritere[] = ["a_travailler", "en_cours", "acquis"];
+const NIVEAUX: NiveauCritere[] = ["a_travailler", "en_cours", "acquis", "depasse"];
 
-// Grille imprimable à 3 colonnes (À travailler / En cours / Acquis), une
-// case cochée par critère — même mise en page que la saisie à l'écran.
-// criteres=null : grille entièrement vierge (auto-évaluation à remplir
-// à la main par le stagiaire).
+// Grille imprimable à 4 colonnes (AT/ECA/A/D, initiales pour rester
+// compact sur papier), une case cochée par critère. Pas de ligne entre
+// les critères d'une même catégorie — seulement les colonnes restent
+// séparées et un trait ferme chaque catégorie. criteres=null : grille
+// entièrement vierge (auto-évaluation à remplir à la main par le
+// stagiaire).
 function GrilleCriteresPrint({
   criteres,
 }: {
   criteres: Partial<Record<string, NiveauCritere>> | null;
 }) {
   return (
-    <table className="mt-2 w-full border-collapse text-left text-xs">
-      <thead>
-        <tr>
-          <th className="border border-black px-2 py-1.5 font-semibold">Critère</th>
-          {NIVEAUX.map((niveau) => (
-            <th
-              key={niveau}
-              className="border border-black px-2 py-1.5 text-center font-semibold"
-            >
-              {NIVEAU_CRITERE_LABELS[niveau]}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {CRITERES_STAGIAIRE.map((cat) => (
-          <>
-            <tr key={cat.categorie}>
-              <td
-                colSpan={1 + NIVEAUX.length}
-                className="border border-black bg-zinc-200 px-2 py-1 font-semibold"
+    <>
+      <p className="mt-2 text-[10px] text-zinc-500">
+        {NIVEAUX.map((n) => `${NIVEAU_CRITERE_ABBREV[n]} = ${NIVEAU_CRITERE_LABELS[n]}`).join(
+          " · "
+        )}
+      </p>
+      <table className="mt-1 w-full border-collapse text-left text-xs">
+        <thead>
+          <tr>
+            <th className="border border-black px-2 py-1.5 font-semibold">Critère</th>
+            {NIVEAUX.map((niveau) => (
+              <th
+                key={niveau}
+                className="border border-black px-2 py-1.5 text-center font-semibold"
               >
-                {cat.categorie}
-              </td>
-            </tr>
-            {cat.criteres.map((c) => (
-              <tr key={c.cle}>
-                <td className="border border-black px-2 py-1.5">{c.label}</td>
-                {NIVEAUX.map((niveau) => (
-                  <td key={niveau} className="border border-black px-2 py-1.5 text-center">
-                    {criteres?.[c.cle] === niveau ? "X" : ""}
-                  </td>
-                ))}
-              </tr>
+                {NIVEAU_CRITERE_ABBREV[niveau]}
+              </th>
             ))}
-          </>
-        ))}
-      </tbody>
-    </table>
+          </tr>
+        </thead>
+        <tbody>
+          {CRITERES_STAGIAIRE.map((cat) => (
+            <>
+              <tr key={cat.categorie}>
+                <td
+                  colSpan={1 + NIVEAUX.length}
+                  className="border border-black bg-zinc-200 px-2 py-1 font-semibold"
+                >
+                  {cat.categorie}
+                </td>
+              </tr>
+              {cat.criteres.map((c, idx) => {
+                const dernier = idx === cat.criteres.length - 1;
+                const bordureBas = dernier ? "border-b border-black" : "";
+                return (
+                  <tr key={c.cle}>
+                    <td className={`border-x border-black px-2 py-1.5 ${bordureBas}`}>
+                      {c.label}
+                    </td>
+                    {NIVEAUX.map((niveau) => (
+                      <td
+                        key={niveau}
+                        className={`border-x border-black px-2 py-1.5 text-center ${bordureBas}`}
+                      >
+                        {criteres?.[c.cle] === niveau ? "X" : ""}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </>
+          ))}
+        </tbody>
+      </table>
+    </>
   );
 }
 
