@@ -48,7 +48,7 @@ function MarqueNiveau({
   const stagMatch = stag === niveau;
   if (dirMatch && stagMatch) {
     return (
-      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border-2 border-sky-500 bg-orange-200 text-[10px] font-bold text-orange-800">
+      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-sky-500 bg-orange-200 text-[10px] font-bold leading-none text-orange-800">
         X
       </span>
     );
