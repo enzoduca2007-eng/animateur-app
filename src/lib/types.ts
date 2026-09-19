@@ -267,6 +267,25 @@ export interface AutoEvaluationStagiaire {
   updated_at: string;
 }
 
+// Fiche d'animation d'un grand jeu, remplie par le(s) animateur(s)
+// assigné(s) depuis Mon planning — durée et matériel restent sur
+// planning_activites (déjà existants), le reste vit ici.
+export interface FicheAnimation {
+  id: string;
+  planning_activite_id: string;
+  age: string | null;
+  effectif: string | null;
+  lieu: string | null;
+  objectifs: string | null;
+  sensibilisation: string | null;
+  deroulement: string | null;
+  conclusion_rangement: string | null;
+  animateurs_requis: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PalierEncadrement {
   id: string;
   effectif_min: number;

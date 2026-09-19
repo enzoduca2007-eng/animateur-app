@@ -18,6 +18,7 @@ import {
   type Animateur,
   type Creneau,
   type FeuilleTemps,
+  type FicheAnimation,
   type Groupe,
   type JourFermeture,
   type MomentActivite,
@@ -102,12 +103,14 @@ export default function MonPlanningPage() {
   const [affectations, setAffectations] = useState<AffectationCreneau[]>([]);
   const [affectationsJour, setAffectationsJour] = useState<AffectationJour[]>([]);
   const [activites, setActivites] = useState<PlanningActivite[]>([]);
+  const [fichesAnimation, setFichesAnimation] = useState<FicheAnimation[]>([]);
   const [joursFermeture, setJoursFermeture] = useState<JourFermeture[]>([]);
   const [feuilles, setFeuilles] = useState<FeuilleTemps[]>([]);
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [jourIndex, setJourIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [ficheOuverte, setFicheOuverte] = useState<string | null>(null);
 
   useEffect(() => {
     supabase
@@ -212,6 +215,89 @@ export default function MonPlanningPage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moi, periode]);
+
+  useEffect(() => {
+    const idsGrandJeu = activites
+      .filter((a) => a.type_activite === "grand_jeu")
+      .map((a) => a.id);
+    if (idsGrandJeu.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFichesAnimation([]);
+      return;
+    }
+    supabase
+      .from("fiches_animation")
+      .select("*")
+      .in("planning_activite_id", idsGrandJeu)
+      .then(({ data }) => {
+        setFichesAnimation((data as FicheAnimation[]) ?? []);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activites]);
+
+  function ficheDe(activiteId: string) {
+    return fichesAnimation.find((f) => f.planning_activite_id === activiteId);
+  }
+
+  async function majFicheAnimation(
+    activiteId: string,
+    updates: Partial<
+      Pick<
+        FicheAnimation,
+        | "age"
+        | "effectif"
+        | "lieu"
+        | "objectifs"
+        | "sensibilisation"
+        | "deroulement"
+        | "conclusion_rangement"
+        | "animateurs_requis"
+      >
+    >
+  ) {
+    const existante = ficheDe(activiteId);
+    const payload = {
+      age: existante?.age ?? null,
+      effectif: existante?.effectif ?? null,
+      lieu: existante?.lieu ?? null,
+      objectifs: existante?.objectifs ?? null,
+      sensibilisation: existante?.sensibilisation ?? null,
+      deroulement: existante?.deroulement ?? null,
+      conclusion_rangement: existante?.conclusion_rangement ?? null,
+      animateurs_requis: existante?.animateurs_requis ?? null,
+      ...updates,
+    };
+
+    setFichesAnimation((prev) => [
+      ...prev.filter((f) => f.planning_activite_id !== activiteId),
+      {
+        id: existante?.id ?? `optimistic-${activiteId}`,
+        planning_activite_id: activiteId,
+        created_by: profile.id,
+        created_at: existante?.created_at ?? new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        ...payload,
+      },
+    ]);
+
+    const { error } = await supabase
+      .from("fiches_animation")
+      .upsert(
+        { planning_activite_id: activiteId, created_by: profile.id, ...payload },
+        { onConflict: "planning_activite_id" }
+      );
+    if (error) setErreur(error.message);
+  }
+
+  async function majDuree(activiteId: string, valeur: string) {
+    setActivites((prev) =>
+      prev.map((a) => (a.id === activiteId ? { ...a, duree: valeur || null } : a))
+    );
+    await supabase
+      .from("planning_activites")
+      .update({ duree: valeur || null })
+      .eq("id", activiteId);
+  }
 
   async function majFeuille(
     date: string,
@@ -526,6 +612,15 @@ export default function MonPlanningPage() {
                                               </p>
                                             )
                                           )}
+                                          {cAssigne && act.type_activite === "grand_jeu" && (
+                                            <button
+                                              type="button"
+                                              onClick={() => setFicheOuverte(act.id)}
+                                              className="mt-1 flex items-center gap-1 text-[11px] font-medium text-emerald-700 underline decoration-dotted"
+                                            >
+                                              📋 Fiche d&apos;animation
+                                            </button>
+                                          )}
                                         </li>
                                       );
                                     })}
@@ -550,6 +645,160 @@ export default function MonPlanningPage() {
           )}
         </>
       )}
+
+      {ficheOuverte &&
+        (() => {
+          const act = activites.find((a) => a.id === ficheOuverte);
+          if (!act) return null;
+          const fiche = ficheDe(act.id);
+          return (
+            <div
+              className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 px-4 py-8"
+              onClick={() => setFicheOuverte(null)}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="flex max-h-full w-full max-w-lg flex-col overflow-y-auto rounded-xl bg-white p-5 shadow-lg"
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-zinc-900">
+                    📋 Fiche d&apos;animation — {act.libelle}
+                  </p>
+                  <button
+                    onClick={() => setFicheOuverte(null)}
+                    className="text-zinc-400 hover:text-zinc-700"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs text-zinc-500">Âge</label>
+                      <input
+                        defaultValue={fiche?.age ?? ""}
+                        placeholder="ex. 6-8 ans"
+                        onBlur={(e) => majFicheAnimation(act.id, { age: e.target.value || null })}
+                        className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-zinc-500">Effectif</label>
+                      <input
+                        defaultValue={fiche?.effectif ?? ""}
+                        placeholder="ex. 25"
+                        onBlur={(e) =>
+                          majFicheAnimation(act.id, { effectif: e.target.value || null })
+                        }
+                        className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-zinc-500">Lieu</label>
+                      <input
+                        defaultValue={fiche?.lieu ?? ""}
+                        placeholder="ex. Extérieur"
+                        onBlur={(e) => majFicheAnimation(act.id, { lieu: e.target.value || null })}
+                        className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-zinc-500">Durée</label>
+                      <input
+                        defaultValue={act.duree ?? ""}
+                        placeholder="ex. 1h30"
+                        onBlur={(e) => majDuree(act.id, e.target.value)}
+                        className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-zinc-500">Objectifs</label>
+                    <textarea
+                      defaultValue={fiche?.objectifs ?? ""}
+                      onBlur={(e) =>
+                        majFicheAnimation(act.id, { objectifs: e.target.value || null })
+                      }
+                      rows={2}
+                      className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-zinc-500">
+                      Matériel nécessaire / Coût
+                    </label>
+                    <textarea
+                      defaultValue={act.materiel ?? ""}
+                      onBlur={(e) => majMateriel(act.id, e.target.value)}
+                      rows={2}
+                      className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-zinc-500">
+                      Sensibilisation / Aménagement
+                    </label>
+                    <textarea
+                      defaultValue={fiche?.sensibilisation ?? ""}
+                      onBlur={(e) =>
+                        majFicheAnimation(act.id, { sensibilisation: e.target.value || null })
+                      }
+                      rows={2}
+                      className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-zinc-500">Déroulement</label>
+                    <textarea
+                      defaultValue={fiche?.deroulement ?? ""}
+                      onBlur={(e) =>
+                        majFicheAnimation(act.id, { deroulement: e.target.value || null })
+                      }
+                      rows={5}
+                      className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-zinc-500">
+                      Conclusion / Rangement
+                    </label>
+                    <textarea
+                      defaultValue={fiche?.conclusion_rangement ?? ""}
+                      onBlur={(e) =>
+                        majFicheAnimation(act.id, {
+                          conclusion_rangement: e.target.value || null,
+                        })
+                      }
+                      rows={2}
+                      className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-zinc-500">
+                      Animateurs requis
+                    </label>
+                    <textarea
+                      defaultValue={fiche?.animateurs_requis ?? ""}
+                      placeholder="ex. 1 animateur arbitre, 1 animateur par équipe"
+                      onBlur={(e) =>
+                        majFicheAnimation(act.id, { animateurs_requis: e.target.value || null })
+                      }
+                      rows={2}
+                      className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
     </div>
   );
 }
