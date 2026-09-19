@@ -107,6 +107,25 @@ export interface EffectifJour {
   created_at: string;
 }
 
+export interface PresenceJour {
+  id: string;
+  animateur_id: string;
+  date: string;
+  present: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface FormationPeriode {
+  id: string;
+  animateur_id: string;
+  periode_debut: string;
+  formation: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PalierEncadrement {
   id: string;
   effectif_min: number;
