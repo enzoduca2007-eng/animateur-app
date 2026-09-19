@@ -6,6 +6,7 @@ import { useProfile } from "@/lib/profile-context";
 import {
   AVIS_FINAL_LABELS,
   CRITERES_STAGIAIRE,
+  NIVEAU_CRITERE_ABBREV,
   NIVEAU_CRITERE_LABELS,
   canManage,
   type Animateur,
@@ -18,6 +19,12 @@ const COULEUR_AVIS: Record<AvisFinal, string> = {
   favorable: "bg-emerald-100 text-emerald-700",
   reserve: "bg-amber-100 text-amber-700",
   defavorable: "bg-red-100 text-red-700",
+};
+
+const COULEUR_NIVEAU: Record<NiveauCritere, string> = {
+  a_travailler: "border-red-300 bg-red-100 text-red-700",
+  en_cours: "border-amber-300 bg-amber-100 text-amber-700",
+  acquis: "border-emerald-300 bg-emerald-100 text-emerald-700",
 };
 
 const NIVEAUX: NiveauCritere[] = ["a_travailler", "en_cours", "acquis"];
@@ -72,6 +79,16 @@ export default function StagiairesPage() {
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [ouvert, setOuvert] = useState<string | null>(null);
+  // null = imprime toutes les fiches ; un id = imprime seulement celle de ce
+  // stagiaire (le bouton imprimante à côté de son nom).
+  const [impressionCiblee, setImpressionCiblee] = useState<string | null>(null);
+
+  function imprimer(animateurId: string | null) {
+    setImpressionCiblee(animateurId);
+    // Laisse React re-rendre la vue imprimable filtrée avant d'ouvrir le
+    // dialogue d'impression.
+    requestAnimationFrame(() => window.print());
+  }
 
   async function charger() {
     setLoading(true);
@@ -162,10 +179,10 @@ export default function StagiairesPage() {
         </div>
         {stagiaires.length > 0 && (
           <button
-            onClick={() => window.print()}
+            onClick={() => imprimer(null)}
             className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
           >
-            Imprimer les fiches
+            Imprimer toutes les fiches
           </button>
         )}
       </div>
@@ -193,11 +210,11 @@ export default function StagiairesPage() {
                 key={s.id}
                 className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm"
               >
-                <button
-                  onClick={() => setOuvert(estOuvert ? null : s.id)}
-                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-                >
-                  <span className="flex items-center gap-2">
+                <div className="flex w-full items-center justify-between gap-3 px-4 py-3">
+                  <button
+                    onClick={() => setOuvert(estOuvert ? null : s.id)}
+                    className="flex flex-1 items-center gap-2 text-left"
+                  >
                     <span className="font-medium text-zinc-900">
                       {s.prenom} {s.nom}
                     </span>
@@ -213,48 +230,53 @@ export default function StagiairesPage() {
                         {AVIS_FINAL_LABELS[evaluation.avis_final]}
                       </span>
                     )}
-                  </span>
-                  <span className="text-sm text-zinc-400">
-                    {estOuvert ? "Réduire ▲" : "Ouvrir la fiche ▼"}
-                  </span>
-                </button>
+                  </button>
+                  <button
+                    onClick={() => imprimer(s.id)}
+                    title="Imprimer seulement cette fiche"
+                    className="shrink-0 rounded-md p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                  >
+                    🖨️
+                  </button>
+                  <button
+                    onClick={() => setOuvert(estOuvert ? null : s.id)}
+                    className="shrink-0 text-sm text-zinc-400"
+                  >
+                    {estOuvert ? "Réduire ▲" : "Ouvrir ▼"}
+                  </button>
+                </div>
 
                 {estOuvert && (
                   <div className="flex flex-col gap-5 border-t border-zinc-100 px-4 py-4">
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[640px] text-left text-sm">
-                        <thead className="text-xs uppercase tracking-wide text-zinc-400">
-                          <tr>
-                            <th className="pb-2 pr-3 font-medium">Critère</th>
-                            {(["a_travailler", "en_cours", "acquis"] as NiveauCritere[]).map(
-                              (niveau) => (
-                                <th key={niveau} className="pb-2 px-2 text-center font-medium">
-                                  {NIVEAU_CRITERE_LABELS[niveau]}
-                                </th>
-                              )
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {CRITERES_STAGIAIRE.map((c) => (
-                            <tr key={c.cle} className="border-t border-zinc-100">
-                              <td className="py-2 pr-3 text-zinc-700">{c.label}</td>
-                              {(["a_travailler", "en_cours", "acquis"] as NiveauCritere[]).map(
-                                (niveau) => (
-                                  <td key={niveau} className="py-2 px-2 text-center">
-                                    <input
-                                      type="radio"
-                                      name={`${s.id}-${c.cle}`}
-                                      checked={evaluation?.criteres?.[c.cle] === niveau}
-                                      onChange={() => majCritere(s.id, c.cle, niveau)}
-                                    />
-                                  </td>
-                                )
-                              )}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="flex flex-col divide-y divide-zinc-100">
+                      {CRITERES_STAGIAIRE.map((c) => {
+                        const niveauActuel = evaluation?.criteres?.[c.cle];
+                        return (
+                          <div
+                            key={c.cle}
+                            className="flex items-center justify-between gap-3 py-2"
+                          >
+                            <span className="text-sm text-zinc-700">{c.label}</span>
+                            <div className="flex shrink-0 gap-1">
+                              {NIVEAUX.map((niveau) => (
+                                <button
+                                  key={niveau}
+                                  type="button"
+                                  title={NIVEAU_CRITERE_LABELS[niveau]}
+                                  onClick={() => majCritere(s.id, c.cle, niveau)}
+                                  className={`h-7 w-11 rounded-md border text-xs font-semibold ${
+                                    niveauActuel === niveau
+                                      ? COULEUR_NIVEAU[niveau]
+                                      : "border-zinc-300 bg-white text-zinc-400 hover:bg-zinc-50"
+                                  }`}
+                                >
+                                  {NIVEAU_CRITERE_ABBREV[niveau]}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     <div>
@@ -314,10 +336,13 @@ export default function StagiairesPage() {
         </div>
       )}
 
-      {/* Fiches imprimables : une par stagiaire. */}
+      {/* Fiches imprimables : une par stagiaire, ou une seule si le bouton
+          imprimante d'une fiche précise a été utilisé. */}
       {stagiaires.length > 0 && (
         <div className="hidden print:block">
-          {stagiaires.map((s) => {
+          {stagiaires
+            .filter((s) => !impressionCiblee || s.id === impressionCiblee)
+            .map((s) => {
             const evaluation = evaluationDe(s.id);
             return (
               <div key={s.id} className="print-page">

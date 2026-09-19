@@ -166,6 +166,12 @@ export const NIVEAU_CRITERE_LABELS: Record<NiveauCritere, string> = {
   acquis: "Acquis",
 };
 
+export const NIVEAU_CRITERE_ABBREV: Record<NiveauCritere, string> = {
+  a_travailler: "AT",
+  en_cours: "ECA",
+  acquis: "A",
+};
+
 export const CRITERES_STAGIAIRE: { cle: string; label: string }[] = [
   { cle: "securite", label: "Assure la sécurité physique et morale des mineurs" },
   { cle: "vie_equipe", label: "S'implique dans la vie de l'équipe (communication, entraide)" },
