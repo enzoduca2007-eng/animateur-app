@@ -634,6 +634,10 @@ export default function FichesHorairesPage() {
                             : !feuille.present
                               ? `Absent${feuille.motif_absence ? ` (${feuille.motif_absence})` : ""}`
                               : `${feuille.heure_arrivee_reelle?.slice(0, 5) ?? "—"} → ${feuille.heure_depart_reelle?.slice(0, 5) ?? "—"}`;
+                          // La pause réelle n'est pas suivie séparément — on ne
+                          // la remplit que quand le pointage du jour est "I"
+                          // (idem au prévisionnel), pas "R" ou "A".
+                          const { lettre } = lettreEtCouleur(a.id, j);
                           return (
                             <tr key={j}>
                               <td className="border border-black bg-zinc-200 px-2 py-2 capitalize">
@@ -647,7 +651,7 @@ export default function FichesHorairesPage() {
                               </td>
                               <td className="border border-black px-2 py-2">{reelPresence}</td>
                               <td className="border border-black px-2 py-2">
-                                {aAffectation ? formatPauses(assignes) : ""}
+                                {lettre === "I" ? formatPauses(assignes) : ""}
                               </td>
                             </tr>
                           );
