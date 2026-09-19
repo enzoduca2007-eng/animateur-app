@@ -339,7 +339,7 @@ export default function StagiairesPage() {
       {/* Fiches imprimables : une par stagiaire, ou une seule si le bouton
           imprimante d'une fiche précise a été utilisé. */}
       {stagiaires.length > 0 && (
-        <div className="hidden print:block">
+        <div className="print-portrait hidden print:block">
           {stagiaires
             .filter((s) => !impressionCiblee || s.id === impressionCiblee)
             .map((s) => {

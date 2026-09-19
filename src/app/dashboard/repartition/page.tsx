@@ -483,7 +483,29 @@ export default function RepartitionPage() {
     return map;
   }, [animateurs]);
 
-  const idsDirection = new Set(directionRoster.map((d) => d.animateur_id));
+  // Seuls Directeur/Directeur adjoint sortent de la liste normale des
+  // animateurs sur la feuille imprimée — un coordinateur apparaît là-bas
+  // en plus de sa ligne dédiée dans Direction (cf. plus bas), comme un
+  // animateur normal.
+  const idsDirection = new Set(
+    directionRoster
+      .filter((d) => d.role_affiche === "directeur" || d.role_affiche === "directeur_adjoint")
+      .map((d) => d.animateur_id)
+  );
+
+  const ORDRE_SECTION: Record<SectionDirection, number> = { lutins: 0, trolls: 1, geants: 2 };
+  const LETTRE_PAR_SECTION: Record<SectionDirection, string> = {
+    lutins: "L",
+    trolls: "T",
+    geants: "G",
+  };
+  function codeSectionsCoordinateur(sections: SectionDirection[]): string {
+    if (sections.length === 0) return "—";
+    return [...sections]
+      .sort((a, b) => ORDRE_SECTION[a] - ORDRE_SECTION[b])
+      .map((s) => LETTRE_PAR_SECTION[s])
+      .join("/");
+  }
 
   const rosterParLettre: Record<Lettre, Animateur[]> = { L: [], T: [], G: [] };
   for (const a of animateurs) {
@@ -901,22 +923,60 @@ export default function RepartitionPage() {
                       </tr>
                     );
                   })}
+                {directionRoster
+                  .filter((d) => d.role_affiche === "coordinateur")
+                  .map((d) => {
+                    const a = animateurParId.get(d.animateur_id);
+                    if (!a) return null;
+                    const couleur = "bg-yellow-200";
+                    return (
+                      <tr key={d.id}>
+                        <td className={`border border-black px-1 py-1 ${couleur}`}>
+                          Coordinateur
+                        </td>
+                        <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
+                          {a.nom}
+                        </td>
+                        <td className={`border border-black px-1 py-1 ${couleur}`}>{a.prenom}</td>
+                        {joursOuvrables.map((j) => {
+                          const present = presentCeJour(a.id, j) === true;
+                          return (
+                            <td
+                              key={j}
+                              className={`border border-black px-1 py-1 text-center ${
+                                present ? couleur : bandeSemaine(j)
+                              } ${bordureSemaine(j, false)}`}
+                            >
+                              {present ? codeSectionsCoordinateur(d.sections) : ""}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
 
                 {(() => {
                   // Bandeau gris "Animation" (comme "Direction") juste avant
                   // les sections Lutins/Trolls/Géants, dès qu'au moins une
-                  // d'entre elles a du contenu.
-                  const contenuParLettre = (["L", "T", "G"] as Lettre[]).map((lettre) => {
+                  // d'entre elles a du contenu (animateur assigné, ou
+                  // simplement un coordinateur géère la section — pour ne
+                  // pas perdre la ligne Effectifs enfants si personne n'a
+                  // encore été affecté ce jour-là). Les coordinateurs ont
+                  // leur propre ligne dans Direction (avec le code de
+                  // leur(s) section(s) à la place des croix) et apparaissent
+                  // ICI en plus, comme des animateurs normaux
+                  // (rosterParLettre les inclut désormais).
+                  const sectionADuMonde = (lettre: Lettre) => {
                     const sectionCorrespondante: SectionDirection =
                       lettre === "L" ? "lutins" : lettre === "T" ? "trolls" : "geants";
-                    const coordinateurs = directionRoster.filter(
+                    const geree = directionRoster.some(
                       (d) =>
                         d.role_affiche === "coordinateur" &&
                         d.sections.includes(sectionCorrespondante)
                     );
-                    return coordinateurs.length > 0 || rosterParLettre[lettre].length > 0;
-                  });
-                  const afficherAnimation = contenuParLettre.some(Boolean);
+                    return rosterParLettre[lettre].length > 0 || geree;
+                  };
+                  const afficherAnimation = (["L", "T", "G"] as Lettre[]).some(sectionADuMonde);
 
                   // Trait épais ambre entre chaque section Lutins / Trolls /
                   // Géants qui s'affiche réellement, comme la bordure entre
@@ -937,17 +997,8 @@ export default function RepartitionPage() {
                         </tr>
                       )}
                       {(["L", "T", "G"] as Lettre[]).map((lettre) => {
-                    const sectionCorrespondante: SectionDirection =
-                      lettre === "L" ? "lutins" : lettre === "T" ? "trolls" : "geants";
-                    // Un coordinateur peut gérer plusieurs groupes à la fois :
-                    // il apparaît dans chaque section qu'il gère.
-                    const coordinateurs = directionRoster.filter(
-                      (d) =>
-                        d.role_affiche === "coordinateur" &&
-                        d.sections.includes(sectionCorrespondante)
-                    );
                     const liste = rosterParLettre[lettre];
-                    if (liste.length === 0 && coordinateurs.length === 0) return null;
+                    if (!sectionADuMonde(lettre)) return null;
                     const avecBordureHaut = sectionPrecedenteAffichee;
                     sectionPrecedenteAffichee = true;
                     const age =
@@ -961,48 +1012,14 @@ export default function RepartitionPage() {
                     // La colonne Rôle est fusionnée (rowSpan) sur tous les
                     // animateurs + la ligne effectifs de la section, pour y
                     // afficher le groupe et la tranche d'âge une seule fois —
-                    // comme le document papier. Les coordinateurs gardent
-                    // leur propre case "Coordinateur".
+                    // comme le document papier.
                     const lignesAFusionner = liste.length + 1;
                     return (
                       <>
-                        {coordinateurs.map((d, idx) => {
-                          const a = animateurParId.get(d.animateur_id);
-                          if (!a) return null;
-                          const couleur = "bg-yellow-200";
-                          const bordureHaut =
-                            idx === 0 ? bordureSection(avecBordureHaut) : "";
-                          return (
-                            <tr key={`coord-${d.id}`}>
-                              <td className={`border border-black px-1 py-1 ${couleur} ${bordureHaut}`}>
-                                Coordinateur
-                              </td>
-                              <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur} ${bordureHaut}`}>
-                                {a.nom}
-                              </td>
-                              <td className={`border border-black px-1 py-1 ${couleur} ${bordureHaut}`}>{a.prenom}</td>
-                              {joursOuvrables.map((j) => {
-                                const present = presentCeJour(a.id, j) === true;
-                                return (
-                                  <td
-                                    key={j}
-                                    className={`border border-black px-1 py-1 text-center ${
-                                      present ? couleur : bandeSemaine(j)
-                                    } ${bordureSemaine(j, false)} ${bordureHaut}`}
-                                  >
-                                    {present ? "X" : ""}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          );
-                        })}
                         {liste.map((a, idx) => {
                           const couleur = !a.est_stagiaire ? "bg-yellow-200" : "";
                           const bordureHaut =
-                            idx === 0 && coordinateurs.length === 0
-                              ? bordureSection(avecBordureHaut)
-                              : "";
+                            idx === 0 ? bordureSection(avecBordureHaut) : "";
                           return (
                             <tr key={`${lettre}-${a.id}`}>
                               {idx === 0 && (

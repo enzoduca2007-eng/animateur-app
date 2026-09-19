@@ -23,15 +23,16 @@ body {
     margin: 10mm;
   }
 
-  /* Certaines pages (feuille de présence Répartition) veulent du portrait
-     plutôt que le paysage par défaut du reste du site. */
-  @page repartition-portrait {
+  /* Certaines pages (feuille de présence Répartition, fiches Stagiaires)
+     veulent du portrait plutôt que le paysage par défaut du reste du
+     site. */
+  @page vue-portrait {
     size: portrait;
     margin: 10mm;
   }
 
   .print-portrait {
-    page: repartition-portrait;
+    page: vue-portrait;
   }
 
   * {
