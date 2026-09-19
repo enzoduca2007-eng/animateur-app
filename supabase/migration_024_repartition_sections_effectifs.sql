@@ -9,6 +9,11 @@
 --   Géants) — indépendant d'un compte utilisateur, pour pouvoir ajouter
 --   quelqu'un sans qu'il ait besoin de créer de compte. Sans effet sur
 --   les droits réels de l'application.
+--
+-- Idempotente : peut être relancée sans erreur même si une exécution
+-- précédente (partielle ou avec l'ancien schéma) a déjà créé ces tables.
+
+drop table if exists public.effectifs_sous_groupe cascade;
 
 create table public.effectifs_sous_groupe (
   id uuid primary key default gen_random_uuid(),
@@ -31,7 +36,8 @@ create policy "effectifs_sous_groupe: directeur write" on public.effectifs_sous_
   with check (public.current_role_name() = 'directeur');
 
 -- Supprime la version précédente (basée sur profile_id, exigeait un
--- compte) si cette migration avait déjà tourné une première fois.
+-- compte, ou toute exécution antérieure de cette migration) avant de
+-- recréer avec le schéma final.
 drop table if exists public.direction_roster cascade;
 
 create table public.direction_roster (
