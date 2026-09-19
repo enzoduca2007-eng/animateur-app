@@ -10,6 +10,7 @@ import { PeriodesVacances } from "@/components/periodes-vacances";
 import { PointageJour } from "@/components/pointage-jour";
 import {
   GROUPE_LABELS,
+  MOMENTS_ACTIVITE,
   type AffectationCreneau,
   type AffectationJour,
   type Animateur,
@@ -17,6 +18,8 @@ import {
   type FeuilleTemps,
   type Groupe,
   type JourFermeture,
+  type MomentActivite,
+  type PlanningActivite,
 } from "@/lib/types";
 
 const COULEUR_GROUPE: Record<Groupe, string> = {
@@ -92,12 +95,15 @@ export default function MonPlanningPage() {
   const { periodes, zone, loading: loadingVacances } = useVacances();
 
   const [moi, setMoi] = useState<Animateur | null | undefined>(undefined);
+  const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
   const [creneaux, setCreneaux] = useState<Creneau[]>([]);
   const [affectations, setAffectations] = useState<AffectationCreneau[]>([]);
   const [affectationsJour, setAffectationsJour] = useState<AffectationJour[]>([]);
+  const [activites, setActivites] = useState<PlanningActivite[]>([]);
   const [joursFermeture, setJoursFermeture] = useState<JourFermeture[]>([]);
   const [feuilles, setFeuilles] = useState<FeuilleTemps[]>([]);
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
+  const [jourIndex, setJourIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
 
@@ -109,6 +115,13 @@ export default function MonPlanningPage() {
       .maybeSingle()
       .then(({ data }) => {
         setMoi((data as Animateur) ?? null);
+      });
+    supabase
+      .from("animateurs")
+      .select("*")
+      .eq("statut", "actif")
+      .then(({ data }) => {
+        if (data) setAnimateurs(data as Animateur[]);
       });
     supabase
       .from("creneaux")
@@ -181,11 +194,19 @@ export default function MonPlanningPage() {
         .eq("animateur_id", moi.id)
         .gte("date", periode.debut)
         .lte("date", periode.fin),
-    ]).then(([{ data: c }, { data: j }, { data: f }]) => {
+      supabase
+        .from("planning_activites")
+        .select("*")
+        .gte("date", periode.debut)
+        .lte("date", periode.fin)
+        .order("ordre"),
+    ]).then(([{ data: c }, { data: j }, { data: f }, { data: pa }]) => {
       setAffectations((c as AffectationCreneau[]) ?? []);
       setAffectationsJour((j as AffectationJour[]) ?? []);
       setFeuilles((f as FeuilleTemps[]) ?? []);
+      setActivites((pa as PlanningActivite[]) ?? []);
       setLoading(false);
+      setJourIndex(0);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moi, periode]);
@@ -199,7 +220,7 @@ export default function MonPlanningPage() {
       >
     >
   ) {
-    if (!moi) return;
+    if (!moi || profile.role === "animateur") return;
     setErreur(null);
     const existante = feuilles.find((f) => f.date === date);
     const payload = {
@@ -259,6 +280,20 @@ export default function MonPlanningPage() {
     [joursOuvres, affectations, affectationsJour]
   );
 
+  function nomsDe(ids: string[]) {
+    return ids
+      .map((id) => animateurs.find((a) => a.id === id))
+      .filter((a): a is Animateur => !!a)
+      .map((a) => `${a.prenom} ${a.nom}`);
+  }
+
+  function activitesDuJour(date: string, groupe: Groupe | undefined, moment: MomentActivite) {
+    if (!groupe) return [];
+    return activites
+      .filter((a) => a.groupe === groupe && a.date === date && a.moment === moment)
+      .sort((a, b) => a.ordre - b.ordre);
+  }
+
   if (moi === undefined) {
     return <p className="text-sm text-zinc-400">Chargement...</p>;
   }
@@ -277,6 +312,8 @@ export default function MonPlanningPage() {
   }
 
   const aujourdhui = new Date().toISOString().slice(0, 10);
+  const jourIndexSafe = Math.min(jourIndex, Math.max(0, joursTravailles.length - 1));
+  const jourCourant = joursTravailles[jourIndexSafe] ?? null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -337,13 +374,36 @@ export default function MonPlanningPage() {
                 </div>
               </div>
 
-              {joursTravailles.length === 0 ? (
+              {joursTravailles.length === 0 || !jourCourant ? (
                 <p className="text-sm text-zinc-400">
                   Aucune affectation sur cette période pour l&apos;instant.
                 </p>
               ) : (
-                <div className="flex flex-col gap-3">
-                  {joursOuvres.map((j) => {
+                <>
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => setJourIndex((i) => Math.max(0, i - 1))}
+                      disabled={jourIndexSafe === 0}
+                      className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-30"
+                    >
+                      ← Jour précédent
+                    </button>
+                    <span className="text-xs text-zinc-400">
+                      Jour {jourIndexSafe + 1} / {joursTravailles.length}
+                    </span>
+                    <button
+                      onClick={() =>
+                        setJourIndex((i) => Math.min(joursTravailles.length - 1, i + 1))
+                      }
+                      disabled={jourIndexSafe === joursTravailles.length - 1}
+                      className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-30"
+                    >
+                      Jour suivant →
+                    </button>
+                  </div>
+
+                  {(() => {
+                    const j = jourCourant;
                     const idsJour = new Set(
                       affectations.filter((a) => a.date === j).map((a) => a.creneau_id)
                     );
@@ -351,15 +411,11 @@ export default function MonPlanningPage() {
                       .filter((c) => idsJour.has(c.id))
                       .sort((a, b) => a.heure_debut.localeCompare(b.heure_debut));
                     const groupe = affectationsJour.find((a) => a.date === j)?.groupe;
-
-                    if (assignesJour.length === 0 && !groupe) return null;
-
                     const heures = heuresJour(assignesJour);
                     const estAujourdhui = j === aujourdhui;
 
                     return (
                       <div
-                        key={j}
                         className={`rounded-2xl border p-5 shadow-sm ${
                           estAujourdhui
                             ? "border-zinc-900 bg-zinc-50 ring-1 ring-zinc-900"
@@ -394,22 +450,61 @@ export default function MonPlanningPage() {
                         </div>
 
                         {assignesJour.length > 0 ? (
-                          <>
-                            <TimelineJour creneaux={assignesJour} />
-                            <PointageJour
-                              feuille={feuilles.find((f) => f.date === j) ?? null}
-                              onChange={(updates) => majFeuille(j, updates)}
-                            />
-                          </>
+                          <TimelineJour creneaux={assignesJour} />
                         ) : (
                           <p className="mt-3 text-xs text-zinc-400">
                             Affecté au groupe, pas encore d&apos;horaires précis.
                           </p>
                         )}
+
+                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          {MOMENTS_ACTIVITE.map((m) => {
+                            const acts = activitesDuJour(j, groupe, m.cle);
+                            return (
+                              <div key={m.cle}>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                                  {m.label}
+                                </p>
+                                {acts.length === 0 ? (
+                                  <p className="mt-1 text-xs text-zinc-300">—</p>
+                                ) : (
+                                  <ul className="mt-1 flex flex-col gap-1.5">
+                                    {acts.map((act) => {
+                                      const cAssigne = act.animateur_ids.includes(moi.id);
+                                      return (
+                                        <li
+                                          key={act.id}
+                                          className={`rounded px-1.5 py-1 text-sm ${
+                                            cAssigne
+                                              ? "bg-emerald-100 font-medium text-emerald-800"
+                                              : "text-zinc-500"
+                                          }`}
+                                        >
+                                          {act.libelle}
+                                          {act.animateur_ids.length > 0 && (
+                                            <p className="text-xs font-semibold text-emerald-700">
+                                              → {nomsDe(act.animateur_ids).join(", ")}
+                                            </p>
+                                          )}
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <PointageJour
+                          feuille={feuilles.find((f) => f.date === j) ?? null}
+                          onChange={(updates) => majFeuille(j, updates)}
+                          readOnly={profile.role === "animateur"}
+                        />
                       </div>
                     );
-                  })}
-                </div>
+                  })()}
+                </>
               )}
             </>
           )}
