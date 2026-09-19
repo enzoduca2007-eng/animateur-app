@@ -11,7 +11,7 @@ import {
   GROUPES,
   GROUPE_LABELS,
   MOMENTS_ACTIVITE,
-  TYPE_ACTIVITE_COULEURS,
+  TYPE_ACTIVITE_EMOJIS,
   TYPE_ACTIVITE_LABELS,
   type AffectationJour,
   type Animateur,
@@ -450,9 +450,10 @@ export default function ActivitesPage() {
                                             <span>
                                               {act.type_activite && (
                                                 <span
-                                                  className={`mr-1 inline-block rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide ${TYPE_ACTIVITE_COULEURS[act.type_activite]}`}
+                                                  className="mr-1"
+                                                  title={TYPE_ACTIVITE_LABELS[act.type_activite]}
                                                 >
-                                                  {TYPE_ACTIVITE_LABELS[act.type_activite]}
+                                                  {TYPE_ACTIVITE_EMOJIS[act.type_activite]}
                                                 </span>
                                               )}
                                               – {act.libelle}
@@ -567,7 +568,7 @@ export default function ActivitesPage() {
                   <option value="">—</option>
                   {TYPES_ACTIVITE.map((t) => (
                     <option key={t} value={t}>
-                      {TYPE_ACTIVITE_LABELS[t]}
+                      {TYPE_ACTIVITE_EMOJIS[t]} {TYPE_ACTIVITE_LABELS[t]}
                     </option>
                   ))}
                 </select>

@@ -162,11 +162,11 @@ export const TYPE_ACTIVITE_LABELS: Record<TypeActivite, string> = {
   autre: "Autre",
 };
 
-export const TYPE_ACTIVITE_COULEURS: Record<TypeActivite, string> = {
-  grand_jeu: "bg-amber-200 text-amber-800",
-  manuelle: "bg-violet-200 text-violet-800",
-  jeu: "bg-sky-200 text-sky-800",
-  autre: "bg-zinc-200 text-zinc-700",
+export const TYPE_ACTIVITE_EMOJIS: Record<TypeActivite, string> = {
+  grand_jeu: "🏆",
+  manuelle: "🎨",
+  jeu: "🎲",
+  autre: "📌",
 };
 
 export interface PlanningActivite {
