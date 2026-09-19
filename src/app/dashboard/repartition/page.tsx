@@ -806,7 +806,13 @@ export default function RepartitionPage() {
             <p className="text-center text-lg font-bold uppercase">
               {periode?.description}
             </p>
-            <table className="mt-4 w-full border-collapse text-left text-[10px]">
+            {/* border-separate (pas collapse) : bug connu du moteur d'impression
+                Chrome où border-collapse + cellules rowSpan (colonne Rôle
+                fusionnée ici) fait disparaître tout le tableau après le
+                premier saut de page — mieux vaut des bordures doublées que du
+                contenu tronqué. Ce tableau n'existe qu'à l'impression, aucun
+                impact écran. */}
+            <table className="mt-4 w-full border-separate border-spacing-0 text-left text-[10px]">
               <thead>
                 <tr>
                   <th className="border border-black px-1 py-1 font-semibold">Rôle</th>
