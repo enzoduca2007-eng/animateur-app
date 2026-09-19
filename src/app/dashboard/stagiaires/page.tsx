@@ -48,16 +48,16 @@ function MarqueNiveau({
   const stagMatch = stag === niveau;
   if (dirMatch && stagMatch) {
     return (
-      <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-sky-500 bg-orange-200 text-sm font-bold text-orange-800">
+      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border-2 border-sky-500 bg-orange-200 text-[10px] font-bold text-orange-800">
         X
       </span>
     );
   }
   if (dirMatch) {
-    return <span className="text-base font-bold text-orange-700">X</span>;
+    return <span className="text-xs font-bold text-orange-700">X</span>;
   }
   if (stagMatch) {
-    return <span className="text-base font-bold text-sky-700">X</span>;
+    return <span className="text-xs font-bold text-sky-700">X</span>;
   }
   return null;
 }
@@ -90,26 +90,33 @@ function GrilleCriteresPrint({
         <span className="font-bold text-sky-700">X bleu</span> = Stagiaire · anneau bleu = même
         avis
       </p>
-      <table className="mt-2 w-full table-fixed border-collapse text-left text-sm">
+      {/* border-separate (pas collapse) : même bug moteur d'impression Chrome
+          que sur Répartition — border-collapse + cellule rowSpan (colonne
+          Appréciation ici) fait disparaître le contenu qui déborde sur une
+          2e page au lieu de la paginer. Colonne Critère élargie (45% au
+          lieu de 28%) : les libellés longs ("Comprend et respecte le
+          projet pédagogique...") passaient sur 2-3 lignes et gonflaient
+          la hauteur du tableau bien au-delà d'une page. */}
+      <table className="mt-2 w-full table-fixed border-separate border-spacing-0 text-left text-[11px] leading-tight">
         <colgroup>
-          <col className="w-[28%]" />
+          <col className="w-[45%]" />
           {NIVEAUX.map((n) => (
-            <col key={n} className="w-[9%]" />
+            <col key={n} className="w-[8%]" />
           ))}
-          <col className="w-[36%]" />
+          <col className="w-[23%]" />
         </colgroup>
         <thead>
           <tr>
-            <th className="border border-black px-2.5 py-1.5 font-semibold">Critère</th>
+            <th className="border border-black px-2 py-1 font-semibold">Critère</th>
             {NIVEAUX.map((niveau) => (
               <th
                 key={niveau}
-                className="border border-black px-1.5 py-1.5 text-center font-semibold"
+                className="border border-black px-1 py-1 text-center font-semibold"
               >
                 {NIVEAU_CRITERE_ABBREV[niveau]}
               </th>
             ))}
-            <th className="border border-black px-2.5 py-1.5 font-semibold">Appréciation</th>
+            <th className="border border-black px-2 py-1 font-semibold">Appréciation</th>
           </tr>
         </thead>
         <tbody>
@@ -120,7 +127,7 @@ function GrilleCriteresPrint({
                 <tr>
                   <td
                     colSpan={2 + NIVEAUX.length}
-                    className="border border-black bg-zinc-200 px-2.5 py-1 font-semibold"
+                    className="border border-black bg-zinc-200 px-2 py-0.5 font-semibold"
                   >
                     {cat.categorie}
                   </td>
@@ -130,13 +137,13 @@ function GrilleCriteresPrint({
                   const bordureBas = dernier ? "border-b border-black" : "";
                   return (
                     <tr key={c.cle}>
-                      <td className={`border-x border-black px-2.5 py-2 ${bordureBas}`}>
+                      <td className={`border-x border-black px-2 py-1.5 ${bordureBas}`}>
                         {c.label}
                       </td>
                       {NIVEAUX.map((niveau) => (
                         <td
                           key={niveau}
-                          className={`border-x border-black px-1.5 py-2 text-center ${bordureBas}`}
+                          className={`border-x border-black px-1 py-1.5 text-center ${bordureBas}`}
                         >
                           <MarqueNiveau
                             dir={criteresDirection?.[c.cle]}
@@ -148,7 +155,7 @@ function GrilleCriteresPrint({
                       {idx === 0 && (
                         <td
                           rowSpan={cat.criteres.length}
-                          className="border-x border-b border-black px-2.5 py-2 align-top whitespace-pre-wrap text-zinc-700"
+                          className="border-x border-b border-black px-2 py-1.5 align-top whitespace-pre-wrap text-zinc-700"
                         >
                           {texteAppreciation ?? ""}
                         </td>
