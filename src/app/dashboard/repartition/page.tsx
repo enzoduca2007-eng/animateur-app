@@ -79,7 +79,16 @@ export default function RepartitionPage() {
       .from("direction_roster")
       .select("*")
       .then(({ data }) => {
-        if (data) setDirectionRoster(data as DirectionRoster[]);
+        // Normalise "sections" au cas où la migration_024 (section unique
+        // -> tableau sections) n'a pas encore tourné côté base : évite un
+        // plantage de toute la page si le champ manque ou vaut encore null.
+        if (data)
+          setDirectionRoster(
+            (data as (DirectionRoster & { section?: string | null })[]).map((d) => ({
+              ...d,
+              sections: Array.isArray(d.sections) ? d.sections : d.section ? [d.section as SectionDirection] : [],
+            }))
+          );
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
