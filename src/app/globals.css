@@ -41,6 +41,15 @@ body {
     color-adjust: exact !important;
   }
 
+  /* Le fond gris clair du site (body) s'imprimait autour de chaque
+     tableau/page à cause du print-color-adjust: exact ci-dessus. Fond
+     blanc à l'impression partout, sauf les couleurs volontaires déjà
+     posées sur les éléments eux-mêmes (bandeaux, lignes colorées...). */
+  html,
+  body {
+    background: #fff !important;
+  }
+
   .no-print {
     display: none !important;
   }
