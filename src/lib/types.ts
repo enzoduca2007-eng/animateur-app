@@ -117,6 +117,28 @@ export interface PresenceJour {
   created_at: string;
 }
 
+export type SousGroupe = "trolls" | "geants";
+
+export interface EffectifSousGroupe {
+  id: string;
+  date: string;
+  sous_groupe: SousGroupe;
+  effectif: number;
+  created_by: string | null;
+  created_at: string;
+}
+
+export type SectionDirection = "lutins" | "trolls" | "geants";
+
+export interface DirectionRoster {
+  id: string;
+  profile_id: string;
+  section: SectionDirection | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PalierEncadrement {
   id: string;
   effectif_min: number;

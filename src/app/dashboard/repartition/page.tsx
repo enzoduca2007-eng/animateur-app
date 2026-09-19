@@ -9,9 +9,12 @@ import {
   GROUPE_LABELS,
   type AffectationJour,
   type Animateur,
+  type DirectionRoster,
   type EffectifJour,
+  type EffectifSousGroupe,
   type Groupe,
   type Profile,
+  type SectionDirection,
 } from "@/lib/types";
 
 // Lutins/Trolls/Géants à la saisie (L/T/G), mais Trolls et Géants
@@ -57,6 +60,8 @@ export default function RepartitionPage() {
   const [affectations, setAffectations] = useState<AffectationJour[]>([]);
   const [profilesEquipe, setProfilesEquipe] = useState<Profile[]>([]);
   const [effectifs, setEffectifs] = useState<EffectifJour[]>([]);
+  const [effectifsSousGroupe, setEffectifsSousGroupe] = useState<EffectifSousGroupe[]>([]);
+  const [directionRoster, setDirectionRoster] = useState<DirectionRoster[]>([]);
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -77,6 +82,12 @@ export default function RepartitionPage() {
       .in("role", ["directeur", "coordinateur"])
       .then(({ data }) => {
         if (data) setProfilesEquipe(data as Profile[]);
+      });
+    supabase
+      .from("direction_roster")
+      .select("*")
+      .then(({ data }) => {
+        if (data) setDirectionRoster(data as DirectionRoster[]);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -118,12 +129,14 @@ export default function RepartitionPage() {
 
   async function loadAffectations(debut: string, fin: string) {
     setLoading(true);
-    const [{ data: aj }, { data: ej }] = await Promise.all([
+    const [{ data: aj }, { data: ej }, { data: esg }] = await Promise.all([
       supabase.from("affectations_jour").select("*").gte("date", debut).lte("date", fin),
       supabase.from("effectifs_jour").select("*").gte("date", debut).lte("date", fin),
+      supabase.from("effectifs_sous_groupe").select("*").gte("date", debut).lte("date", fin),
     ]);
     setAffectations((aj as AffectationJour[]) ?? []);
     setEffectifs((ej as EffectifJour[]) ?? []);
+    setEffectifsSousGroupe((esg as EffectifSousGroupe[]) ?? []);
     setLoading(false);
   }
 
@@ -245,6 +258,63 @@ export default function RepartitionPage() {
 
   function effectifDe(groupe: Groupe, date: string) {
     return effectifs.find((e) => e.groupe === groupe && e.date === date)?.effectif ?? null;
+  }
+
+  function effectifSousGroupeDe(sousGroupe: "trolls" | "geants", date: string) {
+    return (
+      effectifsSousGroupe.find((e) => e.sous_groupe === sousGroupe && e.date === date)
+        ?.effectif ?? null
+    );
+  }
+
+  async function majEffectifSousGroupe(
+    sousGroupe: "trolls" | "geants",
+    date: string,
+    valeur: number
+  ) {
+    setEffectifsSousGroupe((prev) => [
+      ...prev.filter((e) => !(e.sous_groupe === sousGroupe && e.date === date)),
+      {
+        id: `optimistic-${sousGroupe}-${date}`,
+        date,
+        sous_groupe: sousGroupe,
+        effectif: valeur,
+        created_by: profile.id,
+        created_at: new Date().toISOString(),
+      },
+    ]);
+    const { error } = await supabase
+      .from("effectifs_sous_groupe")
+      .upsert(
+        { date, sous_groupe: sousGroupe, effectif: valeur, created_by: profile.id },
+        { onConflict: "date,sous_groupe" }
+      );
+    if (error) setErreur(error.message);
+  }
+
+  function sectionDe(profileId: string): SectionDirection | null {
+    return directionRoster.find((d) => d.profile_id === profileId)?.section ?? null;
+  }
+
+  async function majSection(profileId: string, section: SectionDirection | "") {
+    setDirectionRoster((prev) => [
+      ...prev.filter((d) => d.profile_id !== profileId),
+      {
+        id: `optimistic-${profileId}`,
+        profile_id: profileId,
+        section: section || null,
+        created_by: profile.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ]);
+    const { error } = await supabase
+      .from("direction_roster")
+      .upsert(
+        { profile_id: profileId, section: section || null, created_by: profile.id },
+        { onConflict: "profile_id" }
+      );
+    if (error) setErreur(error.message);
   }
 
   function bandeSemaine(date: string) {
@@ -413,6 +483,78 @@ export default function RepartitionPage() {
             </div>
           )}
 
+          {editable && profilesEquipe.length > 0 && (
+            <div className="no-print rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <p className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Équipe administrative — section sur la feuille imprimable
+              </p>
+              <div className="flex flex-col gap-2">
+                {profilesEquipe.map((p) => (
+                  <div key={p.id} className="flex items-center gap-2">
+                    <span className="w-48 shrink-0 truncate text-sm text-zinc-700">
+                      {p.full_name}{" "}
+                      <span className="text-xs text-zinc-400">
+                        ({p.role === "directeur" ? "directeur" : "coordinateur"})
+                      </span>
+                    </span>
+                    {p.role === "directeur" ? (
+                      <span className="text-xs text-zinc-400">
+                        Toujours en tête, hors section
+                      </span>
+                    ) : (
+                      <select
+                        value={sectionDe(p.id) ?? ""}
+                        onChange={(e) =>
+                          majSection(p.id, e.target.value as SectionDirection | "")
+                        }
+                        className="rounded-md border border-zinc-300 px-2 py-1 text-sm"
+                      >
+                        <option value="">Aucune section</option>
+                        <option value="lutins">{GROUPE_LABELS.lutins}</option>
+                        <option value="trolls">Trolls</option>
+                        <option value="geants">Géants</option>
+                      </select>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {editable && (
+            <div className="no-print overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
+              <p className="border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Effectifs enfants Trolls / Géants (feuille imprimable — l&apos;effectif
+                Lutins se saisit sur Plannings)
+              </p>
+              {(["trolls", "geants"] as const).map((sg) => (
+                <table key={sg} className="text-left text-sm">
+                  <tbody>
+                    <tr className="border-b border-zinc-100 last:border-0">
+                      <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-zinc-900">
+                        {sg === "trolls" ? "Trolls" : "Géants"}
+                      </td>
+                      {joursOuvrables.map((j) => (
+                        <td key={j} className="px-2 py-2 text-center">
+                          <input
+                            type="number"
+                            min={0}
+                            defaultValue={effectifSousGroupeDe(sg, j) ?? ""}
+                            onBlur={(e) => {
+                              const v = Number(e.target.value);
+                              if (!Number.isNaN(v)) majEffectifSousGroupe(sg, j, v);
+                            }}
+                            className="w-14 rounded-md border border-zinc-300 px-1 py-1 text-center text-xs"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              ))}
+            </div>
+          )}
+
           {/* Feuille de présence imprimable : toutes les semaines de la
               période côte à côte, sections Direction / Lutins / Trolls /
               Géants, effectifs enfants et total, comme le document papier.
@@ -438,7 +580,7 @@ export default function RepartitionPage() {
                 </tr>
               </thead>
               <tbody>
-                {profilesEquipe.length > 0 && (
+                {profilesEquipe.some((p) => p.role === "directeur") && (
                   <tr>
                     <td
                       colSpan={2 + joursOuvrables.length}
@@ -448,37 +590,43 @@ export default function RepartitionPage() {
                     </td>
                   </tr>
                 )}
-                {profilesEquipe.map((p) => {
-                  const a = animateursParProfileId.get(p.id);
-                  if (!a) return null;
-                  const couleur =
-                    p.role === "directeur" ? "bg-orange-200" : !a.est_stagiaire ? "bg-yellow-200" : "";
-                  return (
-                    <tr key={p.id}>
-                      <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
-                        {a.nom}
-                      </td>
-                      <td className={`border border-black px-1 py-1 ${couleur}`}>{a.prenom}</td>
-                      {joursOuvrables.map((j) => {
-                        const present = presentCeJour(a.id, j) === true;
-                        return (
-                          <td
-                            key={j}
-                            className={`border border-black px-1 py-1 text-center ${
-                              present ? couleur || bandeSemaine(j) : bandeSemaine(j)
-                            } ${bordureSemaine(j, false)}`}
-                          >
-                            {present ? "X" : ""}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
+                {profilesEquipe
+                  .filter((p) => p.role === "directeur")
+                  .map((p) => {
+                    const a = animateursParProfileId.get(p.id);
+                    if (!a) return null;
+                    const couleur = "bg-orange-200";
+                    return (
+                      <tr key={p.id}>
+                        <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
+                          {a.nom}
+                        </td>
+                        <td className={`border border-black px-1 py-1 ${couleur}`}>{a.prenom}</td>
+                        {joursOuvrables.map((j) => {
+                          const present = presentCeJour(a.id, j) === true;
+                          return (
+                            <td
+                              key={j}
+                              className={`border border-black px-1 py-1 text-center ${
+                                present ? couleur : bandeSemaine(j)
+                              } ${bordureSemaine(j, false)}`}
+                            >
+                              {present ? "X" : ""}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
 
                 {(["L", "T", "G"] as Lettre[]).map((lettre) => {
+                  const sectionCorrespondante: SectionDirection =
+                    lettre === "L" ? "lutins" : lettre === "T" ? "trolls" : "geants";
+                  const coordinateurs = profilesEquipe.filter(
+                    (p) => p.role === "coordinateur" && sectionDe(p.id) === sectionCorrespondante
+                  );
                   const liste = rosterParLettre[lettre];
-                  if (liste.length === 0) return null;
+                  if (liste.length === 0 && coordinateurs.length === 0) return null;
                   return (
                     <>
                       <tr key={`titre-${lettre}`}>
@@ -493,6 +641,32 @@ export default function RepartitionPage() {
                               : "Géants"}
                         </td>
                       </tr>
+                      {coordinateurs.map((p) => {
+                        const a = animateursParProfileId.get(p.id);
+                        if (!a) return null;
+                        const couleur = "bg-yellow-200";
+                        return (
+                          <tr key={`coord-${p.id}`}>
+                            <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
+                              {a.nom}
+                            </td>
+                            <td className={`border border-black px-1 py-1 ${couleur}`}>{a.prenom}</td>
+                            {joursOuvrables.map((j) => {
+                              const present = presentCeJour(a.id, j) === true;
+                              return (
+                                <td
+                                  key={j}
+                                  className={`border border-black px-1 py-1 text-center ${
+                                    present ? couleur : bandeSemaine(j)
+                                  } ${bordureSemaine(j, false)}`}
+                                >
+                                  {present ? "X" : ""}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
                       {liste.map((a) => {
                         const couleur = !a.est_stagiaire ? "bg-yellow-200" : "";
                         return (
@@ -519,24 +693,24 @@ export default function RepartitionPage() {
                           </tr>
                         );
                       })}
-                      {lettre !== "G" && (
-                        <tr key={`effectif-${lettre}`}>
+                      <tr key={`effectif-${lettre}`}>
+                        <td
+                          colSpan={2}
+                          className="border border-black bg-teal-100 px-1 py-1 font-semibold"
+                        >
+                          Effectifs enfants
+                        </td>
+                        {joursOuvrables.map((j) => (
                           <td
-                            colSpan={2}
-                            className="border border-black bg-teal-100 px-1 py-1 font-semibold"
+                            key={j}
+                            className={`border border-black bg-teal-100 px-1 py-1 text-center font-semibold ${bordureSemaine(j, false)}`}
                           >
-                            {lettre === "L" ? "Effectifs enfants" : "Effectifs enfants (Trolls & Géants)"}
+                            {(lettre === "L"
+                              ? effectifDe("lutins", j)
+                              : effectifSousGroupeDe(lettre === "T" ? "trolls" : "geants", j)) ?? ""}
                           </td>
-                          {joursOuvrables.map((j) => (
-                            <td
-                              key={j}
-                              className={`border border-black bg-teal-100 px-1 py-1 text-center font-semibold ${bordureSemaine(j, false)}`}
-                            >
-                              {effectifDe(lettre === "L" ? "lutins" : "trolls", j) ?? ""}
-                            </td>
-                          ))}
-                        </tr>
-                      )}
+                        ))}
+                      </tr>
                     </>
                   );
                 })}
@@ -550,7 +724,9 @@ export default function RepartitionPage() {
                   </td>
                   {joursOuvrables.map((j) => {
                     const total =
-                      (effectifDe("lutins", j) ?? 0) + (effectifDe("trolls", j) ?? 0);
+                      (effectifDe("lutins", j) ?? 0) +
+                      (effectifSousGroupeDe("trolls", j) ?? 0) +
+                      (effectifSousGroupeDe("geants", j) ?? 0);
                     return (
                       <td
                         key={j}
