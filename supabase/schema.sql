@@ -494,7 +494,7 @@ create table public.planning_activites (
   groupe text not null check (groupe in ('lutins', 'trolls')),
   moment text not null check (moment in ('matin', 'temps_calme', 'apres_midi')),
   ordre integer not null default 0,
-  est_grand_jeu boolean not null default false,
+  type_activite text check (type_activite in ('grand_jeu', 'manuelle', 'jeu', 'autre')),
   duree text,
   materiel text,
   libelle text not null,
@@ -544,7 +544,7 @@ begin
     new.moment := old.moment;
     new.ordre := old.ordre;
     new.libelle := old.libelle;
-    new.est_grand_jeu := old.est_grand_jeu;
+    new.type_activite := old.type_activite;
     new.duree := old.duree;
     new.animateur_ids := old.animateur_ids;
   end if;

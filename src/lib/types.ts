@@ -153,13 +153,29 @@ export const MOMENTS_ACTIVITE: { cle: MomentActivite; label: string }[] = [
   { cle: "apres_midi", label: "Après-midi" },
 ];
 
+export type TypeActivite = "grand_jeu" | "manuelle" | "jeu" | "autre";
+
+export const TYPE_ACTIVITE_LABELS: Record<TypeActivite, string> = {
+  grand_jeu: "Grand jeu",
+  manuelle: "Activité manuelle",
+  jeu: "Jeu",
+  autre: "Autre",
+};
+
+export const TYPE_ACTIVITE_COULEURS: Record<TypeActivite, string> = {
+  grand_jeu: "bg-amber-200 text-amber-800",
+  manuelle: "bg-violet-200 text-violet-800",
+  jeu: "bg-sky-200 text-sky-800",
+  autre: "bg-zinc-200 text-zinc-700",
+};
+
 export interface PlanningActivite {
   id: string;
   date: string;
   groupe: Groupe;
   moment: MomentActivite;
   ordre: number;
-  est_grand_jeu: boolean;
+  type_activite: TypeActivite | null;
   duree: string | null;
   materiel: string | null;
   libelle: string;

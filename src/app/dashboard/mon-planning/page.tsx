@@ -11,6 +11,8 @@ import { PointageJour } from "@/components/pointage-jour";
 import {
   GROUPE_LABELS,
   MOMENTS_ACTIVITE,
+  TYPE_ACTIVITE_COULEURS,
+  TYPE_ACTIVITE_LABELS,
   type AffectationCreneau,
   type AffectationJour,
   type Animateur,
@@ -490,9 +492,11 @@ export default function MonPlanningPage() {
                                               : "text-zinc-500"
                                           }`}
                                         >
-                                          {act.est_grand_jeu && (
-                                            <span className="mr-1 inline-block rounded bg-amber-200 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800">
-                                              Grand jeu
+                                          {act.type_activite && (
+                                            <span
+                                              className={`mr-1 inline-block rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide ${TYPE_ACTIVITE_COULEURS[act.type_activite]}`}
+                                            >
+                                              {TYPE_ACTIVITE_LABELS[act.type_activite]}
                                             </span>
                                           )}
                                           {act.libelle}

@@ -11,13 +11,18 @@ import {
   GROUPES,
   GROUPE_LABELS,
   MOMENTS_ACTIVITE,
+  TYPE_ACTIVITE_COULEURS,
+  TYPE_ACTIVITE_LABELS,
   type AffectationJour,
   type Animateur,
   type Groupe,
   type MomentActivite,
   type PlanningActivite,
   type ThemeSemaine,
+  type TypeActivite,
 } from "@/lib/types";
+
+const TYPES_ACTIVITE: TypeActivite[] = ["grand_jeu", "manuelle", "jeu", "autre"];
 
 function formatEnTeteJour(dateISO: string) {
   return new Date(`${dateISO}T00:00:00Z`)
@@ -69,7 +74,7 @@ export default function ActivitesPage() {
   const [modalLibelle, setModalLibelle] = useState("");
   const [modalDuree, setModalDuree] = useState("");
   const [modalMateriel, setModalMateriel] = useState("");
-  const [modalGrandJeu, setModalGrandJeu] = useState(false);
+  const [modalType, setModalType] = useState<TypeActivite | "">("");
   const [modalAnimateurs, setModalAnimateurs] = useState<string[]>([]);
   const [monAnimateur, setMonAnimateur] = useState<Animateur | null>(null);
 
@@ -161,7 +166,7 @@ export default function ActivitesPage() {
     setModalLibelle("");
     setModalDuree("");
     setModalMateriel("");
-    setModalGrandJeu(false);
+    setModalType("");
     setModalAnimateurs([]);
   }
 
@@ -175,7 +180,7 @@ export default function ActivitesPage() {
     setModalLibelle(activite.libelle);
     setModalDuree(activite.duree ?? "");
     setModalMateriel(activite.materiel ?? "");
-    setModalGrandJeu(activite.est_grand_jeu);
+    setModalType(activite.type_activite ?? "");
     setModalAnimateurs(activite.animateur_ids);
   }
 
@@ -189,7 +194,7 @@ export default function ActivitesPage() {
           libelle: modalLibelle.trim(),
           duree: modalDuree.trim() || null,
           materiel: modalMateriel.trim() || null,
-          est_grand_jeu: modalGrandJeu,
+          type_activite: modalType || null,
           animateur_ids: modalAnimateurs,
         })
         .eq("id", modal.activite.id);
@@ -206,7 +211,7 @@ export default function ActivitesPage() {
         ordre,
         duree: modalDuree.trim() || null,
         materiel: modalMateriel.trim() || null,
-        est_grand_jeu: modalGrandJeu,
+        type_activite: modalType || null,
         libelle: modalLibelle.trim(),
         animateur_ids: modalAnimateurs,
         created_by: profile.id,
@@ -371,7 +376,7 @@ export default function ActivitesPage() {
                         <p className="text-center text-sm font-bold uppercase tracking-wide text-zinc-700 print:text-base">
                           {GROUPE_LABELS[groupe]} · Semaine {semaineIdx + 1}
                         </p>
-                        <div className="absolute -top-8 right-3">
+                        <div className="absolute -top-8 -right-4">
                           <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 border-zinc-400 bg-white p-2 print:border-black">
                             {peutGererGroupe(groupe) ? (
                               <div
@@ -443,9 +448,11 @@ export default function ActivitesPage() {
                                         >
                                           <div className="flex items-start justify-between gap-1">
                                             <span>
-                                              {act.est_grand_jeu && (
-                                                <span className="mr-1 inline-block rounded bg-amber-200 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800 print:bg-amber-200">
-                                                  Grand jeu
+                                              {act.type_activite && (
+                                                <span
+                                                  className={`mr-1 inline-block rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide ${TYPE_ACTIVITE_COULEURS[act.type_activite]}`}
+                                                >
+                                                  {TYPE_ACTIVITE_LABELS[act.type_activite]}
                                                 </span>
                                               )}
                                               – {act.libelle}
@@ -550,14 +557,21 @@ export default function ActivitesPage() {
                   className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
                 />
               </div>
-              <label className="flex items-center gap-2 pb-2 text-sm text-zinc-700">
-                <input
-                  type="checkbox"
-                  checked={modalGrandJeu}
-                  onChange={(e) => setModalGrandJeu(e.target.checked)}
-                />
-                Grand jeu
-              </label>
+              <div>
+                <label className="text-xs font-medium text-zinc-500">Type</label>
+                <select
+                  value={modalType}
+                  onChange={(e) => setModalType(e.target.value as TypeActivite | "")}
+                  className="mt-1 rounded-md border border-zinc-300 px-2 py-2 text-sm"
+                >
+                  <option value="">—</option>
+                  {TYPES_ACTIVITE.map((t) => (
+                    <option key={t} value={t}>
+                      {TYPE_ACTIVITE_LABELS[t]}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <label className="text-xs font-medium text-zinc-500">Matériel</label>
