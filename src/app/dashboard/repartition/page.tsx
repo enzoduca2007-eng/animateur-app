@@ -13,7 +13,7 @@ import {
   type EffectifJour,
   type EffectifSousGroupe,
   type Groupe,
-  type Profile,
+  type RoleAffiche,
   type SectionDirection,
 } from "@/lib/types";
 
@@ -58,7 +58,6 @@ export default function RepartitionPage() {
 
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
   const [affectations, setAffectations] = useState<AffectationJour[]>([]);
-  const [profilesEquipe, setProfilesEquipe] = useState<Profile[]>([]);
   const [effectifs, setEffectifs] = useState<EffectifJour[]>([]);
   const [effectifsSousGroupe, setEffectifsSousGroupe] = useState<EffectifSousGroupe[]>([]);
   const [directionRoster, setDirectionRoster] = useState<DirectionRoster[]>([]);
@@ -75,13 +74,6 @@ export default function RepartitionPage() {
       .order("nom")
       .then(({ data }) => {
         if (data) setAnimateurs(data as Animateur[]);
-      });
-    supabase
-      .from("profiles")
-      .select("*")
-      .in("role", ["directeur", "coordinateur"])
-      .then(({ data }) => {
-        if (data) setProfilesEquipe(data as Profile[]);
       });
     supabase
       .from("direction_roster")
@@ -292,17 +284,32 @@ export default function RepartitionPage() {
     if (error) setErreur(error.message);
   }
 
-  function sectionDe(profileId: string): SectionDirection | null {
-    return directionRoster.find((d) => d.profile_id === profileId)?.section ?? null;
+  function rosterDe(animateurId: string) {
+    return directionRoster.find((d) => d.animateur_id === animateurId);
   }
 
-  async function majSection(profileId: string, section: SectionDirection | "") {
+  // Ajoute/retire une fiche animateur de l'équipe administrative affichée
+  // (Directeur/Coordinateur) — indépendant d'un compte utilisateur, on
+  // peut donc y mettre quelqu'un qui n'a pas créé de compte.
+  async function majRoleAffiche(animateurId: string, role: RoleAffiche | "") {
+    setErreur(null);
+    if (!role) {
+      setDirectionRoster((prev) => prev.filter((d) => d.animateur_id !== animateurId));
+      const { error } = await supabase
+        .from("direction_roster")
+        .delete()
+        .eq("animateur_id", animateurId);
+      if (error) setErreur(error.message);
+      return;
+    }
+    const section = role === "coordinateur" ? (rosterDe(animateurId)?.section ?? null) : null;
     setDirectionRoster((prev) => [
-      ...prev.filter((d) => d.profile_id !== profileId),
+      ...prev.filter((d) => d.animateur_id !== animateurId),
       {
-        id: `optimistic-${profileId}`,
-        profile_id: profileId,
-        section: section || null,
+        id: `optimistic-${animateurId}`,
+        animateur_id: animateurId,
+        role_affiche: role,
+        section,
         created_by: profile.id,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -311,9 +318,21 @@ export default function RepartitionPage() {
     const { error } = await supabase
       .from("direction_roster")
       .upsert(
-        { profile_id: profileId, section: section || null, created_by: profile.id },
-        { onConflict: "profile_id" }
+        { animateur_id: animateurId, role_affiche: role, section, created_by: profile.id },
+        { onConflict: "animateur_id" }
       );
+    if (error) setErreur(error.message);
+  }
+
+  async function majSectionRoster(animateurId: string, section: SectionDirection | "") {
+    setErreur(null);
+    setDirectionRoster((prev) =>
+      prev.map((d) => (d.animateur_id === animateurId ? { ...d, section: section || null } : d))
+    );
+    const { error } = await supabase
+      .from("direction_roster")
+      .update({ section: section || null })
+      .eq("animateur_id", animateurId);
     if (error) setErreur(error.message);
   }
 
@@ -326,17 +345,13 @@ export default function RepartitionPage() {
     return !premiereColonne && premierJourDeSemaine.has(date) ? "border-l-4 border-l-amber-700" : "";
   }
 
-  const animateursParProfileId = useMemo(() => {
+  const animateurParId = useMemo(() => {
     const map = new Map<string, Animateur>();
-    for (const a of animateurs) if (a.profile_id) map.set(a.profile_id, a);
+    for (const a of animateurs) map.set(a.id, a);
     return map;
   }, [animateurs]);
 
-  const idsDirection = new Set(
-    profilesEquipe
-      .map((p) => animateursParProfileId.get(p.id)?.id)
-      .filter((id): id is string => !!id)
-  );
+  const idsDirection = new Set(directionRoster.map((d) => d.animateur_id));
 
   const rosterParLettre: Record<Lettre, Animateur[]> = { L: [], T: [], G: [] };
   for (const a of animateurs) {
@@ -483,40 +498,48 @@ export default function RepartitionPage() {
             </div>
           )}
 
-          {editable && profilesEquipe.length > 0 && (
+          {editable && animateurs.length > 0 && (
             <div className="no-print rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <p className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                Équipe administrative — section sur la feuille imprimable
+                Équipe administrative (feuille imprimable) — indépendant d&apos;un
+                compte utilisateur, pas besoin que la personne se soit inscrite
               </p>
               <div className="flex flex-col gap-2">
-                {profilesEquipe.map((p) => (
-                  <div key={p.id} className="flex items-center gap-2">
-                    <span className="w-48 shrink-0 truncate text-sm text-zinc-700">
-                      {p.full_name}{" "}
-                      <span className="text-xs text-zinc-400">
-                        ({p.role === "directeur" ? "directeur" : "coordinateur"})
+                {animateurs.map((a) => {
+                  const entry = rosterDe(a.id);
+                  return (
+                    <div key={a.id} className="flex items-center gap-2">
+                      <span className="w-48 shrink-0 truncate text-sm text-zinc-700">
+                        {a.prenom} {a.nom}
                       </span>
-                    </span>
-                    {p.role === "directeur" ? (
-                      <span className="text-xs text-zinc-400">
-                        Toujours en tête, hors section
-                      </span>
-                    ) : (
                       <select
-                        value={sectionDe(p.id) ?? ""}
+                        value={entry?.role_affiche ?? ""}
                         onChange={(e) =>
-                          majSection(p.id, e.target.value as SectionDirection | "")
+                          majRoleAffiche(a.id, e.target.value as RoleAffiche | "")
                         }
                         className="rounded-md border border-zinc-300 px-2 py-1 text-sm"
                       >
-                        <option value="">Aucune section</option>
-                        <option value="lutins">{GROUPE_LABELS.lutins}</option>
-                        <option value="trolls">Trolls</option>
-                        <option value="geants">Géants</option>
+                        <option value="">Animateur (aucun rôle)</option>
+                        <option value="directeur">Directeur</option>
+                        <option value="coordinateur">Coordinateur</option>
                       </select>
-                    )}
-                  </div>
-                ))}
+                      {entry?.role_affiche === "coordinateur" && (
+                        <select
+                          value={entry.section ?? ""}
+                          onChange={(e) =>
+                            majSectionRoster(a.id, e.target.value as SectionDirection | "")
+                          }
+                          className="rounded-md border border-zinc-300 px-2 py-1 text-sm"
+                        >
+                          <option value="">Aucune section</option>
+                          <option value="lutins">{GROUPE_LABELS.lutins}</option>
+                          <option value="trolls">Trolls</option>
+                          <option value="geants">Géants</option>
+                        </select>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -603,7 +626,7 @@ export default function RepartitionPage() {
                 </tr>
               </thead>
               <tbody>
-                {profilesEquipe.some((p) => p.role === "directeur") && (
+                {directionRoster.some((d) => d.role_affiche === "directeur") && (
                   <tr>
                     <td
                       colSpan={3 + joursOuvrables.length}
@@ -613,14 +636,14 @@ export default function RepartitionPage() {
                     </td>
                   </tr>
                 )}
-                {profilesEquipe
-                  .filter((p) => p.role === "directeur")
-                  .map((p) => {
-                    const a = animateursParProfileId.get(p.id);
+                {directionRoster
+                  .filter((d) => d.role_affiche === "directeur")
+                  .map((d) => {
+                    const a = animateurParId.get(d.animateur_id);
                     if (!a) return null;
                     const couleur = "bg-orange-200";
                     return (
-                      <tr key={p.id}>
+                      <tr key={d.id}>
                         <td className={`border border-black px-1 py-1 ${couleur}`}>Directeur</td>
                         <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
                           {a.nom}
@@ -646,33 +669,33 @@ export default function RepartitionPage() {
                 {(["L", "T", "G"] as Lettre[]).map((lettre) => {
                   const sectionCorrespondante: SectionDirection =
                     lettre === "L" ? "lutins" : lettre === "T" ? "trolls" : "geants";
-                  const coordinateurs = profilesEquipe.filter(
-                    (p) => p.role === "coordinateur" && sectionDe(p.id) === sectionCorrespondante
+                  const coordinateurs = directionRoster.filter(
+                    (d) => d.role_affiche === "coordinateur" && d.section === sectionCorrespondante
                   );
                   const liste = rosterParLettre[lettre];
                   if (liste.length === 0 && coordinateurs.length === 0) return null;
                   const age =
                     lettre === "L" ? "3-5 ans" : lettre === "T" ? "6-8 ans" : "9-10 ans";
+                  const labelGroupe =
+                    (lettre === "L"
+                      ? GROUPE_LABELS.lutins
+                      : lettre === "T"
+                        ? "Trolls"
+                        : "Géants") + ` (${age})`;
+                  // La colonne Rôle est fusionnée (rowSpan) sur tous les
+                  // animateurs + la ligne effectifs de la section, pour y
+                  // afficher le groupe et la tranche d'âge une seule fois —
+                  // comme le document papier. Les coordinateurs gardent
+                  // leur propre case "Coordinateur".
+                  const lignesAFusionner = liste.length + 1;
                   return (
                     <>
-                      <tr key={`titre-${lettre}`}>
-                        <td
-                          colSpan={3 + joursOuvrables.length}
-                          className="border border-black bg-zinc-300 px-1 py-1 font-bold"
-                        >
-                          {(lettre === "L"
-                            ? GROUPE_LABELS.lutins
-                            : lettre === "T"
-                              ? "Trolls"
-                              : "Géants") + ` (${age})`}
-                        </td>
-                      </tr>
-                      {coordinateurs.map((p) => {
-                        const a = animateursParProfileId.get(p.id);
+                      {coordinateurs.map((d) => {
+                        const a = animateurParId.get(d.animateur_id);
                         if (!a) return null;
                         const couleur = "bg-yellow-200";
                         return (
-                          <tr key={`coord-${p.id}`}>
+                          <tr key={`coord-${d.id}`}>
                             <td className={`border border-black px-1 py-1 ${couleur}`}>Coordinateur</td>
                             <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
                               {a.nom}
@@ -694,11 +717,18 @@ export default function RepartitionPage() {
                           </tr>
                         );
                       })}
-                      {liste.map((a) => {
+                      {liste.map((a, idx) => {
                         const couleur = !a.est_stagiaire ? "bg-yellow-200" : "";
                         return (
                           <tr key={`${lettre}-${a.id}`}>
-                            <td className="border border-black px-1 py-1" />
+                            {idx === 0 && (
+                              <td
+                                rowSpan={lignesAFusionner}
+                                className="border border-black bg-zinc-100 px-1 py-1 text-center font-semibold"
+                              >
+                                {labelGroupe}
+                              </td>
+                            )}
                             <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
                               {a.nom}
                             </td>
@@ -722,8 +752,16 @@ export default function RepartitionPage() {
                         );
                       })}
                       <tr key={`effectif-${lettre}`}>
+                        {liste.length === 0 && (
+                          <td
+                            rowSpan={lignesAFusionner}
+                            className="border border-black bg-zinc-100 px-1 py-1 text-center font-semibold"
+                          >
+                            {labelGroupe}
+                          </td>
+                        )}
                         <td
-                          colSpan={3}
+                          colSpan={2}
                           className="border border-black bg-teal-100 px-1 py-1 font-semibold"
                         >
                           Effectifs enfants

@@ -641,13 +641,17 @@ create policy "effectifs_sous_groupe: directeur write" on public.effectifs_sous_
   using (public.current_role_name() = 'directeur')
   with check (public.current_role_name() = 'directeur');
 
--- Rattache un directeur/coordinateur à une section (Lutins/Trolls/Géants)
--- pour le placer au bon endroit sur la feuille de présence imprimable de
--- la Répartition — purement pour cet affichage, n'affecte pas les droits
--- réels (toujours basés sur profiles.groupe_coordinateur, groupe fusionné).
+-- Marque une fiche animateur comme "Directeur" ou "Coordinateur" pour la
+-- feuille de présence imprimable de la Répartition, avec sa section
+-- (Lutins/Trolls/Géants) si coordinateur — indépendant d'un compte
+-- utilisateur : la personne peut être ajoutée sans avoir créé de compte.
+-- Purement pour cet affichage, n'affecte pas les droits réels de
+-- l'application (toujours basés sur profiles.role /
+-- profiles.groupe_coordinateur pour qui a effectivement un compte).
 create table public.direction_roster (
   id uuid primary key default gen_random_uuid(),
-  profile_id uuid not null unique references public.profiles (id) on delete cascade,
+  animateur_id uuid not null unique references public.animateurs (id) on delete cascade,
+  role_affiche text not null check (role_affiche in ('directeur', 'coordinateur')),
   section text check (section in ('lutins', 'trolls', 'geants')),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),

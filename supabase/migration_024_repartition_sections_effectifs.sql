@@ -4,9 +4,11 @@
 -- - des effectifs enfants séparés Trolls / Géants (effectifs_jour
 --   reste la seule donnée utilisée par le calcul du taux d'encadrement
 --   sur Planning, inchangée) ;
--- - le rattachement d'un directeur/coordinateur à une section (pour le
---   placer au bon endroit sur la feuille), sans toucher à ses droits
---   réels (toujours basés sur groupe_coordinateur, groupe fusionné).
+-- - le rattachement d'une fiche animateur à un rôle affiché (Directeur/
+--   Coordinateur) et, pour un coordinateur, une section (Lutins/Trolls/
+--   Géants) — indépendant d'un compte utilisateur, pour pouvoir ajouter
+--   quelqu'un sans qu'il ait besoin de créer de compte. Sans effet sur
+--   les droits réels de l'application.
 
 create table public.effectifs_sous_groupe (
   id uuid primary key default gen_random_uuid(),
@@ -28,9 +30,14 @@ create policy "effectifs_sous_groupe: directeur write" on public.effectifs_sous_
   using (public.current_role_name() = 'directeur')
   with check (public.current_role_name() = 'directeur');
 
+-- Supprime la version précédente (basée sur profile_id, exigeait un
+-- compte) si cette migration avait déjà tourné une première fois.
+drop table if exists public.direction_roster cascade;
+
 create table public.direction_roster (
   id uuid primary key default gen_random_uuid(),
-  profile_id uuid not null unique references public.profiles (id) on delete cascade,
+  animateur_id uuid not null unique references public.animateurs (id) on delete cascade,
+  role_affiche text not null check (role_affiche in ('directeur', 'coordinateur')),
   section text check (section in ('lutins', 'trolls', 'geants')),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),

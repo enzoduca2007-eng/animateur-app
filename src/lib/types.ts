@@ -129,10 +129,12 @@ export interface EffectifSousGroupe {
 }
 
 export type SectionDirection = "lutins" | "trolls" | "geants";
+export type RoleAffiche = "directeur" | "coordinateur";
 
 export interface DirectionRoster {
   id: string;
-  profile_id: string;
+  animateur_id: string;
+  role_affiche: RoleAffiche;
   section: SectionDirection | null;
   created_by: string | null;
   created_at: string;
