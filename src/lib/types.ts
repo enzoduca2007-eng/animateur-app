@@ -145,6 +145,37 @@ export interface Gouter {
   updated_at: string;
 }
 
+export type MomentActivite = "matin" | "temps_calme" | "apres_midi";
+
+export const MOMENTS_ACTIVITE: { cle: MomentActivite; label: string }[] = [
+  { cle: "matin", label: "Matin" },
+  { cle: "temps_calme", label: "Temps calme" },
+  { cle: "apres_midi", label: "Après-midi" },
+];
+
+export interface PlanningActivite {
+  id: string;
+  date: string;
+  groupe: Groupe;
+  moment: MomentActivite;
+  ordre: number;
+  libelle: string;
+  animateur_ids: string[];
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ThemeSemaine {
+  id: string;
+  groupe: Groupe;
+  semaine_debut: string;
+  theme: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Message {
   id: string;
   auteur_id: string;

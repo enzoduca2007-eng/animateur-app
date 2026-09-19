@@ -14,6 +14,7 @@ const LINKS: { href: string; label: string; roles: Role[] | null }[] = [
   { href: "/dashboard/mon-planning", label: "Mon planning", roles: ["animateur", "coordinateur"] },
   { href: "/dashboard/animateurs", label: "Animateurs", roles: STAFF },
   { href: "/dashboard/plannings", label: "Plannings", roles: STAFF },
+  { href: "/dashboard/activites", label: "Activités", roles: null },
   { href: "/dashboard/repartition", label: "Répartition", roles: STAFF },
   { href: "/dashboard/fiches-horaires", label: "Fiches horaires", roles: STAFF },
   { href: "/dashboard/gouters", label: "Goûters", roles: null },
