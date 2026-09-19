@@ -39,6 +39,32 @@ function formatJourLong(dateISO: string) {
   });
 }
 
+// Génération d'un fichier .ics (iCalendar) pour exporter le planning
+// personnel vers un calendrier (Google/Apple/Outlook...) — dates/heures
+// "flottantes" (pas de fuseau explicite), un événement par jour affecté.
+function dateHeureIcs(dateISO: string, heureHHMMSS: string) {
+  const [h, m] = heureHHMMSS.split(":");
+  return `${dateISO.replace(/-/g, "")}T${h}${m}00`;
+}
+
+function dateIcs(dateISO: string) {
+  return dateISO.replace(/-/g, "");
+}
+
+function jourSuivantIso(dateISO: string) {
+  const d = new Date(`${dateISO}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function echapperIcs(texte: string) {
+  return texte
+    .replace(/\\/g, "\\\\")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;")
+    .replace(/\n/g, "\\n");
+}
+
 function TimelineJour({ creneaux }: { creneaux: Creneau[] }) {
   const arrivees = creneaux.filter((c) => c.type === "arrivee");
   const departs = creneaux.filter((c) => c.type === "depart");
@@ -382,6 +408,71 @@ export default function MonPlanningPage() {
       .sort((a, b) => a.ordre - b.ordre);
   }
 
+  // Exporte tous les jours affectés de la période en fichier .ics, pour
+  // les ajouter au calendrier personnel (Google/Apple/Outlook...).
+  function telechargerCalendrier() {
+    if (!moi) return;
+    const maintenant =
+      new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+
+    const lignes = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Animateur App//FR", "CALSCALE:GREGORIAN"];
+
+    for (const j of joursTravailles) {
+      const idsCreneaux = new Set(
+        affectations.filter((a) => a.date === j).map((a) => a.creneau_id)
+      );
+      const assignesJour = creneaux.filter((c) => idsCreneaux.has(c.id));
+      const arrivees = assignesJour.filter((c) => c.type === "arrivee");
+      const departs = assignesJour.filter((c) => c.type === "depart");
+      const groupe = affectationsJour.find((a) => a.date === j)?.groupe;
+
+      const descriptionLignes: string[] = [];
+      if (groupe) descriptionLignes.push(`Groupe : ${GROUPE_LABELS[groupe]}`);
+      for (const m of MOMENTS_ACTIVITE) {
+        const mesActs = activitesDuJour(j, groupe, m.cle).filter((act) =>
+          act.animateur_ids.includes(moi.id)
+        );
+        if (mesActs.length > 0) {
+          descriptionLignes.push(`${m.label} : ${mesActs.map((a) => a.libelle).join(", ")}`);
+        }
+      }
+
+      lignes.push("BEGIN:VEVENT");
+      lignes.push(`UID:${j}-${moi.id}@animateur-app`);
+      lignes.push(`DTSTAMP:${maintenant}`);
+
+      if (arrivees.length > 0 && departs.length > 0) {
+        const arrivee = arrivees.reduce((min, c) => (c.heure_debut < min.heure_debut ? c : min));
+        const depart = departs.reduce((max, c) => (c.heure_debut > max.heure_debut ? c : max));
+        lignes.push(`DTSTART:${dateHeureIcs(j, arrivee.heure_debut)}`);
+        lignes.push(`DTEND:${dateHeureIcs(j, depart.heure_debut)}`);
+      } else {
+        lignes.push(`DTSTART;VALUE=DATE:${dateIcs(j)}`);
+        lignes.push(`DTEND;VALUE=DATE:${dateIcs(jourSuivantIso(j))}`);
+      }
+
+      lignes.push(
+        `SUMMARY:${echapperIcs(groupe ? `Animation — ${GROUPE_LABELS[groupe]}` : "Animation")}`
+      );
+      if (descriptionLignes.length > 0) {
+        lignes.push(`DESCRIPTION:${echapperIcs(descriptionLignes.join("\n"))}`);
+      }
+      lignes.push("END:VEVENT");
+    }
+
+    lignes.push("END:VCALENDAR");
+
+    const blob = new Blob([lignes.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const lien = document.createElement("a");
+    lien.href = url;
+    lien.download = `planning-${moi.prenom.toLowerCase()}.ics`;
+    document.body.appendChild(lien);
+    lien.click();
+    document.body.removeChild(lien);
+    URL.revokeObjectURL(url);
+  }
+
   async function majMateriel(activiteId: string, valeur: string) {
     setActivites((prev) =>
       prev.map((a) => (a.id === activiteId ? { ...a, materiel: valeur || null } : a))
@@ -475,6 +566,16 @@ export default function MonPlanningPage() {
                   <p className="mt-1 text-3xl font-bold">{joursTravailles.length}</p>
                 </div>
               </div>
+
+              {joursTravailles.length > 0 && (
+                <button
+                  type="button"
+                  onClick={telechargerCalendrier}
+                  className="self-start rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  📅 Ajouter mon planning à mon calendrier
+                </button>
+              )}
 
               {joursTravailles.length === 0 || !jourCourant ? (
                 <p className="text-sm text-zinc-400">
