@@ -589,6 +589,7 @@ export default function RepartitionPage() {
             <table className="mt-4 w-full border-collapse text-left text-[10px]">
               <thead>
                 <tr>
+                  <th className="border border-black px-1 py-1 font-semibold">Rôle</th>
                   <th className="border border-black px-1 py-1 font-semibold">Nom</th>
                   <th className="border border-black px-1 py-1 font-semibold">Prénom</th>
                   {joursOuvrables.map((j) => (
@@ -605,7 +606,7 @@ export default function RepartitionPage() {
                 {profilesEquipe.some((p) => p.role === "directeur") && (
                   <tr>
                     <td
-                      colSpan={2 + joursOuvrables.length}
+                      colSpan={3 + joursOuvrables.length}
                       className="border border-black bg-zinc-300 px-1 py-1 font-bold"
                     >
                       Direction
@@ -620,6 +621,7 @@ export default function RepartitionPage() {
                     const couleur = "bg-orange-200";
                     return (
                       <tr key={p.id}>
+                        <td className={`border border-black px-1 py-1 ${couleur}`}>Directeur</td>
                         <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
                           {a.nom}
                         </td>
@@ -649,18 +651,20 @@ export default function RepartitionPage() {
                   );
                   const liste = rosterParLettre[lettre];
                   if (liste.length === 0 && coordinateurs.length === 0) return null;
+                  const age =
+                    lettre === "L" ? "3-5 ans" : lettre === "T" ? "6-8 ans" : "9-10 ans";
                   return (
                     <>
                       <tr key={`titre-${lettre}`}>
                         <td
-                          colSpan={2 + joursOuvrables.length}
+                          colSpan={3 + joursOuvrables.length}
                           className="border border-black bg-zinc-300 px-1 py-1 font-bold"
                         >
-                          {lettre === "L"
+                          {(lettre === "L"
                             ? GROUPE_LABELS.lutins
                             : lettre === "T"
                               ? "Trolls"
-                              : "Géants"}
+                              : "Géants") + ` (${age})`}
                         </td>
                       </tr>
                       {coordinateurs.map((p) => {
@@ -669,6 +673,7 @@ export default function RepartitionPage() {
                         const couleur = "bg-yellow-200";
                         return (
                           <tr key={`coord-${p.id}`}>
+                            <td className={`border border-black px-1 py-1 ${couleur}`}>Coordinateur</td>
                             <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
                               {a.nom}
                             </td>
@@ -693,6 +698,7 @@ export default function RepartitionPage() {
                         const couleur = !a.est_stagiaire ? "bg-yellow-200" : "";
                         return (
                           <tr key={`${lettre}-${a.id}`}>
+                            <td className="border border-black px-1 py-1" />
                             <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
                               {a.nom}
                             </td>
@@ -717,7 +723,7 @@ export default function RepartitionPage() {
                       })}
                       <tr key={`effectif-${lettre}`}>
                         <td
-                          colSpan={2}
+                          colSpan={3}
                           className="border border-black bg-teal-100 px-1 py-1 font-semibold"
                         >
                           Effectifs enfants
@@ -739,7 +745,7 @@ export default function RepartitionPage() {
 
                 <tr>
                   <td
-                    colSpan={2}
+                    colSpan={3}
                     className="border border-black bg-sky-200 px-1 py-1 font-bold uppercase"
                   >
                     Total enfants
