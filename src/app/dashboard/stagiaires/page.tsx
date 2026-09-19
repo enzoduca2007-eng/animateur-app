@@ -48,16 +48,16 @@ function MarqueNiveau({
   const stagMatch = stag === niveau;
   if (dirMatch && stagMatch) {
     return (
-      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border-2 border-sky-500 bg-orange-200 text-[9px] font-bold text-orange-800">
+      <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-sky-500 bg-orange-200 text-sm font-bold text-orange-800">
         X
       </span>
     );
   }
   if (dirMatch) {
-    return <span className="text-xs font-bold text-orange-700">X</span>;
+    return <span className="text-base font-bold text-orange-700">X</span>;
   }
   if (stagMatch) {
-    return <span className="text-xs font-bold text-sky-700">X</span>;
+    return <span className="text-base font-bold text-sky-700">X</span>;
   }
   return null;
 }
@@ -81,7 +81,7 @@ function GrilleCriteresPrint({
 }) {
   return (
     <>
-      <p className="mt-2 text-[10px] text-zinc-500">
+      <p className="mt-3 text-xs text-zinc-500">
         {NIVEAUX.map((n) => `${NIVEAU_CRITERE_ABBREV[n]} = ${NIVEAU_CRITERE_LABELS[n]}`).join(
           " · "
         )}
@@ -90,7 +90,7 @@ function GrilleCriteresPrint({
         <span className="font-bold text-sky-700">X bleu</span> = Stagiaire · anneau bleu = même
         avis
       </p>
-      <table className="mt-1 w-full table-fixed border-collapse text-left text-[10px] leading-tight">
+      <table className="mt-2 w-full table-fixed border-collapse text-left text-sm">
         <colgroup>
           <col className="w-[28%]" />
           {NIVEAUX.map((n) => (
@@ -100,16 +100,16 @@ function GrilleCriteresPrint({
         </colgroup>
         <thead>
           <tr>
-            <th className="border border-black px-1.5 py-0.5 font-semibold">Critère</th>
+            <th className="border border-black px-2.5 py-2 font-semibold">Critère</th>
             {NIVEAUX.map((niveau) => (
               <th
                 key={niveau}
-                className="border border-black px-1 py-0.5 text-center font-semibold"
+                className="border border-black px-1.5 py-2 text-center font-semibold"
               >
                 {NIVEAU_CRITERE_ABBREV[niveau]}
               </th>
             ))}
-            <th className="border border-black px-1.5 py-0.5 font-semibold">Appréciation</th>
+            <th className="border border-black px-2.5 py-2 font-semibold">Appréciation</th>
           </tr>
         </thead>
         <tbody>
@@ -120,7 +120,7 @@ function GrilleCriteresPrint({
                 <tr>
                   <td
                     colSpan={2 + NIVEAUX.length}
-                    className="border border-black bg-zinc-200 px-1.5 py-0.5 font-semibold"
+                    className="border border-black bg-zinc-200 px-2.5 py-1.5 font-semibold"
                   >
                     {cat.categorie}
                   </td>
@@ -130,13 +130,13 @@ function GrilleCriteresPrint({
                   const bordureBas = dernier ? "border-b border-black" : "";
                   return (
                     <tr key={c.cle}>
-                      <td className={`border-x border-black px-1.5 py-0.5 ${bordureBas}`}>
+                      <td className={`border-x border-black px-2.5 py-2.5 ${bordureBas}`}>
                         {c.label}
                       </td>
                       {NIVEAUX.map((niveau) => (
                         <td
                           key={niveau}
-                          className={`border-x border-black px-1 py-0.5 text-center ${bordureBas}`}
+                          className={`border-x border-black px-1.5 py-2.5 text-center ${bordureBas}`}
                         >
                           <MarqueNiveau
                             dir={criteresDirection?.[c.cle]}
@@ -148,7 +148,7 @@ function GrilleCriteresPrint({
                       {idx === 0 && (
                         <td
                           rowSpan={cat.criteres.length}
-                          className="border-x border-b border-black px-1.5 py-0.5 align-top whitespace-pre-wrap text-zinc-700"
+                          className="border-x border-b border-black px-2.5 py-2.5 align-top whitespace-pre-wrap text-zinc-700"
                         >
                           {texteAppreciation ?? ""}
                         </td>
@@ -493,10 +493,10 @@ export default function StagiairesPage() {
               return (
                 <div key={s.id} className="print-page">
                   <div className="flex items-baseline justify-between">
-                    <h2 className="text-base font-bold text-zinc-900">
+                    <h2 className="text-xl font-bold text-zinc-900">
                       Fiche d&apos;évaluation BAFA — stage pratique
                     </h2>
-                    <p className="text-xs text-zinc-600">
+                    <p className="text-sm text-zinc-600">
                       {s.prenom} {s.nom}
                       {s.stagiaire_confiance ? " · Autonomie de confiance" : ""}
                     </p>
@@ -508,7 +508,7 @@ export default function StagiairesPage() {
                     appreciations={evaluation?.appreciations_categories}
                   />
 
-                  <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                  <div className="mt-6 grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
                     <p className="col-span-2">
                       <span className="font-semibold">Avis final : </span>
                       {evaluation?.avis_final ? AVIS_FINAL_LABELS[evaluation.avis_final] : "—"}
@@ -516,14 +516,14 @@ export default function StagiairesPage() {
 
                     <div>
                       <p className="font-semibold">Appréciation générale</p>
-                      <p className="mt-0.5 whitespace-pre-wrap text-zinc-700">
+                      <p className="mt-1 whitespace-pre-wrap text-zinc-700">
                         {evaluation?.appreciation_generale || "—"}
                       </p>
                     </div>
 
                     <div>
                       <p className="font-semibold">Axes de progrès</p>
-                      <p className="mt-0.5 whitespace-pre-wrap text-zinc-700">
+                      <p className="mt-1 whitespace-pre-wrap text-zinc-700">
                         {evaluation?.axes_progres || "—"}
                       </p>
                     </div>
@@ -531,7 +531,7 @@ export default function StagiairesPage() {
                     {autoEvaluation?.commentaire && (
                       <div className="col-span-2">
                         <p className="font-semibold">Commentaire du stagiaire</p>
-                        <p className="mt-0.5 whitespace-pre-wrap text-zinc-700">
+                        <p className="mt-1 whitespace-pre-wrap text-zinc-700">
                           {autoEvaluation.commentaire}
                         </p>
                       </div>
