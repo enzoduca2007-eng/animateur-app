@@ -753,14 +753,40 @@ export default function RepartitionPage() {
                   })}
 
                 {(() => {
-                  // Trait épais ambre entre chaque section (Direction /
-                  // Lutins / Trolls / Géants) qui s'affiche réellement,
-                  // comme la bordure entre semaines — remplace l'ancienne
-                  // ligne de titre pleine largeur.
-                  let sectionPrecedenteAffichee = directionRoster.some(
-                    (d) => d.role_affiche === "directeur"
-                  );
-                  return (["L", "T", "G"] as Lettre[]).map((lettre) => {
+                  // Bandeau gris "Animation" (comme "Direction") juste avant
+                  // les sections Lutins/Trolls/Géants, dès qu'au moins une
+                  // d'entre elles a du contenu.
+                  const contenuParLettre = (["L", "T", "G"] as Lettre[]).map((lettre) => {
+                    const sectionCorrespondante: SectionDirection =
+                      lettre === "L" ? "lutins" : lettre === "T" ? "trolls" : "geants";
+                    const coordinateurs = directionRoster.filter(
+                      (d) =>
+                        d.role_affiche === "coordinateur" &&
+                        d.sections.includes(sectionCorrespondante)
+                    );
+                    return coordinateurs.length > 0 || rosterParLettre[lettre].length > 0;
+                  });
+                  const afficherAnimation = contenuParLettre.some(Boolean);
+
+                  // Trait épais ambre entre chaque section Lutins / Trolls /
+                  // Géants qui s'affiche réellement, comme la bordure entre
+                  // semaines — remplace l'ancienne ligne de titre pleine
+                  // largeur. Pas de trait avant la première : le bandeau
+                  // "Animation" sert déjà de séparateur avec Direction.
+                  let sectionPrecedenteAffichee = false;
+                  return (
+                    <>
+                      {afficherAnimation && (
+                        <tr>
+                          <td
+                            colSpan={3 + joursOuvrables.length}
+                            className="border border-black bg-zinc-300 px-1 py-1 font-bold"
+                          >
+                            Animation
+                          </td>
+                        </tr>
+                      )}
+                      {(["L", "T", "G"] as Lettre[]).map((lettre) => {
                     const sectionCorrespondante: SectionDirection =
                       lettre === "L" ? "lutins" : lettre === "T" ? "trolls" : "geants";
                     // Un coordinateur peut gérer plusieurs groupes à la fois :
@@ -887,7 +913,9 @@ export default function RepartitionPage() {
                         </tr>
                       </>
                     );
-                  });
+                  })}
+                    </>
+                  );
                 })()}
 
                 <tr>
