@@ -291,7 +291,7 @@ export default function MonPlanningPage() {
     if (!groupe) return [];
     return activites
       .filter((a) => a.groupe === groupe && a.date === date && a.moment === moment)
-      .sort((a, b) => (a.heure ?? "99:99").localeCompare(b.heure ?? "99:99") || a.ordre - b.ordre);
+      .sort((a, b) => a.ordre - b.ordre);
   }
 
   if (moi === undefined) {
@@ -480,13 +480,23 @@ export default function MonPlanningPage() {
                                               : "text-zinc-500"
                                           }`}
                                         >
-                                          {act.heure && (
-                                            <span className="font-semibold">{act.heure.slice(0, 5)} </span>
+                                          {act.est_grand_jeu && (
+                                            <span className="mr-1 inline-block rounded bg-amber-200 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800">
+                                              Grand jeu
+                                            </span>
                                           )}
                                           {act.libelle}
+                                          {act.duree && (
+                                            <span className="text-zinc-400"> ({act.duree})</span>
+                                          )}
                                           {act.animateur_ids.length > 0 && (
                                             <p className="text-xs font-semibold text-emerald-700">
                                               → {nomsDe(act.animateur_ids).join(", ")}
+                                            </p>
+                                          )}
+                                          {act.materiel && (
+                                            <p className="text-[11px] text-zinc-400">
+                                              🧰 {act.materiel}
                                             </p>
                                           )}
                                         </li>

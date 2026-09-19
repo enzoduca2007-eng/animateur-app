@@ -159,7 +159,9 @@ export interface PlanningActivite {
   groupe: Groupe;
   moment: MomentActivite;
   ordre: number;
-  heure: string | null;
+  est_grand_jeu: boolean;
+  duree: string | null;
+  materiel: string | null;
   libelle: string;
   animateur_ids: string[];
   created_by: string | null;

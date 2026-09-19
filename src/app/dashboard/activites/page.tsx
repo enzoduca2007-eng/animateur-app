@@ -67,7 +67,9 @@ export default function ActivitesPage() {
     activite: PlanningActivite | null;
   } | null>(null);
   const [modalLibelle, setModalLibelle] = useState("");
-  const [modalHeure, setModalHeure] = useState("");
+  const [modalDuree, setModalDuree] = useState("");
+  const [modalMateriel, setModalMateriel] = useState("");
+  const [modalGrandJeu, setModalGrandJeu] = useState(false);
   const [modalAnimateurs, setModalAnimateurs] = useState<string[]>([]);
   const [monAnimateur, setMonAnimateur] = useState<Animateur | null>(null);
 
@@ -143,7 +145,7 @@ export default function ActivitesPage() {
   function activitesDe(groupe: Groupe, date: string, moment: MomentActivite) {
     return activites
       .filter((a) => a.groupe === groupe && a.date === date && a.moment === moment)
-      .sort((a, b) => (a.heure ?? "99:99").localeCompare(b.heure ?? "99:99") || a.ordre - b.ordre);
+      .sort((a, b) => a.ordre - b.ordre);
   }
 
   function nomsDe(ids: string[]) {
@@ -157,7 +159,9 @@ export default function ActivitesPage() {
   function ouvrirAjout(date: string, moment: MomentActivite, groupe: Groupe) {
     setModal({ date, moment, groupe, activite: null });
     setModalLibelle("");
-    setModalHeure("");
+    setModalDuree("");
+    setModalMateriel("");
+    setModalGrandJeu(false);
     setModalAnimateurs([]);
   }
 
@@ -169,7 +173,9 @@ export default function ActivitesPage() {
       activite,
     });
     setModalLibelle(activite.libelle);
-    setModalHeure(activite.heure?.slice(0, 5) ?? "");
+    setModalDuree(activite.duree ?? "");
+    setModalMateriel(activite.materiel ?? "");
+    setModalGrandJeu(activite.est_grand_jeu);
     setModalAnimateurs(activite.animateur_ids);
   }
 
@@ -181,7 +187,9 @@ export default function ActivitesPage() {
         .from("planning_activites")
         .update({
           libelle: modalLibelle.trim(),
-          heure: modalHeure || null,
+          duree: modalDuree.trim() || null,
+          materiel: modalMateriel.trim() || null,
+          est_grand_jeu: modalGrandJeu,
           animateur_ids: modalAnimateurs,
         })
         .eq("id", modal.activite.id);
@@ -196,7 +204,9 @@ export default function ActivitesPage() {
         groupe: modal.groupe,
         moment: modal.moment,
         ordre,
-        heure: modalHeure || null,
+        duree: modalDuree.trim() || null,
+        materiel: modalMateriel.trim() || null,
+        est_grand_jeu: modalGrandJeu,
         libelle: modalLibelle.trim(),
         animateur_ids: modalAnimateurs,
         created_by: profile.id,
@@ -425,12 +435,15 @@ export default function ActivitesPage() {
                                         >
                                           <div className="flex items-start justify-between gap-1">
                                             <span>
-                                              – {act.heure && (
-                                                <span className="font-semibold">
-                                                  {act.heure.slice(0, 5)}{" "}
+                                              {act.est_grand_jeu && (
+                                                <span className="mr-1 inline-block rounded bg-amber-200 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800 print:bg-amber-200">
+                                                  Grand jeu
                                                 </span>
                                               )}
-                                              {act.libelle}
+                                              – {act.libelle}
+                                              {act.duree && (
+                                                <span className="text-zinc-400"> ({act.duree})</span>
+                                              )}
                                             </span>
                                             {peutGererGroupe(groupe) && (
                                               <span className="no-print hidden shrink-0 gap-1 group-hover:flex">
@@ -454,6 +467,11 @@ export default function ActivitesPage() {
                                           {act.animateur_ids.length > 0 && (
                                             <p className="pl-3 text-xs font-semibold text-emerald-700">
                                               → {nomsDe(act.animateur_ids).join(", ")}
+                                            </p>
+                                          )}
+                                          {act.materiel && (
+                                            <p className="pl-3 text-[11px] text-zinc-400">
+                                              🧰 {act.materiel}
                                             </p>
                                           )}
                                         </li>
@@ -505,27 +523,42 @@ export default function ActivitesPage() {
               </button>
             </div>
 
-            <div className="mb-3 flex gap-2">
+            <label className="text-xs font-medium text-zinc-500">Activité</label>
+            <input
+              autoFocus
+              value={modalLibelle}
+              onChange={(e) => setModalLibelle(e.target.value)}
+              placeholder="Ex: Chasse au trésor"
+              className="mt-1 mb-3 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            />
+
+            <div className="mb-3 flex items-end gap-3">
               <div className="flex-1">
-                <label className="text-xs font-medium text-zinc-500">Activité</label>
+                <label className="text-xs font-medium text-zinc-500">Durée</label>
                 <input
-                  autoFocus
-                  value={modalLibelle}
-                  onChange={(e) => setModalLibelle(e.target.value)}
-                  placeholder="Ex: Chasse au trésor"
+                  value={modalDuree}
+                  onChange={(e) => setModalDuree(e.target.value)}
+                  placeholder="Ex: 1h30"
                   className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
                 />
               </div>
-              <div>
-                <label className="text-xs font-medium text-zinc-500">Heure</label>
+              <label className="flex items-center gap-2 pb-2 text-sm text-zinc-700">
                 <input
-                  type="time"
-                  value={modalHeure}
-                  onChange={(e) => setModalHeure(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-2 text-sm"
+                  type="checkbox"
+                  checked={modalGrandJeu}
+                  onChange={(e) => setModalGrandJeu(e.target.checked)}
                 />
-              </div>
+                Grand jeu
+              </label>
             </div>
+
+            <label className="text-xs font-medium text-zinc-500">Matériel</label>
+            <input
+              value={modalMateriel}
+              onChange={(e) => setModalMateriel(e.target.value)}
+              placeholder="Ex: Foulards, plots, ballons"
+              className="mt-1 mb-3 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            />
 
             <label className="text-xs font-medium text-zinc-500">
               Animateur(s) affecté(s) ce jour-là
