@@ -100,16 +100,16 @@ function GrilleCriteresPrint({
         </colgroup>
         <thead>
           <tr>
-            <th className="border border-black px-2.5 py-2 font-semibold">Critère</th>
+            <th className="border border-black px-2.5 py-1.5 font-semibold">Critère</th>
             {NIVEAUX.map((niveau) => (
               <th
                 key={niveau}
-                className="border border-black px-1.5 py-2 text-center font-semibold"
+                className="border border-black px-1.5 py-1.5 text-center font-semibold"
               >
                 {NIVEAU_CRITERE_ABBREV[niveau]}
               </th>
             ))}
-            <th className="border border-black px-2.5 py-2 font-semibold">Appréciation</th>
+            <th className="border border-black px-2.5 py-1.5 font-semibold">Appréciation</th>
           </tr>
         </thead>
         <tbody>
@@ -120,7 +120,7 @@ function GrilleCriteresPrint({
                 <tr>
                   <td
                     colSpan={2 + NIVEAUX.length}
-                    className="border border-black bg-zinc-200 px-2.5 py-1.5 font-semibold"
+                    className="border border-black bg-zinc-200 px-2.5 py-1 font-semibold"
                   >
                     {cat.categorie}
                   </td>
@@ -130,13 +130,13 @@ function GrilleCriteresPrint({
                   const bordureBas = dernier ? "border-b border-black" : "";
                   return (
                     <tr key={c.cle}>
-                      <td className={`border-x border-black px-2.5 py-2.5 ${bordureBas}`}>
+                      <td className={`border-x border-black px-2.5 py-2 ${bordureBas}`}>
                         {c.label}
                       </td>
                       {NIVEAUX.map((niveau) => (
                         <td
                           key={niveau}
-                          className={`border-x border-black px-1.5 py-2.5 text-center ${bordureBas}`}
+                          className={`border-x border-black px-1.5 py-2 text-center ${bordureBas}`}
                         >
                           <MarqueNiveau
                             dir={criteresDirection?.[c.cle]}
@@ -148,7 +148,7 @@ function GrilleCriteresPrint({
                       {idx === 0 && (
                         <td
                           rowSpan={cat.criteres.length}
-                          className="border-x border-b border-black px-2.5 py-2.5 align-top whitespace-pre-wrap text-zinc-700"
+                          className="border-x border-b border-black px-2.5 py-2 align-top whitespace-pre-wrap text-zinc-700"
                         >
                           {texteAppreciation ?? ""}
                         </td>
@@ -508,7 +508,7 @@ export default function StagiairesPage() {
                     appreciations={evaluation?.appreciations_categories}
                   />
 
-                  <div className="mt-6 grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+                  <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
                     <p className="col-span-2">
                       <span className="font-semibold">Avis final : </span>
                       {evaluation?.avis_final ? AVIS_FINAL_LABELS[evaluation.avis_final] : "—"}
