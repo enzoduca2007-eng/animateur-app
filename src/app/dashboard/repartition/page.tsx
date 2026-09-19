@@ -514,7 +514,7 @@ export default function RepartitionPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
+      <div className="no-print">
         <h1 className="text-2xl font-semibold text-zinc-900">Répartition</h1>
         <p className="mt-1 text-sm text-zinc-500">
           {editable
@@ -532,7 +532,7 @@ export default function RepartitionPage() {
       ) : (
         <>
           {erreur && (
-            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+            <p className="no-print rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
               {erreur}
             </p>
           )}
