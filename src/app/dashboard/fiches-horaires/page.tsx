@@ -17,13 +17,19 @@ import {
   type JourFermeture,
 } from "@/lib/types";
 
+// "18:00:00" -> "18h00" : l'heure elle-même plutôt que le libellé du
+// créneau (ex. "Fermeture"), qui n'a pas sa place sur une fiche horaire.
+function formatHeureCourte(heure: string) {
+  return heure.slice(0, 5).replace(":", "h");
+}
+
 function formatPlage(creneaux: Creneau[]) {
   const arrivees = creneaux.filter((c) => c.type === "arrivee");
   const departs = creneaux.filter((c) => c.type === "depart");
   if (arrivees.length === 0 || departs.length === 0) return "—";
   const arrivee = arrivees.reduce((min, c) => (c.heure_debut < min.heure_debut ? c : min));
   const depart = departs.reduce((max, c) => (c.heure_debut > max.heure_debut ? c : max));
-  return `${arrivee.libelle} → ${depart.libelle}`;
+  return `${formatHeureCourte(arrivee.heure_debut)} → ${formatHeureCourte(depart.heure_debut)}`;
 }
 
 function formatPauses(creneaux: Creneau[]) {
