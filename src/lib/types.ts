@@ -175,6 +175,16 @@ export const CRITERES_STAGIAIRE: { cle: string; label: string }[] = [
   { cle: "rythmes_besoins", label: "Prend en compte les rythmes et besoins de chaque enfant" },
   { cle: "relation_familles", label: "Participe à la relation avec les familles" },
   { cle: "cadre_reglementaire", label: "Respecte le cadre réglementaire et les règles de vie" },
+  { cle: "autonomie", label: "Fait preuve d'autonomie et de prise d'initiative" },
+  { cle: "ponctualite", label: "Ponctualité et assiduité" },
+  { cle: "remise_en_question", label: "Sait se remettre en question, accepte les conseils et la critique" },
+  { cle: "gestion_groupe", label: "Sait gérer un groupe d'enfants (autorité bienveillante, cadre posé)" },
+  { cle: "adaptation", label: "S'adapte aux imprévus et aux changements" },
+  { cle: "hygiene_vie_collective", label: "Respecte les règles d'hygiène et de vie collective" },
+  { cle: "communication", label: "Communique de façon claire et adaptée avec les enfants et l'équipe" },
+  { cle: "projet_pedagogique", label: "Comprend et respecte le projet pédagogique de la structure" },
+  { cle: "creativite", label: "Fait preuve de créativité dans la conception des animations" },
+  { cle: "bilan_activites", label: "Sait évaluer et faire le bilan de ses animations" },
 ];
 
 export type AvisFinal = "favorable" | "reserve" | "defavorable";
