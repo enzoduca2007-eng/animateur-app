@@ -355,12 +355,13 @@ export default function ActivitesPage() {
                         </p>
                         <div className="absolute right-3 top-1/2 -translate-y-1/2">
                           <div className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-zinc-400 bg-white print:border-black">
-                            <textarea
+                            <input
+                              type="text"
                               value={themeDe(groupe, semaineDebut)}
                               readOnly={!peutGererGroupe(groupe)}
                               onChange={(e) => majTheme(groupe, semaineDebut, e.target.value)}
                               placeholder={peutGererGroupe(groupe) ? "Thème" : ""}
-                              className="h-20 w-20 resize-none border-0 bg-transparent text-center text-xs font-medium leading-tight text-zinc-700 focus:outline-none"
+                              className="w-20 border-0 bg-transparent text-center text-xs font-medium leading-tight text-zinc-700 focus:outline-none"
                             />
                           </div>
                         </div>
