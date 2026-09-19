@@ -413,8 +413,12 @@ export default function MonPlanningPage() {
   const jourIndexSafe = Math.min(jourIndex, Math.max(0, joursTravailles.length - 1));
   const jourCourant = joursTravailles[jourIndexSafe] ?? null;
 
+  const activiteImprimee = activites.find((a) => a.id === ficheOuverte) ?? null;
+  const ficheImprimee = activiteImprimee ? ficheDe(activiteImprimee.id) : null;
+
   return (
-    <div className="flex flex-col gap-6">
+    <>
+    <div className="no-print flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold text-zinc-900">Mon planning</h1>
         <p className="mt-1 text-sm text-zinc-500">
@@ -643,16 +647,25 @@ export default function MonPlanningPage() {
                 onClick={(e) => e.stopPropagation()}
                 className="flex max-h-full w-full max-w-lg flex-col overflow-y-auto rounded-xl bg-white p-5 shadow-lg"
               >
-                <div className="mb-3 flex items-center justify-between">
+                <div className="mb-3 flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-zinc-900">
                     📋 Fiche d&apos;animation — {act.libelle}
                   </p>
-                  <button
-                    onClick={() => setFicheOuverte(null)}
-                    className="text-zinc-400 hover:text-zinc-700"
-                  >
-                    ✕
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      onClick={() => window.print()}
+                      title="Imprimer cette fiche"
+                      className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                    >
+                      🖨️
+                    </button>
+                    <button
+                      onClick={() => setFicheOuverte(null)}
+                      className="text-zinc-400 hover:text-zinc-700"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-3">
@@ -783,5 +796,94 @@ export default function MonPlanningPage() {
           );
         })()}
     </div>
+
+    {/* Fiche d'animation imprimable, dans le style du modèle papier
+        (cases titrées grisées) — visible uniquement à l'impression, pour
+        la fiche actuellement ouverte. */}
+    {activiteImprimee && (
+      <div className="print-portrait hidden print:block">
+        <div className="border border-black">
+          <p className="border-b border-black bg-zinc-200 px-2 py-1 text-xs font-semibold">
+            Nom de l&apos;activité
+          </p>
+          <p className="px-3 py-3 text-xl font-bold">{activiteImprimee.libelle}</p>
+        </div>
+
+        <div className="mt-3 grid grid-cols-4 border border-black">
+          {(
+            [
+              ["Âge", ficheImprimee?.age],
+              ["Effectif", ficheImprimee?.effectif],
+              ["Lieu", ficheImprimee?.lieu],
+              ["Durée", activiteImprimee.duree],
+            ] as [string, string | null | undefined][]
+          ).map(([label, valeur], idx) => (
+            <div key={label} className={idx > 0 ? "border-l border-black" : ""}>
+              <p className="border-b border-black bg-zinc-200 px-2 py-1 text-center text-xs font-semibold">
+                {label}
+              </p>
+              <p className="px-2 py-3 text-center text-sm">{valeur || "—"}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 border border-black">
+          <div>
+            <p className="border-b border-black bg-zinc-200 px-2 py-1 text-center text-xs font-semibold">
+              Objectifs
+            </p>
+            <p className="whitespace-pre-wrap px-3 py-3 text-sm">
+              {ficheImprimee?.objectifs || "—"}
+            </p>
+          </div>
+          <div className="border-l border-black">
+            <p className="border-b border-black bg-zinc-200 px-2 py-1 text-center text-xs font-semibold">
+              Matériel nécessaire / Coût
+            </p>
+            <p className="whitespace-pre-wrap px-3 py-3 text-sm">
+              {activiteImprimee.materiel || "—"}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3 border border-black">
+          <p className="border-b border-black bg-zinc-200 px-2 py-1 text-center text-xs font-semibold">
+            Sensibilisation / Aménagement
+          </p>
+          <p className="whitespace-pre-wrap px-3 py-3 text-sm">
+            {ficheImprimee?.sensibilisation || "—"}
+          </p>
+        </div>
+
+        <div className="mt-3 border border-black">
+          <p className="border-b border-black bg-zinc-200 px-2 py-1 text-center text-xs font-semibold">
+            Déroulement
+          </p>
+          <p className="min-h-32 whitespace-pre-wrap px-3 py-3 text-sm">
+            {ficheImprimee?.deroulement || "—"}
+          </p>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 border border-black">
+          <div>
+            <p className="border-b border-black bg-zinc-200 px-2 py-1 text-center text-xs font-semibold">
+              Conclusion / Rangement
+            </p>
+            <p className="whitespace-pre-wrap px-3 py-3 text-sm">
+              {ficheImprimee?.conclusion_rangement || "—"}
+            </p>
+          </div>
+          <div className="border-l border-black">
+            <p className="border-b border-black bg-zinc-200 px-2 py-1 text-center text-xs font-semibold">
+              Animateurs requis
+            </p>
+            <p className="whitespace-pre-wrap px-3 py-3 text-sm">
+              {ficheImprimee?.animateurs_requis || "—"}
+            </p>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
