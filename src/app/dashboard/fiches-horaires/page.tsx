@@ -61,6 +61,246 @@ function formatJourCourt(dateISO: string) {
   });
 }
 
+// Versions pures (pas de closure sur le state du composant) des
+// fonctions de lecture, pour pouvoir les réutiliser à la fois sur la
+// semaine affichée à l'écran ET sur "imprimer toutes les semaines"
+// (données de toute la période, pas juste la semaine sélectionnée).
+function assignesDePure(
+  animateurId: string,
+  date: string,
+  affectations: AffectationCreneau[],
+  creneaux: Creneau[]
+) {
+  const ids = new Set(
+    affectations
+      .filter((a) => a.date === date && a.animateur_id === animateurId)
+      .map((a) => a.creneau_id)
+  );
+  return creneaux.filter((c) => ids.has(c.id));
+}
+
+function aUneAffectationPure(
+  animateurId: string,
+  date: string,
+  affectations: AffectationCreneau[],
+  affectationsJour: AffectationJour[]
+) {
+  return (
+    affectations.some((a) => a.date === date && a.animateur_id === animateurId) ||
+    affectationsJour.some((a) => a.date === date && a.animateur_id === animateurId)
+  );
+}
+
+function groupeDePure(animateurId: string, date: string, affectationsJour: AffectationJour[]) {
+  return affectationsJour.find((a) => a.date === date && a.animateur_id === animateurId)?.groupe;
+}
+
+function lettreDuJourPure(
+  animateurId: string,
+  date: string,
+  feuilles: FeuilleTemps[],
+  affectations: AffectationCreneau[],
+  creneaux: Creneau[]
+): "" | "A" | "I" | "R" {
+  const feuille = feuilles.find((f) => f.date === date && f.animateur_id === animateurId);
+  if (!feuille) return "";
+  if (!feuille.present) return "A";
+
+  const assignes = assignesDePure(animateurId, date, affectations, creneaux);
+  const arrivees = assignes.filter((c) => c.type === "arrivee");
+  const departs = assignes.filter((c) => c.type === "depart");
+  const arriveePrevue =
+    arrivees.length > 0
+      ? arrivees.reduce((min, c) => (c.heure_debut < min.heure_debut ? c : min)).heure_debut
+      : null;
+  const departPrevu =
+    departs.length > 0
+      ? departs.reduce((max, c) => (c.heure_debut > max.heure_debut ? c : max)).heure_debut
+      : null;
+
+  const idem =
+    feuille.heure_arrivee_reelle === arriveePrevue && feuille.heure_depart_reelle === departPrevu;
+  return idem ? "I" : "R";
+}
+
+function lignesPourSemaine(
+  animateurs: Animateur[],
+  semaineJoursX: string[],
+  affectations: AffectationCreneau[],
+  affectationsJour: AffectationJour[],
+  monGroupe: ReturnType<typeof groupeDePure> | null
+) {
+  return animateurs.filter((a) =>
+    semaineJoursX.some(
+      (j) =>
+        aUneAffectationPure(a.id, j, affectations, affectationsJour) &&
+        (!monGroupe || groupeDePure(a.id, j, affectationsJour) === monGroupe)
+    )
+  );
+}
+
+// La fiche imprimable d'un animateur pour une semaine donnée — extraite
+// en composant à part pour être réutilisée à la fois par "Télécharger
+// en PDF" (semaine affichée à l'écran) et par "Imprimer toutes les
+// semaines" (une fiche par animateur par semaine, toute la période).
+function FicheHorairePrint({
+  animateur,
+  semaineJours,
+  feuilles,
+  affectations,
+  affectationsJour,
+  creneaux,
+  zone,
+}: {
+  animateur: Animateur;
+  semaineJours: string[];
+  feuilles: FeuilleTemps[];
+  affectations: AffectationCreneau[];
+  affectationsJour: AffectationJour[];
+  creneaux: Creneau[];
+  zone: number | string;
+}) {
+  return (
+    <div className="print-page">
+      <h2 className="text-lg font-bold text-zinc-900">Fiche horaire</h2>
+      <p className="mt-1 text-sm text-zinc-600">
+        {animateur.prenom} {animateur.nom} · Semaine du {formatJourCourt(semaineJours[0])} au{" "}
+        {formatJourCourt(semaineJours[semaineJours.length - 1])} · Zone {zone}
+      </p>
+
+      <table className="mt-4 w-full table-fixed border-collapse text-left text-sm">
+        <colgroup>
+          <col className="w-[15%]" />
+          <col className="w-[21.25%]" />
+          <col className="w-[21.25%]" />
+          <col className="w-[21.25%]" />
+          <col className="w-[21.25%]" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th rowSpan={2} className="border border-black bg-zinc-700 px-2 py-1.5 text-white" />
+            <th
+              colSpan={2}
+              className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-semibold text-white"
+            >
+              Prévisionnel
+            </th>
+            <th
+              colSpan={2}
+              className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-semibold text-white"
+            >
+              Réel
+            </th>
+          </tr>
+          <tr>
+            <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-medium text-white">
+              Présence
+            </th>
+            <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-medium text-white">
+              Pause
+            </th>
+            <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-medium text-white">
+              Présence
+            </th>
+            <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-medium text-white">
+              Pause
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {semaineJours.map((j) => {
+            const assignes = assignesDePure(animateur.id, j, affectations, creneaux);
+            const feuille = feuilles.find(
+              (f) => f.date === j && f.animateur_id === animateur.id
+            );
+            const aAffectation = aUneAffectationPure(
+              animateur.id,
+              j,
+              affectations,
+              affectationsJour
+            );
+            const reelPresence = !feuille
+              ? ""
+              : !feuille.present
+                ? `Absent${feuille.motif_absence ? ` (${feuille.motif_absence})` : ""}`
+                : `${feuille.heure_arrivee_reelle?.slice(0, 5) ?? "—"} → ${feuille.heure_depart_reelle?.slice(0, 5) ?? "—"}`;
+            // La pause réelle n'est pas suivie séparément — on ne la
+            // remplit que quand le pointage du jour est "I" (idem au
+            // prévisionnel), pas "R" ou "A".
+            const lettre = lettreDuJourPure(animateur.id, j, feuilles, affectations, creneaux);
+            return (
+              <tr key={j}>
+                <td className="border border-black bg-zinc-200 px-2 py-2 capitalize">
+                  {formatJourCourt(j)}
+                </td>
+                <td className="border border-black px-2 py-2">
+                  {aAffectation ? formatPlage(assignes) : ""}
+                </td>
+                <td className="border border-black px-2 py-2">
+                  {aAffectation ? formatPauses(assignes) : ""}
+                </td>
+                <td className="border border-black px-2 py-2">{reelPresence}</td>
+                <td className="border border-black px-2 py-2">
+                  {lettre === "I" ? formatPauses(assignes) : ""}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <div className="mt-8 grid grid-cols-2 gap-8">
+        <div className="border border-black px-3 py-2">
+          <p className="text-sm text-zinc-700">Signature de l&apos;employé</p>
+          <div className="h-14" />
+        </div>
+        <div className="border border-black px-3 py-2">
+          <p className="text-sm text-zinc-700">Signature de l&apos;employeur</p>
+          <div className="h-14" />
+        </div>
+      </div>
+
+      <table className="mt-8 w-full table-fixed border-collapse text-left text-sm">
+        <colgroup>
+          <col className="w-[15%]" />
+          <col className="w-[85%]" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-semibold text-white">
+              Jour
+            </th>
+            <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-semibold text-white">
+              Présence (signature)
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {semaineJours.map((j) => (
+            <tr key={j}>
+              <td className="border border-black bg-zinc-200 px-2 py-2 capitalize">
+                {formatJourCourt(j)}
+              </td>
+              <td className="border border-black px-2 py-2" />
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="mt-8 grid grid-cols-2 gap-8">
+        <div className="border border-black px-3 py-2">
+          <p className="text-sm text-zinc-700">Signature de l&apos;employé</p>
+          <div className="h-14" />
+        </div>
+        <div className="border border-black px-3 py-2">
+          <p className="text-sm text-zinc-700">Signature de l&apos;employeur</p>
+          <div className="h-14" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function FichesHorairesPage() {
   const profile = useProfile();
   const supabase = createClient();
@@ -82,6 +322,53 @@ export default function FichesHorairesPage() {
     { animateurId: string; date: string } | null
   >(null);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  // "Imprimer toutes les semaines" : charge les données de toute la
+  // période (pas juste la semaine affichée) dans des états séparés, puis
+  // affiche un bloc imprimable dédié qui boucle sur chaque semaine.
+  const [impressionToutesSemaines, setImpressionToutesSemaines] = useState(false);
+  const [chargementToutesSemaines, setChargementToutesSemaines] = useState(false);
+  const [toutesAffectations, setToutesAffectations] = useState<AffectationCreneau[]>([]);
+  const [toutesAffectationsJour, setToutesAffectationsJour] = useState<AffectationJour[]>([]);
+  const [toutesFeuilles, setToutesFeuilles] = useState<FeuilleTemps[]>([]);
+
+  useEffect(() => {
+    function reinitialiserApresImpression() {
+      setImpressionToutesSemaines(false);
+    }
+    window.addEventListener("afterprint", reinitialiserApresImpression);
+    return () => window.removeEventListener("afterprint", reinitialiserApresImpression);
+  }, []);
+
+  async function imprimerToutesLesSemaines() {
+    if (!periode) return;
+    setChargementToutesSemaines(true);
+    const [{ data: c }, { data: j }, { data: f }] = await Promise.all([
+      supabase
+        .from("affectations_creneau")
+        .select("*")
+        .gte("date", periode.debut)
+        .lte("date", periode.fin),
+      supabase
+        .from("affectations_jour")
+        .select("*")
+        .gte("date", periode.debut)
+        .lte("date", periode.fin),
+      supabase
+        .from("feuilles_temps")
+        .select("*")
+        .gte("date", periode.debut)
+        .lte("date", periode.fin),
+    ]);
+    setToutesAffectations((c as AffectationCreneau[]) ?? []);
+    setToutesAffectationsJour((j as AffectationJour[]) ?? []);
+    setToutesFeuilles((f as FeuilleTemps[]) ?? []);
+    setChargementToutesSemaines(false);
+    setImpressionToutesSemaines(true);
+    // Laisse React re-rendre le bloc imprimable avant d'ouvrir le
+    // dialogue d'impression.
+    requestAnimationFrame(() => window.print());
+  }
 
   useEffect(() => {
     supabase
@@ -195,13 +482,7 @@ export default function FichesHorairesPage() {
   }
 
   const lignes = useMemo(
-    () =>
-      animateurs.filter((a) =>
-        semaineJours.some(
-          (j) => aUneAffectation(a.id, j) && (!monGroupe || groupeDe(a.id, j) === monGroupe)
-        )
-      ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    () => lignesPourSemaine(animateurs, semaineJours, affectations, affectationsJour, monGroupe),
     [animateurs, semaineJours, affectations, affectationsJour, monGroupe]
   );
 
@@ -374,12 +655,23 @@ export default function FichesHorairesPage() {
               : "Horaires prévisionnels vs réels et présence de chaque animateur."}
           </p>
         </div>
-        <button
-          onClick={() => window.print()}
-          className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-        >
-          Télécharger en PDF (à faire signer)
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => window.print()}
+            className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            Télécharger en PDF (à faire signer)
+          </button>
+          <button
+            onClick={imprimerToutesLesSemaines}
+            disabled={chargementToutesSemaines}
+            className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+          >
+            {chargementToutesSemaines
+              ? "Préparation..."
+              : "Imprimer toutes les semaines"}
+          </button>
+        </div>
       </div>
 
       {erreur && (
@@ -569,147 +861,48 @@ export default function FichesHorairesPage() {
             </div>
           )}
 
-          {lignes.length > 0 && (
+          {!impressionToutesSemaines && lignes.length > 0 && (
             <div className="print-portrait hidden print:block">
-              {lignes.map((a) => {
-                return (
-                  <div key={a.id} className="print-page">
-                    <h2 className="text-lg font-bold text-zinc-900">Fiche horaire</h2>
-                    <p className="mt-1 text-sm text-zinc-600">
-                      {a.prenom} {a.nom} · Semaine du {formatJourCourt(semaineJours[0])} au{" "}
-                      {formatJourCourt(semaineJours[semaineJours.length - 1])} · Zone {zone}
-                    </p>
+              {lignes.map((a) => (
+                <FicheHorairePrint
+                  key={a.id}
+                  animateur={a}
+                  semaineJours={semaineJours}
+                  feuilles={feuilles}
+                  affectations={affectations}
+                  affectationsJour={affectationsJour}
+                  creneaux={creneaux}
+                  zone={zone}
+                />
+              ))}
+            </div>
+          )}
 
-                    <table className="mt-4 w-full table-fixed border-collapse text-left text-sm">
-                      <colgroup>
-                        <col className="w-[15%]" />
-                        <col className="w-[21.25%]" />
-                        <col className="w-[21.25%]" />
-                        <col className="w-[21.25%]" />
-                        <col className="w-[21.25%]" />
-                      </colgroup>
-                      <thead>
-                        <tr>
-                          <th
-                            rowSpan={2}
-                            className="border border-black bg-zinc-700 px-2 py-1.5 text-white"
-                          />
-                          <th
-                            colSpan={2}
-                            className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-semibold text-white"
-                          >
-                            Prévisionnel
-                          </th>
-                          <th
-                            colSpan={2}
-                            className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-semibold text-white"
-                          >
-                            Réel
-                          </th>
-                        </tr>
-                        <tr>
-                          <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-medium text-white">
-                            Présence
-                          </th>
-                          <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-medium text-white">
-                            Pause
-                          </th>
-                          <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-medium text-white">
-                            Présence
-                          </th>
-                          <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-medium text-white">
-                            Pause
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {semaineJours.map((j) => {
-                          const assignes = assignesDe(a.id, j);
-                          const feuille = feuilles.find(
-                            (f) => f.date === j && f.animateur_id === a.id
-                          );
-                          const aAffectation = aUneAffectation(a.id, j);
-                          const reelPresence = !feuille
-                            ? ""
-                            : !feuille.present
-                              ? `Absent${feuille.motif_absence ? ` (${feuille.motif_absence})` : ""}`
-                              : `${feuille.heure_arrivee_reelle?.slice(0, 5) ?? "—"} → ${feuille.heure_depart_reelle?.slice(0, 5) ?? "—"}`;
-                          // La pause réelle n'est pas suivie séparément — on ne
-                          // la remplit que quand le pointage du jour est "I"
-                          // (idem au prévisionnel), pas "R" ou "A".
-                          const { lettre } = lettreEtCouleur(a.id, j);
-                          return (
-                            <tr key={j}>
-                              <td className="border border-black bg-zinc-200 px-2 py-2 capitalize">
-                                {formatJourCourt(j)}
-                              </td>
-                              <td className="border border-black px-2 py-2">
-                                {aAffectation ? formatPlage(assignes) : ""}
-                              </td>
-                              <td className="border border-black px-2 py-2">
-                                {aAffectation ? formatPauses(assignes) : ""}
-                              </td>
-                              <td className="border border-black px-2 py-2">{reelPresence}</td>
-                              <td className="border border-black px-2 py-2">
-                                {lettre === "I" ? formatPauses(assignes) : ""}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-
-                    <div className="mt-8 grid grid-cols-2 gap-8">
-                      <div className="border border-black px-3 py-2">
-                        <p className="text-sm text-zinc-700">Signature de l&apos;employé</p>
-                        <div className="h-14" />
-                      </div>
-                      <div className="border border-black px-3 py-2">
-                        <p className="text-sm text-zinc-700">Signature de l&apos;employeur</p>
-                        <div className="h-14" />
-                      </div>
-                    </div>
-
-                    <table className="mt-8 w-full table-fixed border-collapse text-left text-sm">
-                      <colgroup>
-                        <col className="w-[15%]" />
-                        <col className="w-[85%]" />
-                      </colgroup>
-                      <thead>
-                        <tr>
-                          <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-semibold text-white">
-                            Jour
-                          </th>
-                          <th className="border border-black bg-zinc-700 px-2 py-1.5 text-center font-semibold text-white">
-                            Présence (signature)
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {semaineJours.map((j) => (
-                          <tr key={j}>
-                            <td className="border border-black bg-zinc-200 px-2 py-2 capitalize">
-                              {formatJourCourt(j)}
-                            </td>
-                            <td className="border border-black px-2 py-2" />
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-
-                    <div className="mt-8 grid grid-cols-2 gap-8">
-                      <div className="border border-black px-3 py-2">
-                        <p className="text-sm text-zinc-700">Signature de l&apos;employé</p>
-                        <div className="h-14" />
-                      </div>
-                      <div className="border border-black px-3 py-2">
-                        <p className="text-sm text-zinc-700">Signature de l&apos;employeur</p>
-                        <div className="h-14" />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+          {/* "Imprimer toutes les semaines" : une fiche par animateur par
+              semaine, pour toute la période — données chargées à part
+              (toutes* state) le temps de l'impression. */}
+          {impressionToutesSemaines && (
+            <div className="print-portrait hidden print:block">
+              {semaines.map((semaineJoursX) =>
+                lignesPourSemaine(
+                  animateurs,
+                  semaineJoursX,
+                  toutesAffectations,
+                  toutesAffectationsJour,
+                  monGroupe
+                ).map((a) => (
+                  <FicheHorairePrint
+                    key={`${semaineJoursX[0]}-${a.id}`}
+                    animateur={a}
+                    semaineJours={semaineJoursX}
+                    feuilles={toutesFeuilles}
+                    affectations={toutesAffectations}
+                    affectationsJour={toutesAffectationsJour}
+                    creneaux={creneaux}
+                    zone={zone}
+                  />
+                ))
+              )}
             </div>
           )}
         </>
