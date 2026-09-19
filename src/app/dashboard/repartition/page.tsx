@@ -302,14 +302,14 @@ export default function RepartitionPage() {
       if (error) setErreur(error.message);
       return;
     }
-    const section = role === "coordinateur" ? (rosterDe(animateurId)?.section ?? null) : null;
+    const sections = role === "coordinateur" ? (rosterDe(animateurId)?.sections ?? []) : [];
     setDirectionRoster((prev) => [
       ...prev.filter((d) => d.animateur_id !== animateurId),
       {
         id: `optimistic-${animateurId}`,
         animateur_id: animateurId,
         role_affiche: role,
-        section,
+        sections,
         created_by: profile.id,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -318,20 +318,30 @@ export default function RepartitionPage() {
     const { error } = await supabase
       .from("direction_roster")
       .upsert(
-        { animateur_id: animateurId, role_affiche: role, section, created_by: profile.id },
+        { animateur_id: animateurId, role_affiche: role, sections, created_by: profile.id },
         { onConflict: "animateur_id" }
       );
     if (error) setErreur(error.message);
   }
 
-  async function majSectionRoster(animateurId: string, section: SectionDirection | "") {
+  // Un coordinateur peut gérer plusieurs groupes à la fois — coche/décoche
+  // une section dans la liste sans toucher aux autres.
+  async function toggleSectionRoster(
+    animateurId: string,
+    section: SectionDirection,
+    coche: boolean
+  ) {
     setErreur(null);
+    const actuelles = rosterDe(animateurId)?.sections ?? [];
+    const sections = coche
+      ? [...actuelles, section]
+      : actuelles.filter((s) => s !== section);
     setDirectionRoster((prev) =>
-      prev.map((d) => (d.animateur_id === animateurId ? { ...d, section: section || null } : d))
+      prev.map((d) => (d.animateur_id === animateurId ? { ...d, sections } : d))
     );
     const { error } = await supabase
       .from("direction_roster")
-      .update({ section: section || null })
+      .update({ sections })
       .eq("animateur_id", animateurId);
     if (error) setErreur(error.message);
   }
@@ -343,6 +353,13 @@ export default function RepartitionPage() {
 
   function bordureSemaine(date: string, premiereColonne: boolean) {
     return !premiereColonne && premierJourDeSemaine.has(date) ? "border-l-4 border-l-amber-700" : "";
+  }
+
+  // Même traitement (ligne épaisse ambre) que la bordure entre semaines,
+  // mais horizontale : sépare les sections Direction / Lutins / Trolls /
+  // Géants sur la feuille imprimable.
+  function bordureSection(active: boolean) {
+    return active ? "border-t-4 border-t-amber-700" : "";
   }
 
   const animateurParId = useMemo(() => {
@@ -524,18 +541,29 @@ export default function RepartitionPage() {
                         <option value="coordinateur">Coordinateur</option>
                       </select>
                       {entry?.role_affiche === "coordinateur" && (
-                        <select
-                          value={entry.section ?? ""}
-                          onChange={(e) =>
-                            majSectionRoster(a.id, e.target.value as SectionDirection | "")
-                          }
-                          className="rounded-md border border-zinc-300 px-2 py-1 text-sm"
-                        >
-                          <option value="">Aucune section</option>
-                          <option value="lutins">{GROUPE_LABELS.lutins}</option>
-                          <option value="trolls">Trolls</option>
-                          <option value="geants">Géants</option>
-                        </select>
+                        <div className="flex items-center gap-3">
+                          {(
+                            [
+                              ["lutins", GROUPE_LABELS.lutins],
+                              ["trolls", "Trolls"],
+                              ["geants", "Géants"],
+                            ] as [SectionDirection, string][]
+                          ).map(([section, label]) => (
+                            <label
+                              key={section}
+                              className="flex items-center gap-1 text-sm text-zinc-700"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={entry.sections.includes(section)}
+                                onChange={(e) =>
+                                  toggleSectionRoster(a.id, section, e.target.checked)
+                                }
+                              />
+                              {label}
+                            </label>
+                          ))}
+                        </div>
                       )}
                     </div>
                   );
@@ -666,120 +694,143 @@ export default function RepartitionPage() {
                     );
                   })}
 
-                {(["L", "T", "G"] as Lettre[]).map((lettre) => {
-                  const sectionCorrespondante: SectionDirection =
-                    lettre === "L" ? "lutins" : lettre === "T" ? "trolls" : "geants";
-                  const coordinateurs = directionRoster.filter(
-                    (d) => d.role_affiche === "coordinateur" && d.section === sectionCorrespondante
+                {(() => {
+                  // Trait épais ambre entre chaque section (Direction /
+                  // Lutins / Trolls / Géants) qui s'affiche réellement,
+                  // comme la bordure entre semaines — remplace l'ancienne
+                  // ligne de titre pleine largeur.
+                  let sectionPrecedenteAffichee = directionRoster.some(
+                    (d) => d.role_affiche === "directeur"
                   );
-                  const liste = rosterParLettre[lettre];
-                  if (liste.length === 0 && coordinateurs.length === 0) return null;
-                  const age =
-                    lettre === "L" ? "3-5 ans" : lettre === "T" ? "6-8 ans" : "9-10 ans";
-                  const labelGroupe =
-                    (lettre === "L"
-                      ? GROUPE_LABELS.lutins
-                      : lettre === "T"
-                        ? "Trolls"
-                        : "Géants") + ` (${age})`;
-                  // La colonne Rôle est fusionnée (rowSpan) sur tous les
-                  // animateurs + la ligne effectifs de la section, pour y
-                  // afficher le groupe et la tranche d'âge une seule fois —
-                  // comme le document papier. Les coordinateurs gardent
-                  // leur propre case "Coordinateur".
-                  const lignesAFusionner = liste.length + 1;
-                  return (
-                    <>
-                      {coordinateurs.map((d) => {
-                        const a = animateurParId.get(d.animateur_id);
-                        if (!a) return null;
-                        const couleur = "bg-yellow-200";
-                        return (
-                          <tr key={`coord-${d.id}`}>
-                            <td className={`border border-black px-1 py-1 ${couleur}`}>Coordinateur</td>
-                            <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
-                              {a.nom}
-                            </td>
-                            <td className={`border border-black px-1 py-1 ${couleur}`}>{a.prenom}</td>
-                            {joursOuvrables.map((j) => {
-                              const present = presentCeJour(a.id, j) === true;
-                              return (
-                                <td
-                                  key={j}
-                                  className={`border border-black px-1 py-1 text-center ${
-                                    present ? couleur : bandeSemaine(j)
-                                  } ${bordureSemaine(j, false)}`}
-                                >
-                                  {present ? "X" : ""}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })}
-                      {liste.map((a, idx) => {
-                        const couleur = !a.est_stagiaire ? "bg-yellow-200" : "";
-                        return (
-                          <tr key={`${lettre}-${a.id}`}>
-                            {idx === 0 && (
-                              <td
-                                rowSpan={lignesAFusionner}
-                                className="border border-black bg-zinc-100 px-1 py-1 text-center font-semibold"
-                              >
-                                {labelGroupe}
+                  return (["L", "T", "G"] as Lettre[]).map((lettre) => {
+                    const sectionCorrespondante: SectionDirection =
+                      lettre === "L" ? "lutins" : lettre === "T" ? "trolls" : "geants";
+                    // Un coordinateur peut gérer plusieurs groupes à la fois :
+                    // il apparaît dans chaque section qu'il gère.
+                    const coordinateurs = directionRoster.filter(
+                      (d) =>
+                        d.role_affiche === "coordinateur" &&
+                        d.sections.includes(sectionCorrespondante)
+                    );
+                    const liste = rosterParLettre[lettre];
+                    if (liste.length === 0 && coordinateurs.length === 0) return null;
+                    const avecBordureHaut = sectionPrecedenteAffichee;
+                    sectionPrecedenteAffichee = true;
+                    const age =
+                      lettre === "L" ? "3-5 ans" : lettre === "T" ? "6-8 ans" : "9-10 ans";
+                    const labelGroupe =
+                      (lettre === "L"
+                        ? GROUPE_LABELS.lutins
+                        : lettre === "T"
+                          ? "Trolls"
+                          : "Géants") + ` (${age})`;
+                    // La colonne Rôle est fusionnée (rowSpan) sur tous les
+                    // animateurs + la ligne effectifs de la section, pour y
+                    // afficher le groupe et la tranche d'âge une seule fois —
+                    // comme le document papier. Les coordinateurs gardent
+                    // leur propre case "Coordinateur".
+                    const lignesAFusionner = liste.length + 1;
+                    return (
+                      <>
+                        {coordinateurs.map((d, idx) => {
+                          const a = animateurParId.get(d.animateur_id);
+                          if (!a) return null;
+                          const couleur = "bg-yellow-200";
+                          const bordureHaut =
+                            idx === 0 ? bordureSection(avecBordureHaut) : "";
+                          return (
+                            <tr key={`coord-${d.id}`}>
+                              <td className={`border border-black px-1 py-1 ${couleur} ${bordureHaut}`}>
+                                Coordinateur
                               </td>
-                            )}
-                            <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
-                              {a.nom}
-                            </td>
-                            <td className={`border border-black px-1 py-1 ${couleur}`}>{a.prenom}</td>
-                            {joursOuvrables.map((j) => {
-                              const present =
-                                lettreDe(parCle.get(`${j}|${a.id}`)) === lettre &&
-                                presentCeJour(a.id, j) === true;
-                              return (
+                              <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur} ${bordureHaut}`}>
+                                {a.nom}
+                              </td>
+                              <td className={`border border-black px-1 py-1 ${couleur} ${bordureHaut}`}>{a.prenom}</td>
+                              {joursOuvrables.map((j) => {
+                                const present = presentCeJour(a.id, j) === true;
+                                return (
+                                  <td
+                                    key={j}
+                                    className={`border border-black px-1 py-1 text-center ${
+                                      present ? couleur : bandeSemaine(j)
+                                    } ${bordureSemaine(j, false)} ${bordureHaut}`}
+                                  >
+                                    {present ? "X" : ""}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                        {liste.map((a, idx) => {
+                          const couleur = !a.est_stagiaire ? "bg-yellow-200" : "";
+                          const bordureHaut =
+                            idx === 0 && coordinateurs.length === 0
+                              ? bordureSection(avecBordureHaut)
+                              : "";
+                          return (
+                            <tr key={`${lettre}-${a.id}`}>
+                              {idx === 0 && (
                                 <td
-                                  key={j}
-                                  className={`border border-black px-1 py-1 text-center ${
-                                    present ? couleur || bandeSemaine(j) : bandeSemaine(j)
-                                  } ${bordureSemaine(j, false)}`}
+                                  rowSpan={lignesAFusionner}
+                                  className={`border border-black bg-zinc-100 px-1 py-1 text-center font-semibold ${bordureHaut}`}
                                 >
-                                  {present ? "X" : ""}
+                                  {labelGroupe}
                                 </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })}
-                      <tr key={`effectif-${lettre}`}>
-                        {liste.length === 0 && (
+                              )}
+                              <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur} ${bordureHaut}`}>
+                                {a.nom}
+                              </td>
+                              <td className={`border border-black px-1 py-1 ${couleur} ${bordureHaut}`}>{a.prenom}</td>
+                              {joursOuvrables.map((j) => {
+                                const present =
+                                  lettreDe(parCle.get(`${j}|${a.id}`)) === lettre &&
+                                  presentCeJour(a.id, j) === true;
+                                return (
+                                  <td
+                                    key={j}
+                                    className={`border border-black px-1 py-1 text-center ${
+                                      present ? couleur || bandeSemaine(j) : bandeSemaine(j)
+                                    } ${bordureSemaine(j, false)} ${bordureHaut}`}
+                                  >
+                                    {present ? "X" : ""}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                        <tr key={`effectif-${lettre}`}>
+                          {liste.length === 0 && (
+                            <td
+                              rowSpan={lignesAFusionner}
+                              className="border border-black bg-zinc-100 px-1 py-1 text-center font-semibold"
+                            >
+                              {labelGroupe}
+                            </td>
+                          )}
                           <td
-                            rowSpan={lignesAFusionner}
-                            className="border border-black bg-zinc-100 px-1 py-1 text-center font-semibold"
+                            colSpan={2}
+                            className="border border-black bg-teal-100 px-1 py-1 font-semibold"
                           >
-                            {labelGroupe}
+                            Effectifs enfants
                           </td>
-                        )}
-                        <td
-                          colSpan={2}
-                          className="border border-black bg-teal-100 px-1 py-1 font-semibold"
-                        >
-                          Effectifs enfants
-                        </td>
-                        {joursOuvrables.map((j) => (
-                          <td
-                            key={j}
-                            className={`border border-black bg-teal-100 px-1 py-1 text-center font-semibold ${bordureSemaine(j, false)}`}
-                          >
-                            {(lettre === "L"
-                              ? effectifDe("lutins", j)
-                              : effectifSousGroupeDe(lettre === "T" ? "trolls" : "geants", j)) ?? ""}
-                          </td>
-                        ))}
-                      </tr>
-                    </>
-                  );
-                })}
+                          {joursOuvrables.map((j) => (
+                            <td
+                              key={j}
+                              className={`border border-black bg-teal-100 px-1 py-1 text-center font-semibold ${bordureSemaine(j, false)}`}
+                            >
+                              {(lettre === "L"
+                                ? effectifDe("lutins", j)
+                                : effectifSousGroupeDe(lettre === "T" ? "trolls" : "geants", j)) ?? ""}
+                            </td>
+                          ))}
+                        </tr>
+                      </>
+                    );
+                  });
+                })()}
 
                 <tr>
                   <td

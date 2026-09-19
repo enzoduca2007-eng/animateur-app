@@ -135,7 +135,8 @@ export interface DirectionRoster {
   id: string;
   animateur_id: string;
   role_affiche: RoleAffiche;
-  section: SectionDirection | null;
+  // Un coordinateur peut gérer plusieurs groupes à la fois.
+  sections: SectionDirection[];
   created_by: string | null;
   created_at: string;
   updated_at: string;

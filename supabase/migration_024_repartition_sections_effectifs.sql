@@ -5,10 +5,11 @@
 --   reste la seule donnée utilisée par le calcul du taux d'encadrement
 --   sur Planning, inchangée) ;
 -- - le rattachement d'une fiche animateur à un rôle affiché (Directeur/
---   Coordinateur) et, pour un coordinateur, une section (Lutins/Trolls/
---   Géants) — indépendant d'un compte utilisateur, pour pouvoir ajouter
---   quelqu'un sans qu'il ait besoin de créer de compte. Sans effet sur
---   les droits réels de l'application.
+--   Coordinateur) et, pour un coordinateur, une ou plusieurs sections
+--   (Lutins/Trolls/Géants — un coordinateur peut gérer plusieurs
+--   groupes) — indépendant d'un compte utilisateur, pour pouvoir
+--   ajouter quelqu'un sans qu'il ait besoin de créer de compte. Sans
+--   effet sur les droits réels de l'application.
 --
 -- Idempotente : peut être relancée sans erreur même si une exécution
 -- précédente (partielle ou avec l'ancien schéma) a déjà créé ces tables.
@@ -44,10 +45,14 @@ create table public.direction_roster (
   id uuid primary key default gen_random_uuid(),
   animateur_id uuid not null unique references public.animateurs (id) on delete cascade,
   role_affiche text not null check (role_affiche in ('directeur', 'coordinateur')),
-  section text check (section in ('lutins', 'trolls', 'geants')),
+  -- Un coordinateur peut gérer plusieurs groupes à la fois.
+  sections text[] not null default '{}',
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint direction_roster_sections_valides check (
+    sections <@ array['lutins', 'trolls', 'geants']::text[]
+  )
 );
 
 alter table public.direction_roster enable row level security;
