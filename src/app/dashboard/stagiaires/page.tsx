@@ -31,10 +31,10 @@ const COULEUR_NIVEAU: Record<NiveauCritere, string> = {
 
 const NIVEAUX: NiveauCritere[] = ["a_travailler", "en_cours", "acquis", "depasse"];
 
-// Marque d'un critère : D (direction, orange) et/ou S (stagiaire, bleu).
-// Quand les deux ont choisi le même niveau, la marque D est entourée
-// d'un anneau bleu — les deux couleurs indiquent l'accord en un coup
-// d'œil, sans dupliquer la case.
+// Marque d'un critère : X orange (direction) et/ou X bleu (stagiaire).
+// Quand les deux ont choisi le même niveau, la croix est entourée d'un
+// anneau bleu — les deux couleurs indiquent l'accord en un coup d'œil,
+// sans dupliquer la case.
 function MarqueNiveau({
   dir,
   stag,
@@ -48,32 +48,36 @@ function MarqueNiveau({
   const stagMatch = stag === niveau;
   if (dirMatch && stagMatch) {
     return (
-      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border-2 border-sky-500 bg-orange-200 text-[9px] font-bold text-orange-800">
-        D
+      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border-2 border-sky-500 bg-orange-200 text-[11px] font-bold text-orange-800">
+        X
       </span>
     );
   }
   if (dirMatch) {
-    return <span className="text-[11px] font-bold text-orange-700">D</span>;
+    return <span className="text-sm font-bold text-orange-700">X</span>;
   }
   if (stagMatch) {
-    return <span className="text-[11px] font-bold text-sky-700">S</span>;
+    return <span className="text-sm font-bold text-sky-700">X</span>;
   }
   return null;
 }
 
-// Grille imprimable à colonnes de même largeur (AT/ECA/A/D, initiales
-// pour rester compact sur papier) fusionnant l'évaluation de la
-// direction et l'auto-évaluation du stagiaire dans la même case (voir
-// MarqueNiveau) — plus besoin de deux grilles séparées. Pas de ligne
-// entre les critères d'une même catégorie, seulement les colonnes
-// restent séparées, et un trait ferme chaque catégorie.
+// Grille imprimable fusionnant l'évaluation de la direction et
+// l'auto-évaluation du stagiaire dans la même case (voir MarqueNiveau)
+// — plus besoin de deux grilles séparées. Colonnes AT/ECA/A/D de même
+// largeur, plus une grande case Appréciation à droite (fusionnée sur
+// toutes les lignes d'une catégorie) pour le commentaire de la
+// direction sur cette catégorie. Pas de ligne entre les critères d'une
+// même catégorie, seulement les colonnes restent séparées, et un
+// trait ferme chaque catégorie.
 function GrilleCriteresPrint({
   criteresDirection,
   criteresStagiaire,
+  appreciations,
 }: {
   criteresDirection: Partial<Record<string, NiveauCritere>> | null;
   criteresStagiaire?: Partial<Record<string, NiveauCritere>> | null;
+  appreciations?: Partial<Record<string, string>> | null;
 }) {
   return (
     <>
@@ -82,15 +86,17 @@ function GrilleCriteresPrint({
           " · "
         )}
         {" — "}
-        <span className="font-bold text-orange-700">D</span> = Direction ·{" "}
-        <span className="font-bold text-sky-700">S</span> = Stagiaire · anneau bleu = même avis
+        <span className="font-bold text-orange-700">X orange</span> = Direction ·{" "}
+        <span className="font-bold text-sky-700">X bleu</span> = Stagiaire · anneau bleu = même
+        avis
       </p>
       <table className="mt-1 w-full table-fixed border-collapse text-left text-xs">
         <colgroup>
-          <col className="w-[40%]" />
+          <col className="w-[28%]" />
           {NIVEAUX.map((n) => (
-            <col key={n} className="w-[15%]" />
+            <col key={n} className="w-[9%]" />
           ))}
+          <col className="w-[36%]" />
         </colgroup>
         <thead>
           <tr>
@@ -103,44 +109,56 @@ function GrilleCriteresPrint({
                 {NIVEAU_CRITERE_ABBREV[niveau]}
               </th>
             ))}
+            <th className="border border-black px-2 py-1.5 font-semibold">Appréciation</th>
           </tr>
         </thead>
         <tbody>
-          {CRITERES_STAGIAIRE.map((cat) => (
-            <Fragment key={cat.cle}>
-              <tr>
-                <td
-                  colSpan={1 + NIVEAUX.length}
-                  className="border border-black bg-zinc-200 px-2 py-1 font-semibold"
-                >
-                  {cat.categorie}
-                </td>
-              </tr>
-              {cat.criteres.map((c, idx) => {
-                const dernier = idx === cat.criteres.length - 1;
-                const bordureBas = dernier ? "border-b border-black" : "";
-                return (
-                  <tr key={c.cle}>
-                    <td className={`border-x border-black px-2 py-1.5 ${bordureBas}`}>
-                      {c.label}
-                    </td>
-                    {NIVEAUX.map((niveau) => (
-                      <td
-                        key={niveau}
-                        className={`border-x border-black px-2 py-1.5 text-center ${bordureBas}`}
-                      >
-                        <MarqueNiveau
-                          dir={criteresDirection?.[c.cle]}
-                          stag={criteresStagiaire?.[c.cle]}
-                          niveau={niveau}
-                        />
+          {CRITERES_STAGIAIRE.map((cat) => {
+            const texteAppreciation = appreciations?.[cat.cle];
+            return (
+              <Fragment key={cat.cle}>
+                <tr>
+                  <td
+                    colSpan={2 + NIVEAUX.length}
+                    className="border border-black bg-zinc-200 px-2 py-1 font-semibold"
+                  >
+                    {cat.categorie}
+                  </td>
+                </tr>
+                {cat.criteres.map((c, idx) => {
+                  const dernier = idx === cat.criteres.length - 1;
+                  const bordureBas = dernier ? "border-b border-black" : "";
+                  return (
+                    <tr key={c.cle}>
+                      <td className={`border-x border-black px-2 py-1.5 ${bordureBas}`}>
+                        {c.label}
                       </td>
-                    ))}
-                  </tr>
-                );
-              })}
-            </Fragment>
-          ))}
+                      {NIVEAUX.map((niveau) => (
+                        <td
+                          key={niveau}
+                          className={`border-x border-black px-2 py-1.5 text-center ${bordureBas}`}
+                        >
+                          <MarqueNiveau
+                            dir={criteresDirection?.[c.cle]}
+                            stag={criteresStagiaire?.[c.cle]}
+                            niveau={niveau}
+                          />
+                        </td>
+                      ))}
+                      {idx === 0 && (
+                        <td
+                          rowSpan={cat.criteres.length}
+                          className="border-x border-b border-black px-2 py-1.5 align-top text-[11px] whitespace-pre-wrap text-zinc-700"
+                        >
+                          {texteAppreciation ?? ""}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </>
@@ -472,9 +490,6 @@ export default function StagiairesPage() {
             .map((s) => {
               const evaluation = evaluationDe(s.id);
               const autoEvaluation = autoEvaluationDe(s.id);
-              const categoriesAvecAppreciation = CRITERES_STAGIAIRE.filter(
-                (cat) => evaluation?.appreciations_categories?.[cat.cle]
-              );
               return (
                 <div key={s.id} className="print-page">
                   <h2 className="text-lg font-bold text-zinc-900">
@@ -488,25 +503,8 @@ export default function StagiairesPage() {
                   <GrilleCriteresPrint
                     criteresDirection={evaluation?.criteres ?? null}
                     criteresStagiaire={autoEvaluation?.criteres ?? null}
+                    appreciations={evaluation?.appreciations_categories}
                   />
-
-                  {/* Appréciations par catégorie : bloc à part sous la
-                      grille (plutôt que coincées dans une ligne de tableau),
-                      une seule fois par catégorie qui en a une. */}
-                  {categoriesAvecAppreciation.length > 0 && (
-                    <div className="mt-4 flex flex-col gap-2">
-                      {categoriesAvecAppreciation.map((cat) => (
-                        <div key={cat.cle}>
-                          <p className="text-sm font-semibold text-zinc-900">
-                            {cat.categorie}
-                          </p>
-                          <p className="mt-0.5 whitespace-pre-wrap text-sm text-zinc-700">
-                            {evaluation?.appreciations_categories?.[cat.cle]}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
 
                   <p className="mt-4 text-sm">
                     <span className="font-semibold">Avis final : </span>
