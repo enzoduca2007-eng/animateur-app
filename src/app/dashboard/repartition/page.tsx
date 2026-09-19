@@ -11,7 +11,6 @@ import {
   type Animateur,
   type EffectifJour,
   type Groupe,
-  type PresenceJour,
   type Profile,
 } from "@/lib/types";
 
@@ -57,7 +56,6 @@ export default function RepartitionPage() {
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
   const [affectations, setAffectations] = useState<AffectationJour[]>([]);
   const [profilesEquipe, setProfilesEquipe] = useState<Profile[]>([]);
-  const [presences, setPresences] = useState<PresenceJour[]>([]);
   const [effectifs, setEffectifs] = useState<EffectifJour[]>([]);
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -120,13 +118,11 @@ export default function RepartitionPage() {
 
   async function loadAffectations(debut: string, fin: string) {
     setLoading(true);
-    const [{ data: aj }, { data: pj }, { data: ej }] = await Promise.all([
+    const [{ data: aj }, { data: ej }] = await Promise.all([
       supabase.from("affectations_jour").select("*").gte("date", debut).lte("date", fin),
-      supabase.from("presence_jour").select("*").gte("date", debut).lte("date", fin),
       supabase.from("effectifs_jour").select("*").gte("date", debut).lte("date", fin),
     ]);
     setAffectations((aj as AffectationJour[]) ?? []);
-    setPresences((pj as PresenceJour[]) ?? []);
     setEffectifs((ej as EffectifJour[]) ?? []);
     setLoading(false);
   }
@@ -229,51 +225,9 @@ export default function RepartitionPage() {
     assigner(animateurId, date, lettre);
   }
 
-  // Présence explicite si elle a été saisie, sinon déduite d'une affectation
-  // à un groupe ce jour-là (probablement présent), sinon inconnue (null).
-  function presentCeJour(animateurId: string, date: string): boolean | null {
-    const p = presences.find((x) => x.animateur_id === animateurId && x.date === date);
-    if (p) return p.present;
-    if (parCle.has(`${date}|${animateurId}`)) return true;
-    return null;
-  }
-
-  async function togglePresence(animateurId: string, date: string) {
-    const actuel = presentCeJour(animateurId, date);
-    const nouveau = actuel !== true;
-    setPresences((prev) => [
-      ...prev.filter((p) => !(p.animateur_id === animateurId && p.date === date)),
-      {
-        id: `optimistic-${animateurId}-${date}`,
-        animateur_id: animateurId,
-        date,
-        present: nouveau,
-        created_by: profile.id,
-        created_at: new Date().toISOString(),
-      },
-    ]);
-    const { error } = await supabase
-      .from("presence_jour")
-      .upsert(
-        { animateur_id: animateurId, date, present: nouveau, created_by: profile.id },
-        { onConflict: "animateur_id,date" }
-      );
-    if (error) setErreur(error.message);
-  }
-
-  function formationDe(animateurId: string) {
-    return animateurs.find((a) => a.id === animateurId)?.formation ?? "";
-  }
-
-  async function majFormation(animateurId: string, valeur: string) {
-    setAnimateurs((prev) =>
-      prev.map((a) => (a.id === animateurId ? { ...a, formation: valeur || null } : a))
-    );
-    const { error } = await supabase
-      .from("animateurs")
-      .update({ formation: valeur || null })
-      .eq("id", animateurId);
-    if (error) setErreur(error.message);
+  // Présent = affecté à un groupe ce jour-là, point (page Répartition).
+  function presentCeJour(animateurId: string, date: string): boolean {
+    return parCle.has(`${date}|${animateurId}`);
   }
 
   // Groupe(s) (lettre) dans lesquels cet animateur a été affecté au moins
@@ -459,95 +413,12 @@ export default function RepartitionPage() {
             </div>
           )}
 
-          {editable && animateurs.length > 0 && (
-            <>
-              <div className="no-print overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
-                <p className="border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  Présence de l&apos;équipe (pour la feuille imprimable — coché =
-                  présent ce jour-là)
-                </p>
-                <table className="text-left text-sm">
-                  <thead className="border-b border-zinc-200 bg-zinc-50 text-zinc-500">
-                    <tr>
-                      <th className="sticky left-0 z-10 bg-zinc-50 px-4 py-3 font-medium">
-                        Membre de l&apos;équipe
-                      </th>
-                      {jours.map((j) => (
-                        <th
-                          key={j}
-                          className={`px-2 py-3 text-center font-medium capitalize ${
-                            estWeekend(j) ? "bg-zinc-100 text-zinc-400" : ""
-                          }`}
-                        >
-                          {formatJourCourt(j)}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[
-                      ...profilesEquipe
-                        .map((p) => animateursParProfileId.get(p.id))
-                        .filter((a): a is Animateur => !!a),
-                      ...animateurs.filter((a) => !idsDirection.has(a.id)),
-                    ].map((a) => (
-                      <tr key={a.id} className="border-b border-zinc-100 last:border-0">
-                        <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-zinc-900">
-                          {a.prenom} {a.nom}
-                        </td>
-                        {jours.map((j) => {
-                          if (estWeekend(j)) {
-                            return <td key={j} className="bg-zinc-100 px-2 py-2 text-center" />;
-                          }
-                          const present = presentCeJour(a.id, j);
-                          return (
-                            <td key={j} className="px-2 py-2 text-center">
-                              <input
-                                type="checkbox"
-                                checked={present === true}
-                                onChange={() => togglePresence(a.id, j)}
-                              />
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="no-print rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-                <p className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  Formation (période en cours)
-                </p>
-                <div className="flex flex-col gap-2">
-                  {[
-                    ...profilesEquipe
-                      .map((p) => animateursParProfileId.get(p.id))
-                      .filter((a): a is Animateur => !!a),
-                    ...animateurs.filter((a) => !idsDirection.has(a.id)),
-                  ].map((a) => (
-                    <div key={a.id} className="flex items-center gap-2">
-                      <span className="w-40 shrink-0 truncate text-sm text-zinc-700">
-                        {a.prenom} {a.nom}
-                      </span>
-                      <input
-                        defaultValue={formationDe(a.id)}
-                        onBlur={(e) => majFormation(a.id, e.target.value)}
-                        placeholder="Ex: PSC1"
-                        className="w-full max-w-xs rounded-md border border-zinc-300 px-2 py-1 text-sm"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
           {/* Feuille de présence imprimable : toutes les semaines de la
               période côte à côte, sections Direction / Lutins / Trolls /
-              Géants, effectifs enfants et total, comme le document papier. */}
-          <div className="hidden print:block">
+              Géants, effectifs enfants et total, comme le document papier.
+              Présent = affecté à un groupe ce jour-là, rien d'autre à
+              saisir. */}
+          <div className="print-portrait hidden print:block">
             <p className="text-center text-lg font-bold uppercase">
               {periode?.description}
             </p>
@@ -564,14 +435,13 @@ export default function RepartitionPage() {
                       {formatJourCourt(j)}
                     </th>
                   ))}
-                  <th className="border border-black px-1 py-1 font-semibold">Formation</th>
                 </tr>
               </thead>
               <tbody>
                 {profilesEquipe.length > 0 && (
                   <tr>
                     <td
-                      colSpan={2 + joursOuvrables.length + 1}
+                      colSpan={2 + joursOuvrables.length}
                       className="border border-black bg-zinc-300 px-1 py-1 font-bold"
                     >
                       Direction
@@ -602,7 +472,6 @@ export default function RepartitionPage() {
                           </td>
                         );
                       })}
-                      <td className={`border border-black px-1 py-1 ${couleur}`}>{formationDe(a.id)}</td>
                     </tr>
                   );
                 })}
@@ -614,7 +483,7 @@ export default function RepartitionPage() {
                     <>
                       <tr key={`titre-${lettre}`}>
                         <td
-                          colSpan={2 + joursOuvrables.length + 1}
+                          colSpan={2 + joursOuvrables.length}
                           className="border border-black bg-zinc-300 px-1 py-1 font-bold"
                         >
                           {lettre === "L"
@@ -647,9 +516,6 @@ export default function RepartitionPage() {
                                 </td>
                               );
                             })}
-                            <td className={`border border-black px-1 py-1 ${couleur}`}>
-                              {formationDe(a.id)}
-                            </td>
                           </tr>
                         );
                       })}
@@ -669,7 +535,6 @@ export default function RepartitionPage() {
                               {effectifDe(lettre === "L" ? "lutins" : "trolls", j) ?? ""}
                             </td>
                           ))}
-                          <td className="border border-black bg-teal-100 px-1 py-1" />
                         </tr>
                       )}
                     </>
@@ -695,7 +560,6 @@ export default function RepartitionPage() {
                       </td>
                     );
                   })}
-                  <td className="border border-black bg-sky-200 px-1 py-1" />
                 </tr>
               </tbody>
             </table>

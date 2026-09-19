@@ -23,6 +23,17 @@ body {
     margin: 10mm;
   }
 
+  /* Certaines pages (feuille de présence Répartition) veulent du portrait
+     plutôt que le paysage par défaut du reste du site. */
+  @page repartition-portrait {
+    size: portrait;
+    margin: 10mm;
+  }
+
+  .print-portrait {
+    page: repartition-portrait;
+  }
+
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
