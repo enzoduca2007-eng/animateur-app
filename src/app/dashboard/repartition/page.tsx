@@ -7,6 +7,7 @@ import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
 import {
   GROUPE_LABELS,
+  canManage,
   type AffectationJour,
   type Animateur,
   type DirectionRoster,
@@ -596,7 +597,7 @@ export default function RepartitionPage() {
                 <span className="inline-block h-3 w-3 rounded bg-zinc-200" /> Week-end (fermé)
               </span>
             </div>
-            {editable && (
+            {canManage(profile.role) && (
               <button
                 onClick={() => window.print()}
                 className="ml-auto rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"

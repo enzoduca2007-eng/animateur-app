@@ -50,6 +50,22 @@ body {
     background: #fff !important;
   }
 
+  /* Même souci sur des éléments plus locaux : plusieurs pages utilisent
+     bg-zinc-50/100 ou bg-gray-50/100 comme simple gris neutre d'interface
+     (en-têtes de tableau à l'écran, cases "fermé"...) sans que ce soit une
+     couleur volontaire de la feuille imprimée — ça ressortait gris sur
+     toutes les feuilles. Fond blanc forcé pour ces gris neutres ; les
+     couleurs volontaires (bandeaux de section bg-zinc-200, lignes ambre/
+     bleu/orange/jaune/teal des rôles et semaines...) restent inchangées. */
+  .bg-zinc-50,
+  .bg-zinc-100,
+  .bg-gray-50,
+  .bg-gray-100,
+  .bg-slate-50,
+  .bg-slate-100 {
+    background-color: #fff !important;
+  }
+
   .no-print {
     display: none !important;
   }
