@@ -629,65 +629,81 @@ export default function GoutersPage() {
               {produits.length > 0 && (
                 <div>
                   <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
-                    Goûter du jour par groupe
+                    Goûter du jour par groupe — {periode?.description} (
+                    {joursOuvrables.length} jours)
                   </p>
-                  <div className="flex flex-col gap-2">
-                    {joursOuvrables.map((j) => (
-                      <div
-                        key={j}
-                        className="grid grid-cols-1 gap-3 rounded-lg border border-zinc-200 p-3 sm:grid-cols-[100px_1fr_1fr]"
-                      >
-                        <p className="text-sm font-semibold capitalize text-zinc-700">
-                          {formatJourCourt(j)}
-                        </p>
-                        {GROUPES.map((g) => {
-                          const prevu = prevuDe(g, j);
-                          const produit = prevu
-                            ? produits.find((p) => p.id === prevu.produit_id)
-                            : null;
-                          const { quantite, paquets } = produit
-                            ? paquetsNecessaires(produit, g, j)
-                            : { quantite: 0, paquets: 0 };
-                          return (
-                            <div key={g}>
-                              <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-zinc-400">
-                                {GROUPE_LABELS[g]}
-                              </p>
-                              <select
-                                value={prevu?.produit_id ?? ""}
-                                onChange={(e) => choisirGouterPrevu(g, j, e.target.value)}
-                                className="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm"
-                              >
-                                <option value="">— Choisir un goûter —</option>
-                                {produits.map((p) => (
-                                  <option key={p.id} value={p.id}>
-                                    {p.nom}
-                                  </option>
-                                ))}
-                              </select>
-                              {produit && (
-                                <p className="mt-1 text-xs text-zinc-600">
-                                  {paquets > 0 ? (
-                                    <>
-                                      <span className="font-semibold text-zinc-900">
-                                        {paquets} paquet{paquets > 1 ? "s" : ""}
-                                      </span>{" "}
-                                      <span className="text-zinc-400">
-                                        ({quantite} unités, {totalPersonnesDuGroupe(g, j)} pers.)
-                                      </span>
-                                    </>
-                                  ) : (
-                                    <span className="text-zinc-300">
-                                      Effectif non renseigné ce jour
-                                    </span>
+                  <div className="overflow-x-auto">
+                    <table className="border-collapse text-left text-sm">
+                      <thead>
+                        <tr>
+                          <th className="sticky left-0 z-10 border border-zinc-300 bg-zinc-50 px-3 py-2 font-medium">
+                            Groupe
+                          </th>
+                          {joursOuvrables.map((j) => (
+                            <th
+                              key={j}
+                              className="border border-zinc-300 bg-zinc-50 px-2 py-2 text-center font-medium capitalize"
+                            >
+                              {formatJourCourt(j)}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {GROUPES.map((g) => (
+                          <tr key={g} className="border-b border-zinc-100 last:border-0">
+                            <td className="sticky left-0 z-10 whitespace-nowrap border border-zinc-300 bg-white px-3 py-2 font-medium text-zinc-900">
+                              {GROUPE_LABELS[g]}
+                            </td>
+                            {joursOuvrables.map((j) => {
+                              const prevu = prevuDe(g, j);
+                              const produit = prevu
+                                ? produits.find((p) => p.id === prevu.produit_id)
+                                : null;
+                              const { quantite, paquets } = produit
+                                ? paquetsNecessaires(produit, g, j)
+                                : { quantite: 0, paquets: 0 };
+                              return (
+                                <td
+                                  key={j}
+                                  className="border border-zinc-300 px-1.5 py-1.5 align-top"
+                                >
+                                  <select
+                                    value={prevu?.produit_id ?? ""}
+                                    onChange={(e) => choisirGouterPrevu(g, j, e.target.value)}
+                                    className="w-28 rounded-md border border-zinc-300 px-1 py-1 text-xs"
+                                  >
+                                    <option value="">—</option>
+                                    {produits.map((p) => (
+                                      <option key={p.id} value={p.id}>
+                                        {p.nom}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {produit && (
+                                    <p className="mt-1 text-[11px]">
+                                      {paquets > 0 ? (
+                                        <>
+                                          <span className="font-semibold text-zinc-900">
+                                            {paquets} paquet{paquets > 1 ? "s" : ""}
+                                          </span>
+                                          <br />
+                                          <span className="text-zinc-400">
+                                            ({quantite}u, {totalPersonnesDuGroupe(g, j)}p)
+                                          </span>
+                                        </>
+                                      ) : (
+                                        <span className="text-zinc-300">Effectif ?</span>
+                                      )}
+                                    </p>
                                   )}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
