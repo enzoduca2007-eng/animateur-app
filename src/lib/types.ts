@@ -328,28 +328,39 @@ export interface Gouter {
   updated_at: string;
 }
 
-// Catalogue de produits de goûter (ex. "Bichocos" : 2 par personne,
-// paquet de 20) pour calculer le nombre de paquets à prendre chaque
-// jour selon l'effectif enfants + animateurs.
+// Catalogue de produits de goûter, de base (ex. "Bichocos").
 export interface ProduitGouter {
   id: string;
   nom: string;
-  quantite_par_personne: number;
-  taille_paquet: number;
   actif: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
 }
 
-// Goûter prévu pour un groupe un jour donné (peut différer d'un groupe
-// à l'autre le même jour) — d'où on déduit la quantité à acheter pour
-// ce groupe précisément.
+// Déclinaison d'un produit par marque (ex. "LU" : 2 par personne,
+// paquet de 20 — "Carrefour" : 3 par personne, paquet de 24) : chaque
+// marque a sa propre quantité, pour calculer le nombre de paquets à
+// prendre selon l'effectif enfants + animateurs.
+export interface DeclinaisonGouter {
+  id: string;
+  produit_id: string;
+  marque: string;
+  quantite_par_personne: number;
+  taille_paquet: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Une déclinaison prévue pour un groupe un jour donné — plusieurs
+// peuvent être prévues le même (jour, groupe) pour combiner plusieurs
+// produits, et le choix peut différer d'un groupe à l'autre.
 export interface GouterPrevu {
   id: string;
   date: string;
   groupe: Groupe;
-  produit_id: string;
+  declinaison_id: string;
   created_by: string | null;
   created_at: string;
 }
