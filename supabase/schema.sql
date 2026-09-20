@@ -836,3 +836,27 @@ create policy "produits_gouter: direction write" on public.produits_gouter
   using (public.current_role_name() in ('directeur', 'coordinateur'))
   with check (public.current_role_name() in ('directeur', 'coordinateur'));
 
+-- Le goûter prévu peut différer d'un groupe à l'autre le même jour (ex.
+-- Lutins ont des compotes, Trolls des bichocos) : un produit choisi par
+-- (date, groupe), d'où la quantité à acheter est déduite pour CE
+-- groupe (son propre effectif + ses propres animateurs ce jour-là).
+create table public.gouters_prevus (
+  id uuid primary key default gen_random_uuid(),
+  date date not null,
+  groupe text not null check (groupe in ('lutins', 'trolls')),
+  produit_id uuid not null references public.produits_gouter (id) on delete cascade,
+  created_by uuid references public.profiles (id),
+  created_at timestamptz not null default now(),
+  unique (date, groupe)
+);
+
+alter table public.gouters_prevus enable row level security;
+
+create policy "gouters_prevus: readable by any signed-in user" on public.gouters_prevus
+  for select using (auth.role() = 'authenticated');
+
+create policy "gouters_prevus: write by group management" on public.gouters_prevus
+  for all
+  using (public.peut_gerer_groupe(groupe))
+  with check (public.peut_gerer_groupe(groupe));
+

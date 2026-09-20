@@ -342,6 +342,18 @@ export interface ProduitGouter {
   updated_at: string;
 }
 
+// Goûter prévu pour un groupe un jour donné (peut différer d'un groupe
+// à l'autre le même jour) — d'où on déduit la quantité à acheter pour
+// ce groupe précisément.
+export interface GouterPrevu {
+  id: string;
+  date: string;
+  groupe: Groupe;
+  produit_id: string;
+  created_by: string | null;
+  created_at: string;
+}
+
 export type MomentActivite = "matin" | "temps_calme" | "apres_midi";
 
 export const MOMENTS_ACTIVITE: { cle: MomentActivite; label: string }[] = [

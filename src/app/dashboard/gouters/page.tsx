@@ -14,6 +14,7 @@ import {
   type Animateur,
   type EffectifJour,
   type Gouter,
+  type GouterPrevu,
   type Groupe,
   type ProduitGouter,
 } from "@/lib/types";
@@ -81,10 +82,12 @@ export default function GoutersPage() {
     { lutins: { type_produit: "", marque: "" }, trolls: { type_produit: "", marque: "" } }
   );
 
-  // Prévisionnel d'achats : produits configurés (bichocos, jus...) +
-  // effectifs/animateurs de toute la période pour calculer le nombre de
-  // paquets à prendre chaque jour.
+  // Prévisionnel d'achats : produits configurés (bichocos, jus...), le
+  // goûter choisi pour chaque (jour, groupe) — peut différer d'un
+  // groupe à l'autre — et les effectifs/animateurs de la période pour
+  // en déduire la quantité à acheter.
   const [produits, setProduits] = useState<ProduitGouter[]>([]);
+  const [goutersPrevus, setGoutersPrevus] = useState<GouterPrevu[]>([]);
   const [effectifsPeriode, setEffectifsPeriode] = useState<EffectifJour[]>([]);
   const [affectationsJourPeriode, setAffectationsJourPeriode] = useState<AffectationJour[]>([]);
   const [nouveauProduit, setNouveauProduit] = useState({
@@ -217,27 +220,75 @@ export default function GoutersPage() {
         .select("*")
         .gte("date", periode.debut)
         .lte("date", periode.fin),
-    ]).then(([{ data: e }, { data: aj }]) => {
+      supabase
+        .from("gouters_prevus")
+        .select("*")
+        .gte("date", periode.debut)
+        .lte("date", periode.fin),
+    ]).then(([{ data: e }, { data: aj }, { data: gp }]) => {
       setEffectifsPeriode((e as EffectifJour[]) ?? []);
       setAffectationsJourPeriode((aj as AffectationJour[]) ?? []);
+      setGoutersPrevus((gp as GouterPrevu[]) ?? []);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periode, profile.role]);
 
-  function totalPersonnesDe(date: string) {
+  // Effectif + animateurs affectés à CE groupe précis ce jour-là (le
+  // goûter prévu peut différer d'un groupe à l'autre).
+  function totalPersonnesDuGroupe(groupe: Groupe, date: string) {
     const effectifEnfants = effectifsPeriode
-      .filter((e) => e.date === date)
+      .filter((e) => e.date === date && e.groupe === groupe)
       .reduce((s, e) => s + e.effectif, 0);
     const nbAnimateurs = new Set(
-      affectationsJourPeriode.filter((a) => a.date === date).map((a) => a.animateur_id)
+      affectationsJourPeriode
+        .filter((a) => a.date === date && a.groupe === groupe)
+        .map((a) => a.animateur_id)
     ).size;
     return effectifEnfants + nbAnimateurs;
   }
 
-  function paquetsNecessaires(produit: ProduitGouter, date: string) {
-    const total = totalPersonnesDe(date) * produit.quantite_par_personne;
+  function paquetsNecessaires(produit: ProduitGouter, groupe: Groupe, date: string) {
+    const total = totalPersonnesDuGroupe(groupe, date) * produit.quantite_par_personne;
     if (total === 0) return { quantite: 0, paquets: 0 };
     return { quantite: total, paquets: Math.ceil(total / produit.taille_paquet) + 1 };
+  }
+
+  function prevuDe(groupe: Groupe, date: string) {
+    return goutersPrevus.find((g) => g.date === date && g.groupe === groupe);
+  }
+
+  async function choisirGouterPrevu(groupe: Groupe, date: string, produitId: string) {
+    setErreur(null);
+    const existant = prevuDe(groupe, date);
+
+    if (!produitId) {
+      setGoutersPrevus((prev) => prev.filter((g) => !(g.date === date && g.groupe === groupe)));
+      if (existant) {
+        const { error } = await supabase.from("gouters_prevus").delete().eq("id", existant.id);
+        if (error) setErreur(error.message);
+      }
+      return;
+    }
+
+    setGoutersPrevus((prev) => [
+      ...prev.filter((g) => !(g.date === date && g.groupe === groupe)),
+      {
+        id: existant?.id ?? `optimistic-${groupe}-${date}`,
+        date,
+        groupe,
+        produit_id: produitId,
+        created_by: profile.id,
+        created_at: existant?.created_at ?? new Date().toISOString(),
+      },
+    ]);
+
+    const { error } = await supabase
+      .from("gouters_prevus")
+      .upsert(
+        { date, groupe, produit_id: produitId, created_by: profile.id },
+        { onConflict: "date,groupe" }
+      );
+    if (error) setErreur(error.message);
   }
 
   async function ajouterProduitGouter() {
@@ -516,110 +567,128 @@ export default function GoutersPage() {
                 </button>
               </div>
 
-              {produits.length === 0 ? (
-                <p className="text-sm text-zinc-400">
-                  Aucun produit configuré pour l&apos;instant.
+              <div>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
+                  Catalogue
                 </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-                    <thead>
-                      <tr>
-                        <th className="sticky left-0 z-10 border border-zinc-300 bg-zinc-50 px-3 py-2 font-medium">
-                          Produit
-                        </th>
-                        {joursOuvrables.map((j) => (
-                          <th
-                            key={j}
-                            className="border border-zinc-300 bg-zinc-50 px-2 py-2 text-center font-medium capitalize"
-                          >
-                            {formatJourCourt(j)}
-                          </th>
-                        ))}
-                      </tr>
-                      <tr>
-                        <th className="sticky left-0 z-10 border border-zinc-300 bg-white px-3 py-1.5 text-left text-xs font-normal text-zinc-400">
-                          Effectif (enfants + anim.)
-                        </th>
-                        {joursOuvrables.map((j) => (
-                          <th
-                            key={j}
-                            className="border border-zinc-300 px-2 py-1.5 text-center text-xs font-normal text-zinc-400"
-                          >
-                            {totalPersonnesDe(j) || "—"}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {produits.map((produit) => (
-                        <tr key={produit.id} className="border-b border-zinc-100 last:border-0">
-                          <td className="sticky left-0 z-10 whitespace-nowrap border border-zinc-300 bg-white px-3 py-2">
-                            <div className="flex items-center gap-1.5">
-                              <input
-                                defaultValue={produit.nom}
-                                onBlur={(e) =>
-                                  e.target.value.trim() &&
-                                  majProduitGouter(produit.id, { nom: e.target.value.trim() })
-                                }
-                                className="w-24 rounded border border-transparent px-1 py-0.5 font-medium hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
-                              />
-                              <button
-                                onClick={() => supprimerProduitGouter(produit.id)}
-                                title="Supprimer ce produit"
-                                className="text-zinc-300 hover:text-red-600"
+                {produits.length === 0 ? (
+                  <p className="text-sm text-zinc-400">
+                    Aucun produit configuré pour l&apos;instant.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {produits.map((produit) => (
+                      <div
+                        key={produit.id}
+                        className="flex items-center gap-1.5 rounded-md border border-zinc-200 px-2 py-1"
+                      >
+                        <input
+                          defaultValue={produit.nom}
+                          onBlur={(e) =>
+                            e.target.value.trim() &&
+                            majProduitGouter(produit.id, { nom: e.target.value.trim() })
+                          }
+                          className="w-24 rounded border border-transparent px-1 py-0.5 text-sm font-medium hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
+                        />
+                        <span className="flex items-center gap-1 text-[11px] text-zinc-400">
+                          <input
+                            type="number"
+                            min={1}
+                            defaultValue={produit.quantite_par_personne}
+                            onBlur={(e) => {
+                              const v = Number(e.target.value);
+                              if (v > 0) majProduitGouter(produit.id, { quantite_par_personne: v });
+                            }}
+                            className="w-8 rounded border border-transparent px-1 hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
+                          />
+                          /pers., paquet de
+                          <input
+                            type="number"
+                            min={1}
+                            defaultValue={produit.taille_paquet}
+                            onBlur={(e) => {
+                              const v = Number(e.target.value);
+                              if (v > 0) majProduitGouter(produit.id, { taille_paquet: v });
+                            }}
+                            className="w-10 rounded border border-transparent px-1 hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
+                          />
+                        </span>
+                        <button
+                          onClick={() => supprimerProduitGouter(produit.id)}
+                          title="Supprimer ce produit"
+                          className="text-zinc-300 hover:text-red-600"
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {produits.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
+                    Goûter du jour par groupe
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {joursOuvrables.map((j) => (
+                      <div
+                        key={j}
+                        className="grid grid-cols-1 gap-3 rounded-lg border border-zinc-200 p-3 sm:grid-cols-[100px_1fr_1fr]"
+                      >
+                        <p className="text-sm font-semibold capitalize text-zinc-700">
+                          {formatJourCourt(j)}
+                        </p>
+                        {GROUPES.map((g) => {
+                          const prevu = prevuDe(g, j);
+                          const produit = prevu
+                            ? produits.find((p) => p.id === prevu.produit_id)
+                            : null;
+                          const { quantite, paquets } = produit
+                            ? paquetsNecessaires(produit, g, j)
+                            : { quantite: 0, paquets: 0 };
+                          return (
+                            <div key={g}>
+                              <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+                                {GROUPE_LABELS[g]}
+                              </p>
+                              <select
+                                value={prevu?.produit_id ?? ""}
+                                onChange={(e) => choisirGouterPrevu(g, j, e.target.value)}
+                                className="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm"
                               >
-                                🗑
-                              </button>
+                                <option value="">— Choisir un goûter —</option>
+                                {produits.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.nom}
+                                  </option>
+                                ))}
+                              </select>
+                              {produit && (
+                                <p className="mt-1 text-xs text-zinc-600">
+                                  {paquets > 0 ? (
+                                    <>
+                                      <span className="font-semibold text-zinc-900">
+                                        {paquets} paquet{paquets > 1 ? "s" : ""}
+                                      </span>{" "}
+                                      <span className="text-zinc-400">
+                                        ({quantite} unités, {totalPersonnesDuGroupe(g, j)} pers.)
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span className="text-zinc-300">
+                                      Effectif non renseigné ce jour
+                                    </span>
+                                  )}
+                                </p>
+                              )}
                             </div>
-                            <p className="mt-0.5 flex items-center gap-1 text-[11px] text-zinc-400">
-                              <input
-                                type="number"
-                                min={1}
-                                defaultValue={produit.quantite_par_personne}
-                                onBlur={(e) => {
-                                  const v = Number(e.target.value);
-                                  if (v > 0) majProduitGouter(produit.id, { quantite_par_personne: v });
-                                }}
-                                className="w-10 rounded border border-transparent px-1 hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
-                              />
-                              /pers., paquet de
-                              <input
-                                type="number"
-                                min={1}
-                                defaultValue={produit.taille_paquet}
-                                onBlur={(e) => {
-                                  const v = Number(e.target.value);
-                                  if (v > 0) majProduitGouter(produit.id, { taille_paquet: v });
-                                }}
-                                className="w-12 rounded border border-transparent px-1 hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
-                              />
-                            </p>
-                          </td>
-                          {joursOuvrables.map((j) => {
-                            const { quantite, paquets } = paquetsNecessaires(produit, j);
-                            return (
-                              <td
-                                key={j}
-                                className="border border-zinc-300 px-2 py-2 text-center"
-                              >
-                                {paquets > 0 ? (
-                                  <>
-                                    <p className="font-semibold text-zinc-900">
-                                      {paquets} paquet{paquets > 1 ? "s" : ""}
-                                    </p>
-                                    <p className="text-[10px] text-zinc-400">({quantite})</p>
-                                  </>
-                                ) : (
-                                  <span className="text-zinc-300">—</span>
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
