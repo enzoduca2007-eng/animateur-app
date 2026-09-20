@@ -12,8 +12,10 @@ import {
   GROUPE_LABELS,
   type AffectationJour,
   type Animateur,
+  type EffectifJour,
   type Gouter,
   type Groupe,
+  type ProduitGouter,
 } from "@/lib/types";
 
 const STATUT_LABELS: Record<Gouter["statut_ia"], { texte: string; classe: string }> = {
@@ -78,6 +80,18 @@ export default function GoutersPage() {
   const [nouveaux, setNouveaux] = useState<Record<Groupe, { type_produit: string; marque: string }>>(
     { lutins: { type_produit: "", marque: "" }, trolls: { type_produit: "", marque: "" } }
   );
+
+  // Prévisionnel d'achats : produits configurés (bichocos, jus...) +
+  // effectifs/animateurs de toute la période pour calculer le nombre de
+  // paquets à prendre chaque jour.
+  const [produits, setProduits] = useState<ProduitGouter[]>([]);
+  const [effectifsPeriode, setEffectifsPeriode] = useState<EffectifJour[]>([]);
+  const [affectationsJourPeriode, setAffectationsJourPeriode] = useState<AffectationJour[]>([]);
+  const [nouveauProduit, setNouveauProduit] = useState({
+    nom: "",
+    quantite_par_personne: "2",
+    taille_paquet: "20",
+  });
   const compteurUpload = useRef(0);
 
   useEffect(() => {
@@ -180,6 +194,86 @@ export default function GoutersPage() {
     chargerGoutersPeriode();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periode, profile.role]);
+
+  useEffect(() => {
+    supabase
+      .from("produits_gouter")
+      .select("*")
+      .order("nom")
+      .then(({ data }) => setProduits((data as ProduitGouter[]) ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!periode || !canManage(profile.role)) return;
+    Promise.all([
+      supabase
+        .from("effectifs_jour")
+        .select("*")
+        .gte("date", periode.debut)
+        .lte("date", periode.fin),
+      supabase
+        .from("affectations_jour")
+        .select("*")
+        .gte("date", periode.debut)
+        .lte("date", periode.fin),
+    ]).then(([{ data: e }, { data: aj }]) => {
+      setEffectifsPeriode((e as EffectifJour[]) ?? []);
+      setAffectationsJourPeriode((aj as AffectationJour[]) ?? []);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periode, profile.role]);
+
+  function totalPersonnesDe(date: string) {
+    const effectifEnfants = effectifsPeriode
+      .filter((e) => e.date === date)
+      .reduce((s, e) => s + e.effectif, 0);
+    const nbAnimateurs = new Set(
+      affectationsJourPeriode.filter((a) => a.date === date).map((a) => a.animateur_id)
+    ).size;
+    return effectifEnfants + nbAnimateurs;
+  }
+
+  function paquetsNecessaires(produit: ProduitGouter, date: string) {
+    const total = totalPersonnesDe(date) * produit.quantite_par_personne;
+    if (total === 0) return { quantite: 0, paquets: 0 };
+    return { quantite: total, paquets: Math.ceil(total / produit.taille_paquet) + 1 };
+  }
+
+  async function ajouterProduitGouter() {
+    const nom = nouveauProduit.nom.trim();
+    const qte = Number(nouveauProduit.quantite_par_personne);
+    const taille = Number(nouveauProduit.taille_paquet);
+    if (!nom || !qte || !taille) return;
+    setErreur(null);
+    const { data, error } = await supabase
+      .from("produits_gouter")
+      .insert({
+        nom,
+        quantite_par_personne: qte,
+        taille_paquet: taille,
+        created_by: profile.id,
+      })
+      .select()
+      .single();
+    if (error) {
+      setErreur(error.message);
+      return;
+    }
+    setProduits((prev) => [...prev, data as ProduitGouter].sort((a, b) => a.nom.localeCompare(b.nom)));
+    setNouveauProduit({ nom: "", quantite_par_personne: "2", taille_paquet: "20" });
+  }
+
+  async function majProduitGouter(id: string, updates: Partial<ProduitGouter>) {
+    setProduits((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+    await supabase.from("produits_gouter").update(updates).eq("id", id);
+  }
+
+  async function supprimerProduitGouter(id: string) {
+    if (!confirm("Supprimer ce produit du prévisionnel ?")) return;
+    setProduits((prev) => prev.filter((p) => p.id !== id));
+    await supabase.from("produits_gouter").delete().eq("id", id);
+  }
 
   const goutersImprimables = useMemo(
     () =>
@@ -365,6 +459,171 @@ export default function GoutersPage() {
               </button>
             )}
           </div>
+
+          {canManage(profile.role) && (
+            <div className="no-print flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                  Prévisionnel d&apos;achats — {periode?.description}
+                </h2>
+                <p className="mt-1 text-xs text-zinc-400">
+                  Paquets à prendre chaque jour = (effectif enfants + animateurs affectés) ×
+                  quantité/personne, arrondi au paquet supérieur, + 1 de secours.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-end gap-2">
+                <div>
+                  <label className="mb-1 block text-xs text-zinc-500">Produit</label>
+                  <input
+                    value={nouveauProduit.nom}
+                    onChange={(e) =>
+                      setNouveauProduit((p) => ({ ...p, nom: e.target.value }))
+                    }
+                    placeholder="ex. Bichocos"
+                    className="w-40 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-zinc-500">Quantité / personne</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={nouveauProduit.quantite_par_personne}
+                    onChange={(e) =>
+                      setNouveauProduit((p) => ({ ...p, quantite_par_personne: e.target.value }))
+                    }
+                    className="w-28 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-zinc-500">Taille du paquet</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={nouveauProduit.taille_paquet}
+                    onChange={(e) =>
+                      setNouveauProduit((p) => ({ ...p, taille_paquet: e.target.value }))
+                    }
+                    className="w-28 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <button
+                  onClick={ajouterProduitGouter}
+                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  + Ajouter le produit
+                </button>
+              </div>
+
+              {produits.length === 0 ? (
+                <p className="text-sm text-zinc-400">
+                  Aucun produit configuré pour l&apos;instant.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+                    <thead>
+                      <tr>
+                        <th className="sticky left-0 z-10 border border-zinc-300 bg-zinc-50 px-3 py-2 font-medium">
+                          Produit
+                        </th>
+                        {joursOuvrables.map((j) => (
+                          <th
+                            key={j}
+                            className="border border-zinc-300 bg-zinc-50 px-2 py-2 text-center font-medium capitalize"
+                          >
+                            {formatJourCourt(j)}
+                          </th>
+                        ))}
+                      </tr>
+                      <tr>
+                        <th className="sticky left-0 z-10 border border-zinc-300 bg-white px-3 py-1.5 text-left text-xs font-normal text-zinc-400">
+                          Effectif (enfants + anim.)
+                        </th>
+                        {joursOuvrables.map((j) => (
+                          <th
+                            key={j}
+                            className="border border-zinc-300 px-2 py-1.5 text-center text-xs font-normal text-zinc-400"
+                          >
+                            {totalPersonnesDe(j) || "—"}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {produits.map((produit) => (
+                        <tr key={produit.id} className="border-b border-zinc-100 last:border-0">
+                          <td className="sticky left-0 z-10 whitespace-nowrap border border-zinc-300 bg-white px-3 py-2">
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                defaultValue={produit.nom}
+                                onBlur={(e) =>
+                                  e.target.value.trim() &&
+                                  majProduitGouter(produit.id, { nom: e.target.value.trim() })
+                                }
+                                className="w-24 rounded border border-transparent px-1 py-0.5 font-medium hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
+                              />
+                              <button
+                                onClick={() => supprimerProduitGouter(produit.id)}
+                                title="Supprimer ce produit"
+                                className="text-zinc-300 hover:text-red-600"
+                              >
+                                🗑
+                              </button>
+                            </div>
+                            <p className="mt-0.5 flex items-center gap-1 text-[11px] text-zinc-400">
+                              <input
+                                type="number"
+                                min={1}
+                                defaultValue={produit.quantite_par_personne}
+                                onBlur={(e) => {
+                                  const v = Number(e.target.value);
+                                  if (v > 0) majProduitGouter(produit.id, { quantite_par_personne: v });
+                                }}
+                                className="w-10 rounded border border-transparent px-1 hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
+                              />
+                              /pers., paquet de
+                              <input
+                                type="number"
+                                min={1}
+                                defaultValue={produit.taille_paquet}
+                                onBlur={(e) => {
+                                  const v = Number(e.target.value);
+                                  if (v > 0) majProduitGouter(produit.id, { taille_paquet: v });
+                                }}
+                                className="w-12 rounded border border-transparent px-1 hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
+                              />
+                            </p>
+                          </td>
+                          {joursOuvrables.map((j) => {
+                            const { quantite, paquets } = paquetsNecessaires(produit, j);
+                            return (
+                              <td
+                                key={j}
+                                className="border border-zinc-300 px-2 py-2 text-center"
+                              >
+                                {paquets > 0 ? (
+                                  <>
+                                    <p className="font-semibold text-zinc-900">
+                                      {paquets} paquet{paquets > 1 ? "s" : ""}
+                                    </p>
+                                    <p className="text-[10px] text-zinc-400">({quantite})</p>
+                                  </>
+                                ) : (
+                                  <span className="text-zinc-300">—</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           {canManage(profile.role) && (
             <div className="hidden print:block">

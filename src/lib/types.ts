@@ -328,6 +328,20 @@ export interface Gouter {
   updated_at: string;
 }
 
+// Catalogue de produits de goûter (ex. "Bichocos" : 2 par personne,
+// paquet de 20) pour calculer le nombre de paquets à prendre chaque
+// jour selon l'effectif enfants + animateurs.
+export interface ProduitGouter {
+  id: string;
+  nom: string;
+  quantite_par_personne: number;
+  taille_paquet: number;
+  actif: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type MomentActivite = "matin" | "temps_calme" | "apres_midi";
 
 export const MOMENTS_ACTIVITE: { cle: MomentActivite; label: string }[] = [
