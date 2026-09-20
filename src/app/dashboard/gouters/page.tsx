@@ -856,7 +856,7 @@ export default function GoutersPage() {
               <table className="mt-4 w-full border-collapse text-left text-xs">
                 <thead>
                   <tr>
-                    <th className="border border-black px-2 py-1 font-semibold">Groupe</th>
+                    <th className="border border-black px-2 py-1 font-semibold">Produit</th>
                     {joursOuvrables.map((j) => (
                       <th
                         key={j}
@@ -868,30 +868,47 @@ export default function GoutersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {GROUPES.map((g) => (
-                    <tr key={g}>
-                      <td className="border border-black px-2 py-1 font-semibold">
-                        {GROUPE_LABELS[g]}
-                      </td>
-                      {joursOuvrables.map((j) => (
-                        <td key={j} className="border border-black px-2 py-1 align-top">
-                          {prevusDe(g, j).map((prevu) => {
-                            const declinaison = declinaisons.find(
-                              (d) => d.id === prevu.declinaison_id
-                            );
-                            if (!declinaison) return null;
-                            const { quantite, paquets } = paquetsNecessaires(declinaison, g, j);
-                            return (
-                              <p key={prevu.id}>
-                                {nomDeclinaison(prevu.declinaison_id)} : {paquets} paquet
-                                {paquets > 1 ? "s" : ""} ({quantite}u)
-                              </p>
-                            );
-                          })}
+                  {declinaisons
+                    .filter((d) => goutersPrevus.some((g) => g.declinaison_id === d.id))
+                    .map((d) => (
+                      <tr key={d.id}>
+                        <td className="border border-black px-2 py-1 font-semibold">
+                          {nomDeclinaison(d.id)}
                         </td>
-                      ))}
-                    </tr>
-                  ))}
+                        {joursOuvrables.map((j) => {
+                          const groupesConcernes = GROUPES.filter((g) =>
+                            prevusDe(g, j).some((p) => p.declinaison_id === d.id)
+                          );
+                          if (groupesConcernes.length === 0) {
+                            return (
+                              <td
+                                key={j}
+                                className="border border-black px-2 py-1 text-center text-zinc-300"
+                              >
+                                —
+                              </td>
+                            );
+                          }
+                          const totalPaquets = groupesConcernes.reduce(
+                            (s, g) => s + paquetsNecessaires(d, g, j).paquets,
+                            0
+                          );
+                          const totalQuantite = groupesConcernes.reduce(
+                            (s, g) => s + paquetsNecessaires(d, g, j).quantite,
+                            0
+                          );
+                          return (
+                            <td key={j} className="border border-black px-2 py-1 text-center">
+                              <span className="font-semibold">
+                                {totalPaquets} paquet{totalPaquets > 1 ? "s" : ""}
+                              </span>
+                              <br />
+                              <span className="text-zinc-500">({totalQuantite}u)</span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
