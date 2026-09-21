@@ -85,10 +85,15 @@ export default function PlanningsPage() {
   const [showPaliers, setShowPaliers] = useState(false);
   const [formPalier, setFormPalier] = useState({ effectif_min: "", nb_animateurs: "" });
   const [verrous, setVerrous] = useState<VerrouPlanningSemaine[]>([]);
+  const [coordinateurProfileIds, setCoordinateurProfileIds] = useState<Set<string>>(new Set());
 
   async function chargerVerrous() {
     const { data } = await supabase.from("plannings_verrous").select("*");
     if (data) setVerrous(data as VerrouPlanningSemaine[]);
+  }
+
+  function estCoordinateur(a: Animateur) {
+    return !!a.profile_id && coordinateurProfileIds.has(a.profile_id);
   }
 
   async function chargerCreneaux() {
@@ -130,6 +135,13 @@ export default function PlanningsPage() {
     chargerFermetures();
     chargerPaliers();
     chargerVerrous();
+    supabase
+      .from("profiles")
+      .select("id")
+      .eq("role", "coordinateur")
+      .then(({ data }) => {
+        if (data) setCoordinateurProfileIds(new Set(data.map((p) => p.id as string)));
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -719,7 +731,7 @@ export default function PlanningsPage() {
     function cibleDuJour(id: string) {
       const a = animateurs.find((x) => x.id === id);
       const mineur = estMineur(a?.date_naissance ?? null, finSemaineSelectionnee);
-      const plafond = plafondHeuresSemaine(mineur);
+      const plafond = plafondHeuresSemaine(mineur, a ? estCoordinateur(a) : false);
       const restant = plafond - (heuresAccumulees.get(id) ?? 0);
       const joursRestants = Math.max(
         1,
@@ -993,7 +1005,7 @@ export default function PlanningsPage() {
         }
       }
       const mineur = estMineur(a.date_naissance, finSemaineSelectionnee);
-      const plafond = plafondHeuresSemaine(mineur);
+      const plafond = plafondHeuresSemaine(mineur, estCoordinateur(a));
       const total = heuresSemaineParAnimateur.get(a.id) ?? 0;
       if (animateursActifsSemaine.has(a.id)) {
         const ecart = total - plafond;
@@ -1466,7 +1478,7 @@ export default function PlanningsPage() {
                   .filter((a) => !monGroupe || animateursActifsSemaine.has(a.id))
                   .map((a) => {
                   const mineur = estMineur(a.date_naissance, finSemaineSelectionnee);
-                  const plafond = plafondHeuresSemaine(mineur);
+                  const plafond = plafondHeuresSemaine(mineur, estCoordinateur(a));
                   const total = heuresSemaineParAnimateur.get(a.id) ?? 0;
                   const ratio = plafond > 0 ? total / plafond : 0;
                   const horsTolerance =
@@ -1503,8 +1515,9 @@ export default function PlanningsPage() {
               </div>
               <p className="mt-4 text-xs text-zinc-400">
                 Quota hebdomadaire visé : 38h pour les mineurs, 43h pour les
-                majeurs (majeur appliqué par défaut si la date de naissance
-                n&apos;est pas renseignée) — tolérance de ±1h avant alerte.
+                majeurs, 45h pour les coordinateurs (majeur appliqué par
+                défaut si la date de naissance n&apos;est pas renseignée) —
+                tolérance de ±1h avant alerte.
               </p>
             </div>
           )}

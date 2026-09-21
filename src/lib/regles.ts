@@ -15,9 +15,14 @@ export function estMineur(
   return age(dateNaissance, dateReference) < 18;
 }
 
-/** Plafond hebdomadaire légal. Par défaut (âge inconnu) : plafond majeur. */
-export function plafondHeuresSemaine(mineur: boolean | null) {
-  return mineur ? 38 : 43;
+/**
+ * Plafond hebdomadaire légal. Par défaut (âge inconnu) : plafond majeur.
+ * Les coordinateurs ont un plafond relevé à 45h (au lieu de 43h pour un
+ * animateur majeur).
+ */
+export function plafondHeuresSemaine(mineur: boolean | null, estCoordinateur = false) {
+  if (mineur) return 38;
+  return estCoordinateur ? 45 : 43;
 }
 
 /**
