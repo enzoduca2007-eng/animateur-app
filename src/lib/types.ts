@@ -99,6 +99,12 @@ export interface JourFermeture {
   created_at: string;
 }
 
+export interface VerrouPlanningSemaine {
+  semaine_debut: string;
+  verrouille_par: string | null;
+  verrouille_at: string;
+}
+
 export interface EffectifJour {
   id: string;
   date: string;

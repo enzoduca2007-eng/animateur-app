@@ -23,6 +23,7 @@ import {
   type JourFermeture,
   type PalierEncadrement,
   type TypeCreneau,
+  type VerrouPlanningSemaine,
 } from "@/lib/types";
 
 const TYPES: TypeCreneau[] = ["arrivee", "pause", "depart"];
@@ -83,6 +84,12 @@ export default function PlanningsPage() {
   const [paliers, setPaliers] = useState<PalierEncadrement[]>([]);
   const [showPaliers, setShowPaliers] = useState(false);
   const [formPalier, setFormPalier] = useState({ effectif_min: "", nb_animateurs: "" });
+  const [verrous, setVerrous] = useState<VerrouPlanningSemaine[]>([]);
+
+  async function chargerVerrous() {
+    const { data } = await supabase.from("plannings_verrous").select("*");
+    if (data) setVerrous(data as VerrouPlanningSemaine[]);
+  }
 
   async function chargerCreneaux() {
     const { data } = await supabase
@@ -122,6 +129,7 @@ export default function PlanningsPage() {
     chargerCreneaux();
     chargerFermetures();
     chargerPaliers();
+    chargerVerrous();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -152,6 +160,11 @@ export default function PlanningsPage() {
 
   const semaines = useMemo(() => semainesDe(joursOuvres), [joursOuvres]);
   const semaineIndexSafe = Math.min(semaineIndex, Math.max(0, semaines.length - 1));
+
+  const semainesVerrouillees = useMemo(
+    () => new Set(verrous.map((v) => v.semaine_debut)),
+    [verrous]
+  );
 
   async function loadAffectations(debut: string, fin: string) {
     setLoading(true);
@@ -457,6 +470,9 @@ export default function PlanningsPage() {
   }, [animateurs, joursOuvres, affectations, creneaux]);
 
   const semaineJoursSelectionnee = semaines[semaineIndexSafe] ?? [];
+  const semaineSelectionneeVerrouillee =
+    semaineJoursSelectionnee.length > 0 &&
+    semainesVerrouillees.has(semaineJoursSelectionnee[0]);
   const semaineKey = semaineJoursSelectionnee.join(",");
   const finSemaineSelectionnee =
     semaineJoursSelectionnee[semaineJoursSelectionnee.length - 1] ??
@@ -515,6 +531,63 @@ export default function PlanningsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [affectations, creneauOuverture, creneauFermeture, semaineKey]);
 
+  async function verrouillerSemaine() {
+    if (semaineJoursSelectionnee.length === 0) return;
+    setErreur(null);
+    const { error } = await supabase
+      .from("plannings_verrous")
+      .insert({ semaine_debut: semaineJoursSelectionnee[0], verrouille_par: profile.id });
+    if (error) {
+      setErreur(error.message);
+      return;
+    }
+    chargerVerrous();
+  }
+
+  async function deverrouillerSemaine() {
+    if (semaineJoursSelectionnee.length === 0) return;
+    setErreur(null);
+    const { error } = await supabase
+      .from("plannings_verrous")
+      .delete()
+      .eq("semaine_debut", semaineJoursSelectionnee[0]);
+    if (error) {
+      setErreur(error.message);
+      return;
+    }
+    chargerVerrous();
+  }
+
+  async function remettreAZeroSemaine() {
+    if (semaineJoursSelectionnee.length === 0) return;
+    if (semaineSelectionneeVerrouillee) {
+      setErreur("Cette semaine est verrouillée. Déverrouille-la avant de continuer.");
+      return;
+    }
+    if (
+      !confirm(
+        "Ça va supprimer TOUTES les affectations (arrivées, pauses, départs) " +
+          "de cette semaine pour tous les animateurs. Continuer ?"
+      )
+    )
+      return;
+
+    setErreur(null);
+    const { error } = await supabase
+      .from("affectations_creneau")
+      .delete()
+      .in(
+        "creneau_id",
+        creneaux.map((c) => c.id)
+      )
+      .in("date", semaineJoursSelectionnee);
+    if (error) {
+      setErreur(error.message);
+      return;
+    }
+    if (periode) loadAffectations(periode.debut, periode.fin);
+  }
+
   async function autoRepartirSemaine() {
     const arrivees = creneaux
       .filter((c) => c.type === "arrivee")
@@ -529,6 +602,10 @@ export default function PlanningsPage() {
       return;
     }
     if (semaineJoursSelectionnee.length === 0) return;
+    if (semaineSelectionneeVerrouillee) {
+      setErreur("Cette semaine est verrouillée. Déverrouille-la avant de continuer.");
+      return;
+    }
     if (
       !confirm(
         "Ça va remplacer TOUTES les affectations (arrivées, pauses, départs) " +
@@ -1340,13 +1417,40 @@ export default function PlanningsPage() {
                   </select>
                 </div>
               )}
-              {editable && creneauOuverture && creneauFermeture && (
+              {editable && !semaineSelectionneeVerrouillee && creneauOuverture && creneauFermeture && (
                 <button
                   onClick={autoRepartirSemaine}
                   className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
                 >
                   Répartir automatiquement toute la semaine
                 </button>
+              )}
+              {editable && !semaineSelectionneeVerrouillee && (
+                <button
+                  onClick={remettreAZeroSemaine}
+                  className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                >
+                  Tout remettre à zéro
+                </button>
+              )}
+              {profile.role === "directeur" && semaineJoursSelectionnee.length > 0 && (
+                <button
+                  onClick={semaineSelectionneeVerrouillee ? deverrouillerSemaine : verrouillerSemaine}
+                  className={`rounded-md border px-4 py-2 text-sm font-medium ${
+                    semaineSelectionneeVerrouillee
+                      ? "border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                      : "border-zinc-300 text-zinc-700 hover:bg-zinc-50"
+                  }`}
+                >
+                  {semaineSelectionneeVerrouillee
+                    ? "🔓 Déverrouiller cette semaine"
+                    : "🔒 Verrouiller cette semaine"}
+                </button>
+              )}
+              {semaineSelectionneeVerrouillee && (
+                <p className="text-xs font-medium text-amber-600">
+                  🔒 Semaine verrouillée — modifications bloquées.
+                </p>
               )}
             </div>
           )}
@@ -1442,7 +1546,10 @@ export default function PlanningsPage() {
           ) : (
             <div className="flex flex-col gap-6 print:gap-0">
               {blocsGeres.map((bloc) =>
-                semaines.map((semaineJours, semaineIdx) => (
+                semaines.map((semaineJours, semaineIdx) => {
+                  const semaineVerrouillee = semainesVerrouillees.has(semaineJours[0]);
+                  const editableJour = editable && !semaineVerrouillee;
+                  return (
                   <div
                     key={`${bloc.cle}-${semaineJours[0]}`}
                     className={`print-page ${
@@ -1455,6 +1562,7 @@ export default function PlanningsPage() {
                       {bloc.label}
                       <span className="ml-2 font-normal normal-case text-zinc-500">
                         · semaine {semaineIdx + 1} du {formatJourCourt(semaineJours[0])}
+                        {semaineVerrouillee && " · 🔒 verrouillée"}
                       </span>
                     </p>
                     <div className="overflow-x-auto rounded-b-xl border border-zinc-300 bg-white shadow-sm print:overflow-visible print:rounded-none print:border-black print:shadow-none">
@@ -1498,7 +1606,7 @@ export default function PlanningsPage() {
                                             {GROUPE_LABELS[g].slice(0, 3)}
                                           </span>
                                         )}
-                                        {editable && g !== "lutins" ? (
+                                        {editableJour && g !== "lutins" ? (
                                           <input
                                             type="number"
                                             min={0}
@@ -1582,7 +1690,7 @@ export default function PlanningsPage() {
                                     <td
                                       key={j}
                                       onClick={() =>
-                                        editable &&
+                                        editableJour &&
                                         setCelluleOuverte({
                                           creneauId: c.id,
                                           date: j,
@@ -1601,11 +1709,11 @@ export default function PlanningsPage() {
                                         alerte
                                           ? "border-2 border-red-500 bg-red-50 print:border-red-600"
                                           : "border border-zinc-300"
-                                      } ${editable ? "cursor-pointer hover:bg-zinc-50/60" : ""}`}
+                                      } ${editableJour ? "cursor-pointer hover:bg-zinc-50/60" : ""}`}
                                     >
                                       {noms.length > 0 ? (
                                         noms.join(" / ")
-                                      ) : editable ? (
+                                      ) : editableJour ? (
                                         <span className="print:hidden">+</span>
                                       ) : (
                                         ""
@@ -1620,7 +1728,8 @@ export default function PlanningsPage() {
                       </table>
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}

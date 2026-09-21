@@ -879,3 +879,19 @@ create policy "gouters_prevus: write by group management" on public.gouters_prev
   using (public.peut_gerer_groupe(groupe))
   with check (public.peut_gerer_groupe(groupe));
 
+create table public.plannings_verrous (
+  semaine_debut date primary key,
+  verrouille_par uuid references public.profiles (id),
+  verrouille_at timestamptz not null default now()
+);
+
+alter table public.plannings_verrous enable row level security;
+
+create policy "plannings_verrous: readable by any signed-in user" on public.plannings_verrous
+  for select using (auth.role() = 'authenticated');
+
+create policy "plannings_verrous: directeur write" on public.plannings_verrous
+  for all
+  using (public.current_role_name() = 'directeur')
+  with check (public.current_role_name() = 'directeur');
+
