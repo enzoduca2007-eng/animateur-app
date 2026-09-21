@@ -377,6 +377,25 @@ export default function StagiairesPage() {
     }
   }
 
+  async function supprimerEvaluation(animateurId: string, nomComplet: string) {
+    if (
+      !confirm(
+        `Supprimer toute la fiche d'évaluation de ${nomComplet} (critères, appréciations, avis final) ? Cette action est irréversible.`
+      )
+    )
+      return;
+    setErreur(null);
+    setEvaluations((prev) => prev.filter((e) => e.animateur_id !== animateurId));
+    const { error } = await supabase
+      .from("evaluations_stagiaire")
+      .delete()
+      .eq("animateur_id", animateurId);
+    if (error) {
+      setErreur(error.message);
+      charger();
+    }
+  }
+
   if (!editable) {
     return (
       <p className="text-sm text-zinc-500">
@@ -489,6 +508,15 @@ export default function StagiairesPage() {
                   >
                     🖨️
                   </button>
+                  {!verrouillee && (
+                    <button
+                      onClick={() => supprimerEvaluation(s.id, `${s.prenom} ${s.nom}`)}
+                      title="Supprimer la fiche d'évaluation"
+                      className="shrink-0 rounded-md p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-600"
+                    >
+                      🗑
+                    </button>
+                  )}
                   <button
                     onClick={() => setOuvert(estOuvert ? null : s.id)}
                     className="shrink-0 text-sm text-zinc-400"
