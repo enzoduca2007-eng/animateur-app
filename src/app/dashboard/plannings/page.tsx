@@ -1667,15 +1667,30 @@ export default function PlanningsPage() {
                                 <td className="sticky left-10 z-10 whitespace-nowrap border border-zinc-300 border-r-2 border-r-zinc-400 bg-inherit px-3 py-2 font-bold text-zinc-900 print:static print:border-black print:border-r-2">
                                   {c.libelle}
                                 </td>
-                                {semaineJours.map((j) => {
+                                {semaineJours.map((j, jIdx) => {
                                   const eligibles = eligiblesBloc(bloc.groupes, j);
                                   const ids = animateursDe(c.id, j).filter((id) =>
                                     eligibles.includes(id)
                                   );
+                                  // Continuité de la clé : sur la ligne de fermeture,
+                                  // signale qui garde la clé en marquant "(clé)" à
+                                  // côté de celui/ceux qui rouvrent le lendemain.
+                                  const jSuivant =
+                                    c.id === creneauFermeture?.id && creneauOuverture
+                                      ? semaineJours[jIdx + 1]
+                                      : undefined;
+                                  const ouvreursLendemain = jSuivant
+                                    ? animateursDe(creneauOuverture!.id, jSuivant).filter((id) =>
+                                        eligiblesBloc(bloc.groupes, jSuivant).includes(id)
+                                      )
+                                    : [];
                                   const noms = ids
                                     .map((id) => animateurs.find((a) => a.id === id))
                                     .filter(Boolean)
-                                    .map((a) => a!.prenom);
+                                    .map((a) => ({
+                                      prenom: a!.prenom,
+                                      gardeCle: ouvreursLendemain.includes(a!.id),
+                                    }));
                                   const estCritique =
                                     c.id === creneauOuverture?.id ||
                                     c.id === creneauFermeture?.id;
@@ -1711,7 +1726,21 @@ export default function PlanningsPage() {
                                       } ${editableJour ? "cursor-pointer hover:bg-zinc-50/60" : ""}`}
                                     >
                                       {noms.length > 0 ? (
-                                        noms.join(" / ")
+                                        noms.map((n, i) => (
+                                          <span key={i}>
+                                            {i > 0 && " / "}
+                                            {n.prenom}
+                                            {n.gardeCle && (
+                                              <span
+                                                className="text-zinc-400"
+                                                title="Garde la clé — rouvre le lendemain"
+                                              >
+                                                {" "}
+                                                (clé)
+                                              </span>
+                                            )}
+                                          </span>
+                                        ))
                                       ) : editableJour ? (
                                         <span className="print:hidden">+</span>
                                       ) : (
