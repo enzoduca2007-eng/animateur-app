@@ -105,6 +105,12 @@ export interface VerrouPlanningSemaine {
   verrouille_at: string;
 }
 
+export interface PublicationPlanningSemaine {
+  semaine_debut: string;
+  publie_par: string | null;
+  publie_at: string;
+}
+
 export interface EffectifJour {
   id: string;
   date: string;

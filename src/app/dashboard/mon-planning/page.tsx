@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
-import { estWeekend, joursDe, periodeEnCours } from "@/lib/vacances";
+import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
 import { formatHeures, heuresJour, toMinutes } from "@/lib/creneaux";
 import { PeriodesVacances } from "@/components/periodes-vacances";
 import { PointageJour } from "@/components/pointage-jour";
 import {
+  canManage,
   GROUPE_LABELS,
   MOMENTS_ACTIVITE,
   TYPE_ACTIVITE_EMOJIS,
@@ -23,6 +24,7 @@ import {
   type JourFermeture,
   type MomentActivite,
   type PlanningActivite,
+  type PublicationPlanningSemaine,
 } from "@/lib/types";
 
 const COULEUR_GROUPE: Record<Groupe, string> = {
@@ -137,6 +139,7 @@ export default function MonPlanningPage() {
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [ficheOuverte, setFicheOuverte] = useState<string | null>(null);
+  const [publications, setPublications] = useState<PublicationPlanningSemaine[]>([]);
 
   useEffect(() => {
     supabase
@@ -166,6 +169,12 @@ export default function MonPlanningPage() {
       .then(({ data }) => {
         if (data) setJoursFermeture(data as JourFermeture[]);
       });
+    supabase
+      .from("plannings_publications")
+      .select("*")
+      .then(({ data }) => {
+        if (data) setPublications(data as PublicationPlanningSemaine[]);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -190,6 +199,20 @@ export default function MonPlanningPage() {
     () => jours.filter((j) => !estWeekend(j) && !joursFermesSet.has(j)),
     [jours, joursFermesSet]
   );
+
+  const semaines = useMemo(() => semainesDe(joursOuvres), [joursOuvres]);
+  const semainesPubliees = useMemo(
+    () => new Set(publications.map((p) => p.semaine_debut)),
+    [publications]
+  );
+  // Un animateur/responsable ne voit son planning que pour les semaines
+  // publiées par la direction ; celle-ci le voit toujours (même en
+  // préparation, avant publication).
+  function semainePublieePour(date: string) {
+    if (canManage(profile.role)) return true;
+    const semaine = semaines.find((s) => s.includes(date));
+    return !!semaine && semainesPubliees.has(semaine[0]);
+  }
 
   async function chargerFeuilles() {
     if (!moi || !periode) return;
@@ -616,6 +639,23 @@ export default function MonPlanningPage() {
                     const groupe = affectationsJour.find((a) => a.date === j)?.groupe;
                     const heures = heuresJour(assignesJour);
                     const estAujourdhui = j === aujourdhui;
+                    const publie = semainePublieePour(j);
+
+                    if (!publie) {
+                      return (
+                        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-8 text-center shadow-sm">
+                          <p className="text-lg font-bold capitalize text-zinc-900">
+                            {formatJourLong(j)}
+                          </p>
+                          <p className="mt-3 text-sm font-medium text-zinc-500">
+                            🚫 Planning non publié.
+                          </p>
+                          <p className="mt-1 text-xs text-zinc-400">
+                            Reviens un peu plus tard.
+                          </p>
+                        </div>
+                      );
+                    }
 
                     return (
                       <div

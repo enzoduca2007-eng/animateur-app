@@ -900,3 +900,19 @@ create policy "plannings_verrous: directeur write" on public.plannings_verrous
   using (public.current_role_name() = 'directeur')
   with check (public.current_role_name() = 'directeur');
 
+create table public.plannings_publications (
+  semaine_debut date primary key,
+  publie_par uuid references public.profiles (id),
+  publie_at timestamptz not null default now()
+);
+
+alter table public.plannings_publications enable row level security;
+
+create policy "plannings_publications: readable by any signed-in user" on public.plannings_publications
+  for select using (auth.role() = 'authenticated');
+
+create policy "plannings_publications: direction write" on public.plannings_publications
+  for all
+  using (public.current_role_name() in ('directeur', 'coordinateur'))
+  with check (public.current_role_name() in ('directeur', 'coordinateur'));
+

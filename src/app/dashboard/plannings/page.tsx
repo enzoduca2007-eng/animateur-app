@@ -22,6 +22,7 @@ import {
   type Groupe,
   type JourFermeture,
   type PalierEncadrement,
+  type PublicationPlanningSemaine,
   type TypeCreneau,
   type VerrouPlanningSemaine,
 } from "@/lib/types";
@@ -90,6 +91,12 @@ export default function PlanningsPage() {
     if (data) setVerrous(data as VerrouPlanningSemaine[]);
   }
 
+  const [publications, setPublications] = useState<PublicationPlanningSemaine[]>([]);
+  async function chargerPublications() {
+    const { data } = await supabase.from("plannings_publications").select("*");
+    if (data) setPublications(data as PublicationPlanningSemaine[]);
+  }
+
   async function chargerCreneaux() {
     const { data } = await supabase
       .from("creneaux")
@@ -129,6 +136,7 @@ export default function PlanningsPage() {
     chargerFermetures();
     chargerPaliers();
     chargerVerrous();
+    chargerPublications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -163,6 +171,11 @@ export default function PlanningsPage() {
   const semainesVerrouillees = useMemo(
     () => new Set(verrous.map((v) => v.semaine_debut)),
     [verrous]
+  );
+
+  const semainesPubliees = useMemo(
+    () => new Set(publications.map((p) => p.semaine_debut)),
+    [publications]
   );
 
   async function loadAffectations(debut: string, fin: string) {
@@ -505,6 +518,9 @@ export default function PlanningsPage() {
   const semaineSelectionneeVerrouillee =
     semaineJoursSelectionnee.length > 0 &&
     semainesVerrouillees.has(semaineJoursSelectionnee[0]);
+  const semaineSelectionneePubliee =
+    semaineJoursSelectionnee.length > 0 &&
+    semainesPubliees.has(semaineJoursSelectionnee[0]);
   const semaineKey = semaineJoursSelectionnee.join(",");
   const finSemaineSelectionnee =
     semaineJoursSelectionnee[semaineJoursSelectionnee.length - 1] ??
@@ -588,6 +604,33 @@ export default function PlanningsPage() {
       return;
     }
     chargerVerrous();
+  }
+
+  async function publierSemaine() {
+    if (semaineJoursSelectionnee.length === 0) return;
+    setErreur(null);
+    const { error } = await supabase
+      .from("plannings_publications")
+      .insert({ semaine_debut: semaineJoursSelectionnee[0], publie_par: profile.id });
+    if (error) {
+      setErreur(error.message);
+      return;
+    }
+    chargerPublications();
+  }
+
+  async function depublierSemaine() {
+    if (semaineJoursSelectionnee.length === 0) return;
+    setErreur(null);
+    const { error } = await supabase
+      .from("plannings_publications")
+      .delete()
+      .eq("semaine_debut", semaineJoursSelectionnee[0]);
+    if (error) {
+      setErreur(error.message);
+      return;
+    }
+    chargerPublications();
   }
 
   async function remettreAZeroSemaine() {
@@ -1484,6 +1527,23 @@ export default function PlanningsPage() {
                   🔒 Semaine verrouillée — modifications bloquées.
                 </p>
               )}
+              {editable && semaineJoursSelectionnee.length > 0 && (
+                <label className="flex items-center gap-2 rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700">
+                  <input
+                    type="checkbox"
+                    checked={semaineSelectionneePubliee}
+                    onChange={(e) =>
+                      e.target.checked ? publierSemaine() : depublierSemaine()
+                    }
+                  />
+                  Publier cette semaine
+                </label>
+              )}
+              {editable && !semaineSelectionneePubliee && (
+                <p className="text-xs font-medium text-red-600">
+                  🚫 Planning non publié — invisible pour les animateurs.
+                </p>
+              )}
             </div>
           )}
 
@@ -1581,6 +1641,7 @@ export default function PlanningsPage() {
                 semaines.map((semaineJours, semaineIdx) => {
                   const semaineVerrouillee = semainesVerrouillees.has(semaineJours[0]);
                   const editableJour = editable && !semaineVerrouillee;
+                  const semainePubliee = semainesPubliees.has(semaineJours[0]);
                   return (
                   <div
                     key={`${bloc.cle}-${semaineJours[0]}`}
@@ -1595,8 +1656,19 @@ export default function PlanningsPage() {
                       <span className="ml-2 font-normal normal-case text-zinc-500">
                         · semaine {semaineIdx + 1} du {formatJourCourt(semaineJours[0])}
                         {semaineVerrouillee && " · 🔒 verrouillée"}
+                        {editable && !semainePubliee && " · 🚫 non publiée"}
                       </span>
                     </p>
+                    {!editable && !semainePubliee ? (
+                      <div className="rounded-b-xl border border-zinc-300 bg-zinc-50 px-4 py-10 text-center print:border-black">
+                        <p className="text-sm font-medium text-zinc-500">
+                          🚫 Planning non publié pour cette semaine.
+                        </p>
+                        <p className="mt-1 text-xs text-zinc-400">
+                          Reviens un peu plus tard.
+                        </p>
+                      </div>
+                    ) : (
                     <div className="overflow-x-auto rounded-b-xl border border-zinc-300 bg-white shadow-sm print:overflow-visible print:rounded-none print:border-black print:shadow-none">
                       <table className="w-full border-collapse text-left text-sm print:text-xs">
                         <thead>
@@ -1787,6 +1859,7 @@ export default function PlanningsPage() {
                         </tbody>
                       </table>
                     </div>
+                    )}
                   </div>
                   );
                 })
