@@ -399,6 +399,39 @@ export default function PlanningsPage() {
       : null;
   }, [creneaux]);
 
+  // Continuité de la clé : parmi ceux qui ouvrent le lendemain, seul celui
+  // qui est parti le plus tard aujourd'hui (parmi tous les créneaux de
+  // départ, pas seulement la fermeture officielle) garde vraiment la clé —
+  // s'il n'y en a qu'un seul candidat, on le marque même s'il n'est pas
+  // parti à l'heure de fermeture officielle.
+  function animateursGardentLaCle(groupes: Groupe[], j: string, jSuivant: string): Set<string> {
+    if (!creneauOuverture) return new Set();
+    const ouvreursLendemain = animateursDe(creneauOuverture.id, jSuivant).filter((id) =>
+      eligiblesBloc(groupes, jSuivant).includes(id)
+    );
+    if (ouvreursLendemain.length === 0) return new Set();
+
+    const eligiblesJour = eligiblesBloc(groupes, j);
+    const departs = creneaux.filter((c) => c.type === "depart");
+    const candidats: { id: string; heureDebut: string }[] = [];
+    for (const ouvreurId of ouvreursLendemain) {
+      for (const c of departs) {
+        if (
+          eligiblesJour.includes(ouvreurId) &&
+          animateursDe(c.id, j).includes(ouvreurId)
+        ) {
+          candidats.push({ id: ouvreurId, heureDebut: c.heure_debut });
+        }
+      }
+    }
+    if (candidats.length === 0) return new Set();
+    const heureMax = candidats.reduce(
+      (max, c) => (c.heureDebut > max ? c.heureDebut : max),
+      candidats[0].heureDebut
+    );
+    return new Set(candidats.filter((c) => c.heureDebut === heureMax).map((c) => c.id));
+  }
+
   function stagiaireSeul(creneauId: string, date: string, groupe: Groupe) {
     const eligibles = animateursDuGroupe(groupe, date);
     const ids = animateursDe(creneauId, date).filter((id) => eligibles.includes(id));
@@ -1672,28 +1705,23 @@ export default function PlanningsPage() {
                                   const ids = animateursDe(c.id, j).filter((id) =>
                                     eligibles.includes(id)
                                   );
-                                  // Continuité de la clé : sur toute ligne de départ
-                                  // (pas seulement le créneau de fermeture officiel —
-                                  // quelqu'un qui part à 18h alors que la fermeture est
-                                  // à 18h30 reste la personne qui garde la clé si c'est
-                                  // son dernier départ du jour), signale qui garde la
-                                  // clé en marquant "(clé)" à côté de celui/ceux qui
-                                  // rouvrent le lendemain.
+                                  // Continuité de la clé : parmi tous les créneaux de
+                                  // départ du jour, seul celui qui est parti le plus
+                                  // tard (parmi ceux qui ouvrent le lendemain) garde la
+                                  // clé — marqué "(clé)" à côté de son nom.
                                   const jSuivant =
                                     type === "depart" && creneauOuverture
                                       ? semaineJours[jIdx + 1]
                                       : undefined;
-                                  const ouvreursLendemain = jSuivant
-                                    ? animateursDe(creneauOuverture!.id, jSuivant).filter((id) =>
-                                        eligiblesBloc(bloc.groupes, jSuivant).includes(id)
-                                      )
-                                    : [];
+                                  const gardeLaCle = jSuivant
+                                    ? animateursGardentLaCle(bloc.groupes, j, jSuivant)
+                                    : new Set<string>();
                                   const noms = ids
                                     .map((id) => animateurs.find((a) => a.id === id))
                                     .filter(Boolean)
                                     .map((a) => ({
                                       prenom: a!.prenom,
-                                      gardeCle: ouvreursLendemain.includes(a!.id),
+                                      gardeCle: gardeLaCle.has(a!.id),
                                     }));
                                   const estCritique =
                                     c.id === creneauOuverture?.id ||
