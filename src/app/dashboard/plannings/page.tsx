@@ -1672,14 +1672,15 @@ export default function PlanningsPage() {
                                   const ids = animateursDe(c.id, j).filter((id) =>
                                     eligibles.includes(id)
                                   );
-                                  // Continuité de la clé : sur la ligne de fermeture,
-                                  // signale qui garde la clé en marquant "(clé)" à
-                                  // côté de celui/ceux qui rouvrent le lendemain ; sur
-                                  // la ligne d'ouverture (le cas le plus important, car
-                                  // c'est là qu'il faut avoir la clé en main), signale à
-                                  // l'inverse qui a fermé la veille.
+                                  // Continuité de la clé : sur toute ligne de départ
+                                  // (pas seulement le créneau de fermeture officiel —
+                                  // quelqu'un qui part à 18h alors que la fermeture est
+                                  // à 18h30 reste la personne qui garde la clé si c'est
+                                  // son dernier départ du jour), signale qui garde la
+                                  // clé en marquant "(clé)" à côté de celui/ceux qui
+                                  // rouvrent le lendemain.
                                   const jSuivant =
-                                    c.id === creneauFermeture?.id && creneauOuverture
+                                    type === "depart" && creneauOuverture
                                       ? semaineJours[jIdx + 1]
                                       : undefined;
                                   const ouvreursLendemain = jSuivant
@@ -1687,23 +1688,12 @@ export default function PlanningsPage() {
                                         eligiblesBloc(bloc.groupes, jSuivant).includes(id)
                                       )
                                     : [];
-                                  const jPrecedent =
-                                    c.id === creneauOuverture?.id && creneauFermeture
-                                      ? semaineJours[jIdx - 1]
-                                      : undefined;
-                                  const fermeursHier = jPrecedent
-                                    ? animateursDe(creneauFermeture!.id, jPrecedent).filter((id) =>
-                                        eligiblesBloc(bloc.groupes, jPrecedent).includes(id)
-                                      )
-                                    : [];
                                   const noms = ids
                                     .map((id) => animateurs.find((a) => a.id === id))
                                     .filter(Boolean)
                                     .map((a) => ({
                                       prenom: a!.prenom,
-                                      gardeCle:
-                                        ouvreursLendemain.includes(a!.id) ||
-                                        fermeursHier.includes(a!.id),
+                                      gardeCle: ouvreursLendemain.includes(a!.id),
                                     }));
                                   const estCritique =
                                     c.id === creneauOuverture?.id ||
