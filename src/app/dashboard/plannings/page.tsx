@@ -1674,7 +1674,10 @@ export default function PlanningsPage() {
                                   );
                                   // Continuité de la clé : sur la ligne de fermeture,
                                   // signale qui garde la clé en marquant "(clé)" à
-                                  // côté de celui/ceux qui rouvrent le lendemain.
+                                  // côté de celui/ceux qui rouvrent le lendemain ; sur
+                                  // la ligne d'ouverture (le cas le plus important, car
+                                  // c'est là qu'il faut avoir la clé en main), signale à
+                                  // l'inverse qui a fermé la veille.
                                   const jSuivant =
                                     c.id === creneauFermeture?.id && creneauOuverture
                                       ? semaineJours[jIdx + 1]
@@ -1684,12 +1687,23 @@ export default function PlanningsPage() {
                                         eligiblesBloc(bloc.groupes, jSuivant).includes(id)
                                       )
                                     : [];
+                                  const jPrecedent =
+                                    c.id === creneauOuverture?.id && creneauFermeture
+                                      ? semaineJours[jIdx - 1]
+                                      : undefined;
+                                  const fermeursHier = jPrecedent
+                                    ? animateursDe(creneauFermeture!.id, jPrecedent).filter((id) =>
+                                        eligiblesBloc(bloc.groupes, jPrecedent).includes(id)
+                                      )
+                                    : [];
                                   const noms = ids
                                     .map((id) => animateurs.find((a) => a.id === id))
                                     .filter(Boolean)
                                     .map((a) => ({
                                       prenom: a!.prenom,
-                                      gardeCle: ouvreursLendemain.includes(a!.id),
+                                      gardeCle:
+                                        ouvreursLendemain.includes(a!.id) ||
+                                        fermeursHier.includes(a!.id),
                                     }));
                                   const estCritique =
                                     c.id === creneauOuverture?.id ||
@@ -1733,7 +1747,7 @@ export default function PlanningsPage() {
                                             {n.gardeCle && (
                                               <span
                                                 className="text-zinc-400"
-                                                title="Garde la clé — rouvre le lendemain"
+                                                title="Continuité de la clé (ferme un jour / rouvre le lendemain)"
                                               >
                                                 {" "}
                                                 (clé)
