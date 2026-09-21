@@ -405,20 +405,12 @@ export default function ActivitesPage() {
                           <tbody>
                             {MOMENTS_ACTIVITE.map((m) => (
                               <tr key={m.cle}>
-                                {m.cle === "temps_calme" ? (
-                                  <td className="border border-zinc-300 bg-zinc-50 px-1 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-500 print:border-black">
-                                    Temps
-                                    <br />
-                                    calme
-                                  </td>
-                                ) : (
-                                  <td
-                                    className="border border-zinc-300 bg-zinc-50 px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-500 print:border-black"
-                                    style={{ writingMode: "vertical-rl" }}
-                                  >
-                                    <span className="inline-block rotate-180">{m.label}</span>
-                                  </td>
-                                )}
+                                <td
+                                  className="border border-zinc-300 bg-zinc-50 px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-500 print:border-black"
+                                  style={{ writingMode: "vertical-rl" }}
+                                >
+                                  <span className="inline-block rotate-180">{m.label}</span>
+                                </td>
                                 {semaineJours.map((j) => (
                                   <td
                                     key={j}
