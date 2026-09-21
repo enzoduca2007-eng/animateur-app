@@ -256,6 +256,9 @@ export interface EvaluationStagiaire {
   avis_final: AvisFinal | null;
   appreciation_generale: string | null;
   axes_progres: string | null;
+  verrouille: boolean;
+  verrouille_par: string | null;
+  verrouille_at: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

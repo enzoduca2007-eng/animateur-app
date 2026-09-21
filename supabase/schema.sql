@@ -715,6 +715,11 @@ create table public.evaluations_stagiaire (
   avis_final text check (avis_final in ('favorable', 'reserve', 'defavorable')),
   appreciation_generale text,
   axes_progres text,
+  -- Verrouillage par le directeur une fois le bilan finalisé : plus
+  -- aucune modification possible tant que non déverrouillée.
+  verrouille boolean not null default false,
+  verrouille_par uuid references public.profiles (id),
+  verrouille_at timestamptz,
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

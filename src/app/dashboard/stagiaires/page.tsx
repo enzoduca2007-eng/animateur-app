@@ -283,6 +283,10 @@ export default function StagiairesPage() {
       >
     >
   ) {
+    if (evaluationDe(animateurId)?.verrouille) {
+      setErreur("Cette fiche est verrouillée. Déverrouille-la avant de continuer.");
+      return;
+    }
     setErreur(null);
     const existante = evaluationDe(animateurId);
     const payload = {
@@ -302,6 +306,9 @@ export default function StagiairesPage() {
         created_by: profile.id,
         created_at: existante?.created_at ?? new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        verrouille: existante?.verrouille ?? false,
+        verrouille_par: existante?.verrouille_par ?? null,
+        verrouille_at: existante?.verrouille_at ?? null,
         ...payload,
       },
     ]);
@@ -330,6 +337,44 @@ export default function StagiairesPage() {
     majEvaluation(animateurId, {
       appreciations_categories: { ...(existante?.appreciations_categories ?? {}), [categorieCle]: texte },
     });
+  }
+
+  async function verrouillerStagiaire(animateurId: string, verrouille: boolean) {
+    setErreur(null);
+    const existante = evaluationDe(animateurId);
+    const payload = {
+      criteres: existante?.criteres ?? {},
+      appreciations_categories: existante?.appreciations_categories ?? {},
+      avis_final: existante?.avis_final ?? null,
+      appreciation_generale: existante?.appreciation_generale ?? null,
+      axes_progres: existante?.axes_progres ?? null,
+      verrouille,
+      verrouille_par: verrouille ? profile.id : null,
+      verrouille_at: verrouille ? new Date().toISOString() : null,
+    };
+
+    setEvaluations((prev) => [
+      ...prev.filter((e) => e.animateur_id !== animateurId),
+      {
+        id: existante?.id ?? `optimistic-${animateurId}`,
+        animateur_id: animateurId,
+        created_by: existante?.created_by ?? profile.id,
+        created_at: existante?.created_at ?? new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        ...payload,
+      },
+    ]);
+
+    const { error } = await supabase
+      .from("evaluations_stagiaire")
+      .upsert(
+        { animateur_id: animateurId, created_by: existante?.created_by ?? profile.id, ...payload },
+        { onConflict: "animateur_id" }
+      );
+    if (error) {
+      setErreur(error.message);
+      charger();
+    }
   }
 
   if (!editable) {
@@ -381,6 +426,7 @@ export default function StagiairesPage() {
             const autoEvaluation = autoEvaluationDe(s.id);
             const concordanceStagiaire = concordance(evaluation?.criteres, autoEvaluation?.criteres);
             const estOuvert = ouvert === s.id;
+            const verrouillee = evaluation?.verrouille ?? false;
             return (
               <div
                 key={s.id}
@@ -419,7 +465,23 @@ export default function StagiairesPage() {
                         Concordance {NIVEAU_CRITERE_ABBREV[concordanceStagiaire.niveau]}
                       </span>
                     )}
+                    {verrouillee && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                        🔒 Verrouillée
+                      </span>
+                    )}
                   </button>
+                  {profile.role === "directeur" && (
+                    <button
+                      onClick={() => verrouillerStagiaire(s.id, !verrouillee)}
+                      title={verrouillee ? "Déverrouiller cette fiche" : "Verrouiller cette fiche"}
+                      className={`shrink-0 rounded-md p-1.5 hover:bg-zinc-100 ${
+                        verrouillee ? "text-emerald-600" : "text-zinc-400 hover:text-zinc-700"
+                      }`}
+                    >
+                      {verrouillee ? "🔓" : "🔒"}
+                    </button>
+                  )}
                   <button
                     onClick={() => imprimer(s.id)}
                     title="Imprimer seulement cette fiche"
@@ -437,6 +499,11 @@ export default function StagiairesPage() {
 
                 {estOuvert && (
                   <div className="flex flex-col gap-5 border-t border-zinc-100 px-4 py-4">
+                    {verrouillee && (
+                      <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                        🔒 Cette fiche est verrouillée — déverrouille-la pour la modifier.
+                      </p>
+                    )}
                     <div className="flex flex-col gap-4">
                       {CRITERES_STAGIAIRE.map((cat) => (
                         <div key={cat.cle}>
@@ -457,9 +524,10 @@ export default function StagiairesPage() {
                                       <button
                                         key={niveau}
                                         type="button"
+                                        disabled={verrouillee}
                                         title={NIVEAU_CRITERE_LABELS[niveau]}
                                         onClick={() => majCritere(s.id, c.cle, niveau)}
-                                        className={`h-7 w-11 rounded-md border text-xs font-semibold ${
+                                        className={`h-7 w-11 rounded-md border text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                                           niveauActuel === niveau
                                             ? COULEUR_NIVEAU[niveau]
                                             : "border-zinc-300 bg-white text-zinc-400 hover:bg-zinc-50"
@@ -482,8 +550,9 @@ export default function StagiairesPage() {
                             onBlur={(e) =>
                               majAppreciationCategorie(s.id, cat.cle, e.target.value)
                             }
+                            disabled={verrouillee}
                             rows={2}
-                            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm"
+                            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
                           />
                         </div>
                       ))}
@@ -500,7 +569,8 @@ export default function StagiairesPage() {
                             avis_final: (e.target.value || null) as AvisFinal | null,
                           })
                         }
-                        className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                        disabled={verrouillee}
+                        className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
                       >
                         <option value="">— À définir —</option>
                         {(["favorable", "reserve", "defavorable"] as AvisFinal[]).map((av) => (
@@ -520,8 +590,9 @@ export default function StagiairesPage() {
                         onBlur={(e) =>
                           majEvaluation(s.id, { appreciation_generale: e.target.value || null })
                         }
+                        disabled={verrouillee}
                         rows={3}
-                        className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                        className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
                       />
                     </div>
 
@@ -534,8 +605,9 @@ export default function StagiairesPage() {
                         onBlur={(e) =>
                           majEvaluation(s.id, { axes_progres: e.target.value || null })
                         }
+                        disabled={verrouillee}
                         rows={3}
-                        className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                        className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
                       />
                     </div>
                   </div>
