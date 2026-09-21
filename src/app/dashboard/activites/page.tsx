@@ -76,17 +76,6 @@ export default function ActivitesPage() {
   const [modalMateriel, setModalMateriel] = useState("");
   const [modalType, setModalType] = useState<TypeActivite | "">("");
   const [modalAnimateurs, setModalAnimateurs] = useState<string[]>([]);
-  const [monAnimateur, setMonAnimateur] = useState<Animateur | null>(null);
-
-  useEffect(() => {
-    supabase
-      .from("animateurs")
-      .select("*")
-      .eq("profile_id", profile.id)
-      .maybeSingle()
-      .then(({ data }) => setMonAnimateur((data as Animateur) ?? null));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     if (loadingVacances || periodes.length === 0 || periodeIndex !== null) return;
@@ -437,14 +426,10 @@ export default function ActivitesPage() {
                                   >
                                     <ul className="flex flex-col gap-1.5">
                                       {activitesDe(groupe, j, m.cle).map((act) => {
-                                        const cAssigne =
-                                          !!monAnimateur && act.animateur_ids.includes(monAnimateur.id);
                                         return (
                                         <li
                                           key={act.id}
-                                          className={`group rounded px-1 -mx-1 ${
-                                            cAssigne ? "bg-emerald-200 print:bg-emerald-200" : ""
-                                          }`}
+                                          className="group rounded px-1 -mx-1"
                                         >
                                           <div className="flex items-start justify-between gap-1">
                                             <span>
