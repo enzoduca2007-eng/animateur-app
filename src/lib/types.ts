@@ -329,7 +329,7 @@ export interface PalierEncadrement {
 export interface TrancheAge {
   id: string;
   etablissement_id: string;
-  groupe: Groupe;
+  libelle: string;
   annee_naissance_min: number | null;
   annee_naissance_max: number | null;
   created_by: string | null;

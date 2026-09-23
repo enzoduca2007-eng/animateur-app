@@ -435,20 +435,20 @@ create policy "paliers_encadrement: directeur/coordinateur write" on public.pali
   using (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
   with check (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
--- Tranche d'âge (années de naissance min/max) de chaque groupe pour un
--- établissement — les groupes eux-mêmes restent figés (lutins/trolls),
--- seule leur tranche d'âge est configurable, par la direction ou le
--- gestionnaire (global ou de cet établissement).
+-- Tranches d'âge (libellé libre + années de naissance min/max) pour un
+-- établissement — liste libre (créer/supprimer autant que besoin), pour
+-- pouvoir par exemple distinguer Trolls et Géants alors qu'ils restent
+-- fusionnés en un seul groupe réel partout ailleurs dans l'app. Gérées par
+-- la direction ou le gestionnaire (global ou de cet établissement).
 create table public.tranches_age (
   id uuid primary key default gen_random_uuid(),
   etablissement_id uuid not null references public.etablissements (id),
-  groupe text not null check (groupe in ('lutins', 'trolls')),
+  libelle text not null,
   annee_naissance_min integer,
   annee_naissance_max integer,
   created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (etablissement_id, groupe)
+  updated_at timestamptz not null default now()
 );
 
 alter table public.tranches_age enable row level security;

@@ -5,14 +5,11 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import {
-  GROUPES,
-  GROUPE_LABELS,
   ROLES,
   ROLE_LABELS,
   TYPE_CRENEAU_LABELS,
   type Creneau,
   type Etablissement,
-  type Groupe,
   type JourFermeture,
   type PalierEncadrement,
   type Profile,
@@ -29,6 +26,12 @@ const EMPTY_CRENEAU_FORM = {
   type: "arrivee" as TypeCreneau,
   heure_debut: "",
   heure_fin: "",
+};
+
+const EMPTY_TRANCHE_AGE_FORM = {
+  libelle: "",
+  annee_naissance_min: "",
+  annee_naissance_max: "",
 };
 
 const EMPTY_COMPTE_FORM = {
@@ -59,6 +62,7 @@ export default function ParametresEtablissementPage({
   const [formCreneau, setFormCreneau] = useState(EMPTY_CRENEAU_FORM);
   const [formPalier, setFormPalier] = useState({ effectif_min: "", nb_animateurs: "" });
   const [formFermeture, setFormFermeture] = useState({ date: "", motif: "" });
+  const [formTrancheAge, setFormTrancheAge] = useState(EMPTY_TRANCHE_AGE_FORM);
   const [showFormCompte, setShowFormCompte] = useState(false);
   const [formCompte, setFormCompte] = useState(EMPTY_COMPTE_FORM);
   const [creationCompte, setCreationCompte] = useState(false);
@@ -196,32 +200,29 @@ export default function ParametresEtablissementPage({
     charger();
   }
 
-  function trancheAgeDe(groupe: Groupe) {
-    return tranchesAge.find((t) => t.groupe === groupe);
-  }
-
-  async function majTrancheAge(
-    groupe: Groupe,
-    champ: "annee_naissance_min" | "annee_naissance_max",
-    valeur: string
-  ) {
-    const existante = trancheAgeDe(groupe);
-    const payload = {
-      annee_naissance_min: existante?.annee_naissance_min ?? null,
-      annee_naissance_max: existante?.annee_naissance_max ?? null,
-      [champ]: valeur ? Number(valeur) : null,
-    };
-    setErreur(null);
-    const { error } = await supabase
-      .from("tranches_age")
-      .upsert(
-        { etablissement_id: id, groupe, ...payload },
-        { onConflict: "etablissement_id,groupe" }
-      );
+  async function ajouterTrancheAge(e: React.FormEvent) {
+    e.preventDefault();
+    if (!formTrancheAge.libelle) return;
+    const { error } = await supabase.from("tranches_age").insert({
+      libelle: formTrancheAge.libelle,
+      annee_naissance_min: formTrancheAge.annee_naissance_min
+        ? Number(formTrancheAge.annee_naissance_min)
+        : null,
+      annee_naissance_max: formTrancheAge.annee_naissance_max
+        ? Number(formTrancheAge.annee_naissance_max)
+        : null,
+      etablissement_id: id,
+    });
     if (error) {
       setErreur(error.message);
       return;
     }
+    setFormTrancheAge(EMPTY_TRANCHE_AGE_FORM);
+    charger();
+  }
+
+  async function supprimerTrancheAge(trancheId: string) {
+    await supabase.from("tranches_age").delete().eq("id", trancheId);
     charger();
   }
 
@@ -478,45 +479,78 @@ export default function ParametresEtablissementPage({
               Tranches d&apos;âge
             </p>
             <p className="mb-3 text-xs text-zinc-500">
-              Années de naissance des enfants accueillis dans chaque groupe
-              (les groupes eux-mêmes restent Lutins/Trolls &amp; Géants).
+              Libre : ajoute autant de tranches que nécessaire (ex. Lutins,
+              Trolls, Géants séparément) avec leurs années de naissance.
             </p>
-            <div className="flex flex-col gap-3">
-              {GROUPES.map((g) => {
-                const tranche = trancheAgeDe(g);
-                return (
-                  <div key={g} className="flex flex-wrap items-end gap-2">
-                    <span className="w-28 text-sm font-medium text-zinc-700">
-                      {GROUPE_LABELS[g]}
-                    </span>
-                    <div>
-                      <label className="block text-xs text-zinc-500">Né(e) à partir de</label>
-                      <input
-                        type="number"
-                        placeholder="ex. 2019"
-                        defaultValue={tranche?.annee_naissance_min ?? ""}
-                        onBlur={(e) =>
-                          majTrancheAge(g, "annee_naissance_min", e.target.value)
-                        }
-                        className="w-28 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-zinc-500">Jusqu&apos;à</label>
-                      <input
-                        type="number"
-                        placeholder="ex. 2021"
-                        defaultValue={tranche?.annee_naissance_max ?? ""}
-                        onBlur={(e) =>
-                          majTrancheAge(g, "annee_naissance_max", e.target.value)
-                        }
-                        className="w-28 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            {tranchesAge.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {tranchesAge.map((t) => (
+                  <span
+                    key={t.id}
+                    className="flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-700"
+                  >
+                    {t.libelle}
+                    {(t.annee_naissance_min || t.annee_naissance_max) && (
+                      <span className="text-zinc-400">
+                        {" "}
+                        ({t.annee_naissance_min ?? "…"}–{t.annee_naissance_max ?? "…"})
+                      </span>
+                    )}
+                    <button
+                      onClick={() => supprimerTrancheAge(t.id)}
+                      className="text-zinc-400 hover:text-red-600"
+                      title="Supprimer"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <form onSubmit={ajouterTrancheAge} className="flex flex-wrap items-end gap-2">
+              <div>
+                <label className="block text-xs text-zinc-500">Libellé</label>
+                <input
+                  required
+                  placeholder="Ex: Lutins, Trolls, Géants..."
+                  value={formTrancheAge.libelle}
+                  onChange={(e) =>
+                    setFormTrancheAge({ ...formTrancheAge, libelle: e.target.value })
+                  }
+                  className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500">Né(e) à partir de</label>
+                <input
+                  type="number"
+                  placeholder="ex. 2019"
+                  value={formTrancheAge.annee_naissance_min}
+                  onChange={(e) =>
+                    setFormTrancheAge({ ...formTrancheAge, annee_naissance_min: e.target.value })
+                  }
+                  className="w-28 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500">Jusqu&apos;à</label>
+                <input
+                  type="number"
+                  placeholder="ex. 2021"
+                  value={formTrancheAge.annee_naissance_max}
+                  onChange={(e) =>
+                    setFormTrancheAge({ ...formTrancheAge, annee_naissance_max: e.target.value })
+                  }
+                  className="w-28 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                />
+              </div>
+              <button
+                type="submit"
+                className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800"
+              >
+                + Ajouter
+              </button>
+            </form>
           </div>
 
           <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
