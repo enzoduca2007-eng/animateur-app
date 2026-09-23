@@ -55,6 +55,11 @@ insert into public.etablissements (id, nom)
 values ('00000000-0000-0000-0000-000000000001', 'MJC Étoile')
 on conflict (id) do nothing;
 
+-- La colonne est ajoutée ici (avant les fonctions ci-dessous qui la lisent)
+-- ; son backfill/contrainte/policies suivent plus bas, section 3.
+alter table public.profiles
+  add column if not exists etablissement_id uuid references public.etablissements (id);
+
 -- ============================================================
 -- 2. Fonctions communes
 -- ============================================================
@@ -106,9 +111,7 @@ $$;
 -- ============================================================
 -- 3. profiles
 -- ============================================================
-
-alter table public.profiles
-  add column if not exists etablissement_id uuid references public.etablissements (id);
+-- (colonne etablissement_id déjà ajoutée avant la section 2 ci-dessus)
 
 update public.profiles
   set etablissement_id = '00000000-0000-0000-0000-000000000001'
