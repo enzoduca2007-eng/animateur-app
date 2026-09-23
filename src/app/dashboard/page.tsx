@@ -24,6 +24,9 @@ export default async function DashboardHome() {
     if (profile?.role === "animateur") {
       redirect("/dashboard/mon-planning");
     }
+    if (profile?.role === "gestionnaire") {
+      redirect("/dashboard/etablissements");
+    }
   }
 
   const [{ count: nbAnimateurs }, { count: nbAffectations }, { data: messages }] =

@@ -1,5 +1,12 @@
-export type Role = "directeur" | "coordinateur" | "responsable" | "animateur";
+export type Role =
+  | "directeur"
+  | "coordinateur"
+  | "responsable"
+  | "animateur"
+  | "gestionnaire";
 
+// N'inclut PAS "gestionnaire" : ce rôle n'est jamais choisi à
+// l'inscription, uniquement créé à la main (voir migration_034).
 export const ROLES: Role[] = [
   "directeur",
   "coordinateur",
@@ -12,6 +19,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   coordinateur: "Coordinateur",
   responsable: "Responsable",
   animateur: "Animateur",
+  gestionnaire: "Gestionnaire",
 };
 
 export interface Profile {
@@ -20,6 +28,16 @@ export interface Profile {
   full_name: string;
   role: Role;
   groupe_coordinateur: Groupe | null;
+  // Null uniquement pour un gestionnaire (accès transverse à tous les
+  // établissements).
+  etablissement_id: string | null;
+  created_at: string;
+}
+
+export interface Etablissement {
+  id: string;
+  nom: string;
+  created_by: string | null;
   created_at: string;
 }
 

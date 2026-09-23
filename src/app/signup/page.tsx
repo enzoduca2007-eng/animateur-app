@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { ROLES, ROLE_LABELS, type Role } from "@/lib/types";
+import { ROLES, ROLE_LABELS, type Etablissement, type Role } from "@/lib/types";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -12,14 +12,35 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("responsable");
+  const [etablissements, setEtablissements] = useState<Etablissement[]>([]);
+  const [etablissementId, setEtablissementId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase
+      .from("etablissements")
+      .select("*")
+      .order("nom")
+      .then(({ data }) => {
+        const liste = (data as Etablissement[]) ?? [];
+        setEtablissements(liste);
+        if (liste.length > 0) setEtablissementId((id) => id || liste[0].id);
+      });
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setMessage(null);
+
+    if (!etablissementId) {
+      setError("Aucun établissement disponible. Contacte ton gestionnaire.");
+      return;
+    }
+
     setLoading(true);
 
     const supabase = createClient();
@@ -27,7 +48,7 @@ export default function SignupPage() {
       email,
       password,
       options: {
-        data: { full_name: fullName, role },
+        data: { full_name: fullName, role, etablissement_id: etablissementId },
       },
     });
 
@@ -54,7 +75,8 @@ export default function SignupPage() {
       <div className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-8 shadow-sm">
         <h1 className="text-xl font-semibold text-zinc-900">Créer un compte</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Choisis ton espace : directeur, coordinateur ou responsable.
+          Choisis ton établissement et ton espace : directeur, coordinateur ou
+          responsable.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
@@ -92,6 +114,26 @@ export default function SignupPage() {
               onChange={(e) => setPassword(e.target.value)}
               className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500"
             />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-zinc-700">
+              Établissement
+            </label>
+            <select
+              value={etablissementId}
+              onChange={(e) => setEtablissementId(e.target.value)}
+              required
+              className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500"
+            >
+              {etablissements.length === 0 && (
+                <option value="">Aucun établissement disponible</option>
+              )}
+              {etablissements.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.nom}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="text-sm font-medium text-zinc-700">Espace</label>

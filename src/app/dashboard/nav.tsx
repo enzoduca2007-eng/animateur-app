@@ -22,6 +22,7 @@ const LINKS: { href: string; label: string; roles: Role[] | null }[] = [
   { href: "/dashboard/gouters", label: "Goûters", roles: null },
   { href: "/dashboard/messages", label: "Messages", roles: null },
   { href: "/dashboard/equipe", label: "Équipe", roles: ["directeur"] },
+  { href: "/dashboard/etablissements", label: "Établissements", roles: ["gestionnaire"] },
 ];
 
 export function DashboardNav() {

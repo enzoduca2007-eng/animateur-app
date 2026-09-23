@@ -3,7 +3,30 @@
 
 create extension if not exists "pgcrypto";
 
-create type public.user_role as enum ('directeur', 'coordinateur', 'responsable', 'animateur');
+create type public.user_role as enum ('directeur', 'coordinateur', 'responsable', 'animateur', 'gestionnaire');
+
+-- Un établissement = un centre de loisirs cloisonné (ses propres
+-- animateurs, plannings, etc.). created_by référence profiles, créée juste
+-- après — la contrainte est ajoutée par ALTER TABLE plus bas pour éviter la
+-- dépendance circulaire à la création.
+create table public.etablissements (
+  id uuid primary key default gen_random_uuid(),
+  nom text not null,
+  created_by uuid,
+  created_at timestamptz not null default now()
+);
+
+alter table public.etablissements enable row level security;
+
+-- Lecture publique (y compris anonyme) : le formulaire d'inscription doit
+-- pouvoir lister les établissements avant que le visiteur ait un compte.
+create policy "etablissements: public read" on public.etablissements
+  for select using (true);
+
+create policy "etablissements: gestionnaire write" on public.etablissements
+  for all
+  using (public.current_role_name() = 'gestionnaire')
+  with check (public.current_role_name() = 'gestionnaire');
 
 -- One row per account, created automatically on signup (see trigger below).
 create table public.profiles (
@@ -14,8 +37,15 @@ create table public.profiles (
   -- Si renseigné, un coordinateur ne peut gérer que ce groupe (répartition,
   -- planning, effectifs, fiches horaires). Null = accès complet.
   groupe_coordinateur text check (groupe_coordinateur in ('lutins', 'trolls')),
-  created_at timestamptz not null default now()
+  -- Null uniquement pour un gestionnaire (accès transverse à tous les
+  -- établissements) ; obligatoire pour tous les autres rôles.
+  etablissement_id uuid references public.etablissements (id),
+  created_at timestamptz not null default now(),
+  constraint profiles_etablissement_requis check (role = 'gestionnaire' or etablissement_id is not null)
 );
+
+alter table public.etablissements
+  add constraint etablissements_created_by_fkey foreign key (created_by) references public.profiles (id);
 
 -- Reads the caller's own role. security definer lets it bypass profiles' RLS
 -- so it can be used safely inside other tables' policies without recursion.
@@ -29,8 +59,52 @@ as $$
   select role from public.profiles where id = auth.uid();
 $$;
 
--- Auto-create a profile when someone signs up. full_name/role come from the
--- options.data passed to supabase.auth.signUp() on the signup form.
+-- Établissement du compte connecté (null pour un gestionnaire).
+create or replace function public.current_etablissement_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select etablissement_id from public.profiles where id = auth.uid();
+$$;
+
+-- Vrai si la ligne (via son etablissement_id) appartient à l'établissement
+-- du compte connecté, ou si le compte connecté est gestionnaire (accès à
+-- tous les établissements). À combiner (AND) avec les règles métier propres
+-- à chaque policy.
+create or replace function public.dans_mon_etablissement(p_etablissement_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p_etablissement_id = public.current_etablissement_id()
+    or public.current_role_name() = 'gestionnaire';
+$$;
+
+-- Remplit automatiquement etablissement_id à l'insertion quand l'app ne le
+-- précise pas, à partir du profil du compte connecté.
+create or replace function public.etablissement_id_par_defaut()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.etablissement_id is null then
+    new.etablissement_id := public.current_etablissement_id();
+  end if;
+  return new;
+end;
+$$;
+
+-- Auto-create a profile when someone signs up. full_name/role/
+-- etablissement_id come from the options.data passed to
+-- supabase.auth.signUp() on the signup form. Le rôle "gestionnaire" ne peut
+-- jamais être créé par ce chemin (uniquement à la main, en SQL).
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -38,12 +112,16 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, email, full_name, role)
+  insert into public.profiles (id, email, full_name, role, etablissement_id)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data ->> 'full_name', new.email),
-    coalesce((new.raw_user_meta_data ->> 'role')::public.user_role, 'responsable')
+    coalesce(
+      nullif(new.raw_user_meta_data ->> 'role', 'gestionnaire')::public.user_role,
+      'responsable'
+    ),
+    (new.raw_user_meta_data ->> 'etablissement_id')::uuid
   );
   return new;
 end;
@@ -81,14 +159,15 @@ create trigger profiles_prevent_role_escalation
 alter table public.profiles enable row level security;
 
 create policy "profiles: readable by any signed-in user" on public.profiles
-  for select using (auth.role() = 'authenticated');
+  for select using (auth.uid() = id or public.dans_mon_etablissement(etablissement_id));
 
 create policy "profiles: self can update own row" on public.profiles
   for update using (auth.uid() = id);
 
 create policy "profiles: directeur manages all rows" on public.profiles
-  for all using (public.current_role_name() = 'directeur')
-  with check (public.current_role_name() = 'directeur');
+  for all
+  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
 
 -- Animateurs (the staff being scheduled, not the app accounts).
 create table public.animateurs (
@@ -106,6 +185,7 @@ create table public.animateurs (
   notes text,
   formation text,
   profile_id uuid unique references public.profiles (id) on delete set null,
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -113,12 +193,17 @@ create table public.animateurs (
 
 alter table public.animateurs enable row level security;
 
+create trigger animateurs_etablissement_defaut
+  before insert on public.animateurs
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "animateurs: readable by any signed-in user" on public.animateurs
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "animateurs: directeur write" on public.animateurs
-  for all using (public.current_role_name() = 'directeur')
-  with check (public.current_role_name() = 'directeur');
+  for all
+  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
 
 -- Répartition quotidienne des animateurs sur les 2 groupes (Lutins /
 -- Trolls & Géants, fusionnés en un seul groupe réel "trolls"), un
@@ -135,15 +220,20 @@ create table public.affectations_jour (
   -- l'application, qui continue de traiter les deux comme un seul groupe
   -- réel "trolls" (staffing, effectifs, goûters, scoping coordinateur...).
   sous_groupe text check (sous_groupe in ('trolls', 'geants')),
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
-  unique (date, animateur_id)
+  unique (etablissement_id, date, animateur_id)
 );
 
 alter table public.affectations_jour enable row level security;
 
+create trigger affectations_jour_etablissement_defaut
+  before insert on public.affectations_jour
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "affectations_jour: readable by any signed-in user" on public.affectations_jour
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 -- Groupe auquel le coordinateur connecté est rattaché (null = pas de
 -- restriction, y compris pour un directeur).
@@ -199,11 +289,14 @@ $$;
 -- y toucher (il gère seulement le planning/effectifs/fiches horaires
 -- de son groupe une fois la répartition faite par le directeur).
 create policy "affectations_jour: directeur write" on public.affectations_jour
-  for all using (public.current_role_name() = 'directeur')
-  with check (public.current_role_name() = 'directeur');
+  for all
+  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
 
 -- Créneaux horaires configurables (arrivées / pauses / départs) qui
--- forment les lignes de la grille de planning.
+-- forment les lignes de la grille de planning. Pas de valeurs par défaut
+-- ici : chaque établissement reçoit son propre jeu de créneaux par défaut
+-- à sa création (voir la route API de création d'établissement).
 create table public.creneaux (
   id uuid primary key default gen_random_uuid(),
   libelle text not null,
@@ -211,30 +304,23 @@ create table public.creneaux (
   heure_debut time not null,
   heure_fin time, -- requis pour les créneaux de type "pause"
   ordre integer not null default 0,
+  etablissement_id uuid not null references public.etablissements (id),
   created_at timestamptz not null default now()
 );
 
 alter table public.creneaux enable row level security;
 
+create trigger creneaux_etablissement_defaut
+  before insert on public.creneaux
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "creneaux: readable by any signed-in user" on public.creneaux
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "creneaux: directeur/coordinateur write" on public.creneaux
-  for all using (public.current_role_name() in ('directeur', 'coordinateur'))
-  with check (public.current_role_name() in ('directeur', 'coordinateur'));
-
-insert into public.creneaux (libelle, type, heure_debut, heure_fin, ordre) values
-  ('7h20', 'arrivee', '07:20', null, 1),
-  ('8h', 'arrivee', '08:00', null, 2),
-  ('8h30', 'arrivee', '08:30', null, 3),
-  ('11h30-12h30', 'pause', '11:30', '12:30', 1),
-  ('12h30-13h30', 'pause', '12:30', '13:30', 2),
-  ('13h-14h', 'pause', '13:00', '14:00', 3),
-  ('13h30-14h30', 'pause', '13:30', '14:30', 4),
-  ('17h', 'depart', '17:00', null, 1),
-  ('17h30', 'depart', '17:30', null, 2),
-  ('Fermeture 18h', 'depart', '18:00', null, 3),
-  ('Fermeture 18h30', 'depart', '18:30', null, 4);
+  for all
+  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
 
 -- Qui est affecté à quel créneau, quel jour.
 create table public.affectations_creneau (
@@ -242,38 +328,51 @@ create table public.affectations_creneau (
   date date not null,
   creneau_id uuid not null references public.creneaux (id) on delete cascade,
   animateur_id uuid not null references public.animateurs (id) on delete cascade,
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
-  unique (date, creneau_id, animateur_id)
+  unique (etablissement_id, date, creneau_id, animateur_id)
 );
 
 alter table public.affectations_creneau enable row level security;
 
+create trigger affectations_creneau_etablissement_defaut
+  before insert on public.affectations_creneau
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "affectations_creneau: readable by any signed-in user" on public.affectations_creneau
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "affectations_creneau: directeur/coordinateur write" on public.affectations_creneau
-  for all using (public.peut_gerer_groupe(public.groupe_de_ce_jour(animateur_id, date)))
-  with check (public.peut_gerer_groupe(public.groupe_de_ce_jour(animateur_id, date)));
+  for all
+  using (public.peut_gerer_groupe(public.groupe_de_ce_jour(animateur_id, date)) and public.dans_mon_etablissement(etablissement_id))
+  with check (public.peut_gerer_groupe(public.groupe_de_ce_jour(animateur_id, date)) and public.dans_mon_etablissement(etablissement_id));
 
 -- Jours exceptionnellement fermés (en plus des week-ends), ex: un jour
 -- encore compté comme vacances par le calendrier officiel mais où le
 -- centre a en réalité déjà rouvert l'école.
 create table public.jours_fermeture (
   id uuid primary key default gen_random_uuid(),
-  date date not null unique,
+  date date not null,
   motif text,
-  created_at timestamptz not null default now()
+  etablissement_id uuid not null references public.etablissements (id),
+  created_at timestamptz not null default now(),
+  unique (etablissement_id, date)
 );
 
 alter table public.jours_fermeture enable row level security;
 
+create trigger jours_fermeture_etablissement_defaut
+  before insert on public.jours_fermeture
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "jours_fermeture: readable by any signed-in user" on public.jours_fermeture
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "jours_fermeture: directeur/coordinateur write" on public.jours_fermeture
-  for all using (public.current_role_name() in ('directeur', 'coordinateur'))
-  with check (public.current_role_name() in ('directeur', 'coordinateur'));
+  for all
+  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
 
 -- Effectif d'enfants par jour et par groupe, pour calculer combien
 -- d'animateurs doivent rester présents à l'ouverture/fermeture.
@@ -282,43 +381,52 @@ create table public.effectifs_jour (
   date date not null,
   groupe text not null check (groupe in ('lutins', 'trolls')),
   effectif integer not null check (effectif >= 0),
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
-  unique (date, groupe)
+  unique (etablissement_id, date, groupe)
 );
 
 alter table public.effectifs_jour enable row level security;
 
+create trigger effectifs_jour_etablissement_defaut
+  before insert on public.effectifs_jour
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "effectifs_jour: readable by any signed-in user" on public.effectifs_jour
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "effectifs_jour: directeur/coordinateur write" on public.effectifs_jour
-  for all using (public.peut_gerer_groupe(groupe))
-  with check (public.peut_gerer_groupe(groupe));
+  for all
+  using (public.peut_gerer_groupe(groupe) and public.dans_mon_etablissement(etablissement_id))
+  with check (public.peut_gerer_groupe(groupe) and public.dans_mon_etablissement(etablissement_id));
 
 -- Paliers d'encadrement : "à partir de X enfants, il faut Y animateurs
 -- à l'ouverture/fermeture" — configurables, plus proche de la réalité
--- (arrivées échelonnées) qu'un simple ratio.
+-- (arrivées échelonnées) qu'un simple ratio. Pas de valeurs par défaut ici,
+-- pour la même raison que creneaux ci-dessus.
 create table public.paliers_encadrement (
   id uuid primary key default gen_random_uuid(),
-  effectif_min integer not null unique,
+  effectif_min integer not null,
   nb_animateurs integer not null check (nb_animateurs >= 1),
-  created_at timestamptz not null default now()
+  etablissement_id uuid not null references public.etablissements (id),
+  created_at timestamptz not null default now(),
+  unique (etablissement_id, effectif_min)
 );
 
 alter table public.paliers_encadrement enable row level security;
 
+create trigger paliers_encadrement_etablissement_defaut
+  before insert on public.paliers_encadrement
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "paliers_encadrement: readable by any signed-in user" on public.paliers_encadrement
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "paliers_encadrement: directeur/coordinateur write" on public.paliers_encadrement
-  for all using (public.current_role_name() in ('directeur', 'coordinateur'))
-  with check (public.current_role_name() in ('directeur', 'coordinateur'));
-
-insert into public.paliers_encadrement (effectif_min, nb_animateurs) values
-  (0, 1),
-  (16, 2),
-  (31, 3);
+  for all
+  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
 
 -- Fiches horaires (pointage) : horaires réels + présence. Les horaires
 -- prévisionnels viennent déjà du planning (affectations_creneau), pas
@@ -332,13 +440,18 @@ create table public.feuilles_temps (
   heure_arrivee_reelle time,
   heure_depart_reelle time,
   commentaire text,
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (date, animateur_id)
+  unique (etablissement_id, date, animateur_id)
 );
 
 alter table public.feuilles_temps enable row level security;
+
+create trigger feuilles_temps_etablissement_defaut
+  before insert on public.feuilles_temps
+  for each row execute procedure public.etablissement_id_par_defaut();
 
 -- Un animateur ne peut modifier que ses propres fiches.
 create or replace function public.est_mon_animateur(p_animateur_id uuid)
@@ -355,34 +468,44 @@ as $$
 $$;
 
 create policy "feuilles_temps: readable by any signed-in user" on public.feuilles_temps
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "feuilles_temps: directeur/coordinateur write" on public.feuilles_temps
-  for all using (public.peut_gerer_groupe(public.groupe_de_ce_jour(animateur_id, date)))
-  with check (public.peut_gerer_groupe(public.groupe_de_ce_jour(animateur_id, date)));
+  for all
+  using (public.peut_gerer_groupe(public.groupe_de_ce_jour(animateur_id, date)) and public.dans_mon_etablissement(etablissement_id))
+  with check (public.peut_gerer_groupe(public.groupe_de_ce_jour(animateur_id, date)) and public.dans_mon_etablissement(etablissement_id));
 
 create policy "feuilles_temps: animateur writes their own" on public.feuilles_temps
-  for all using (public.est_mon_animateur(animateur_id))
-  with check (public.est_mon_animateur(animateur_id));
+  for all
+  using (public.est_mon_animateur(animateur_id) and public.dans_mon_etablissement(etablissement_id))
+  with check (public.est_mon_animateur(animateur_id) and public.dans_mon_etablissement(etablissement_id));
 
 -- Communication interne (simple message board visible to all 3 espaces).
 create table public.messages (
   id uuid primary key default gen_random_uuid(),
   auteur_id uuid references public.profiles (id),
   contenu text not null,
+  etablissement_id uuid not null references public.etablissements (id),
   created_at timestamptz not null default now()
 );
 
 alter table public.messages enable row level security;
 
+create trigger messages_etablissement_defaut
+  before insert on public.messages
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "messages: readable by any signed-in user" on public.messages
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "messages: any signed-in user can post as themselves" on public.messages
-  for insert with check (auth.uid() = auteur_id);
+  for insert with check (auth.uid() = auteur_id and public.dans_mon_etablissement(etablissement_id));
 
 create policy "messages: author or directeur can delete" on public.messages
-  for delete using (auth.uid() = auteur_id or public.current_role_name() = 'directeur');
+  for delete using (
+    auth.uid() = auteur_id
+    or (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
+  );
 
 -- Traçabilité des goûters : un animateur affecté à un groupe un jour donné
 -- importe la/les photo(s) de l'emballage (une ligne créée automatiquement
@@ -403,6 +526,7 @@ create table public.gouters (
   quantite text,
   statut_ia text not null default 'en_attente' check (statut_ia in ('en_attente', 'traite', 'echec')),
   erreur_ia text,
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   rempli_par uuid references public.profiles (id),
   created_at timestamptz not null default now(),
@@ -412,6 +536,10 @@ create table public.gouters (
 create index gouters_date_groupe_idx on public.gouters (date, groupe);
 
 alter table public.gouters enable row level security;
+
+create trigger gouters_etablissement_defaut
+  before insert on public.gouters
+  for each row execute procedure public.etablissement_id_par_defaut();
 
 -- Un animateur affecté à ce groupe ce jour-là (via la Répartition) peut
 -- créer une ligne (une photo importée = une ligne) et la mettre à jour —
@@ -457,24 +585,34 @@ create trigger gouters_before_update
   for each row execute procedure public.gouters_verrouille_champs_admin();
 
 create policy "gouters: readable by any signed-in user" on public.gouters
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 -- Créer une ligne : le directeur/coordinateur (n'importe quel groupe qu'il
 -- gère), ou un animateur affecté à ce groupe ce jour-là (une photo importée
 -- = une ligne créée automatiquement).
 create policy "gouters: insert" on public.gouters
   for insert
-  with check (public.peut_gerer_groupe(groupe) or public.est_affecte_ce_jour(groupe, date));
+  with check (
+    (public.peut_gerer_groupe(groupe) or public.est_affecte_ce_jour(groupe, date))
+    and public.dans_mon_etablissement(etablissement_id)
+  );
 
 create policy "gouters: update" on public.gouters
   for update
-  using (public.peut_gerer_groupe(groupe) or public.est_affecte_ce_jour(groupe, date))
-  with check (public.peut_gerer_groupe(groupe) or public.est_affecte_ce_jour(groupe, date));
+  using (
+    (public.peut_gerer_groupe(groupe) or public.est_affecte_ce_jour(groupe, date))
+    and public.dans_mon_etablissement(etablissement_id)
+  )
+  with check (
+    (public.peut_gerer_groupe(groupe) or public.est_affecte_ce_jour(groupe, date))
+    and public.dans_mon_etablissement(etablissement_id)
+  );
 
 create policy "gouters: directeur/coordinateur delete" on public.gouters
-  for delete using (public.peut_gerer_groupe(groupe));
+  for delete using (public.peut_gerer_groupe(groupe) and public.dans_mon_etablissement(etablissement_id));
 
--- Bucket de stockage pour les photos d'emballage des goûters.
+-- Bucket de stockage pour les photos d'emballage des goûters, partagé
+-- entre établissements pour l'instant (non cloisonné) — à revoir plus tard.
 insert into storage.buckets (id, name, public)
 values ('gouters', 'gouters', true)
 on conflict (id) do nothing;
@@ -505,6 +643,7 @@ create table public.planning_activites (
   materiel text,
   libelle text not null,
   animateur_ids uuid[] not null default '{}',
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -515,11 +654,15 @@ create index planning_activites_date_groupe_idx
 
 alter table public.planning_activites enable row level security;
 
+create trigger planning_activites_etablissement_defaut
+  before insert on public.planning_activites
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "planning_activites: readable by any signed-in user" on public.planning_activites
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "planning_activites: insert" on public.planning_activites
-  for insert with check (public.peut_gerer_groupe(groupe));
+  for insert with check (public.peut_gerer_groupe(groupe) and public.dans_mon_etablissement(etablissement_id));
 
 -- Un animateur assigné à l'activité peut la mettre à jour (pour renseigner
 -- le matériel et la durée de SA propre activité, notamment via sa fiche
@@ -564,11 +707,11 @@ create trigger planning_activites_before_update
 
 create policy "planning_activites: update" on public.planning_activites
   for update
-  using (public.peut_gerer_groupe(groupe) or public.est_dans_activite(animateur_ids))
-  with check (public.peut_gerer_groupe(groupe) or public.est_dans_activite(animateur_ids));
+  using ((public.peut_gerer_groupe(groupe) or public.est_dans_activite(animateur_ids)) and public.dans_mon_etablissement(etablissement_id))
+  with check ((public.peut_gerer_groupe(groupe) or public.est_dans_activite(animateur_ids)) and public.dans_mon_etablissement(etablissement_id));
 
 create policy "planning_activites: delete" on public.planning_activites
-  for delete using (public.peut_gerer_groupe(groupe));
+  for delete using (public.peut_gerer_groupe(groupe) and public.dans_mon_etablissement(etablissement_id));
 
 -- Thème de la semaine par groupe (la bulle affichée en haut du planning
 -- d'activités imprimé).
@@ -577,21 +720,26 @@ create table public.themes_semaine (
   groupe text not null check (groupe in ('lutins', 'trolls')),
   semaine_debut date not null,
   theme text,
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (groupe, semaine_debut)
+  unique (etablissement_id, groupe, semaine_debut)
 );
 
 alter table public.themes_semaine enable row level security;
 
+create trigger themes_semaine_etablissement_defaut
+  before insert on public.themes_semaine
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "themes_semaine: readable by any signed-in user" on public.themes_semaine
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "themes_semaine: write" on public.themes_semaine
   for all
-  using (public.peut_gerer_groupe(groupe))
-  with check (public.peut_gerer_groupe(groupe));
+  using (public.peut_gerer_groupe(groupe) and public.dans_mon_etablissement(etablissement_id))
+  with check (public.peut_gerer_groupe(groupe) and public.dans_mon_etablissement(etablissement_id));
 
 -- Présence jour par jour de chaque membre de l'équipe (directeur,
 -- coordinateur, animateur), indépendante du groupe géré ce jour-là —
@@ -602,20 +750,25 @@ create table public.presence_jour (
   animateur_id uuid not null references public.animateurs (id) on delete cascade,
   date date not null,
   present boolean not null default true,
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
-  unique (animateur_id, date)
+  unique (etablissement_id, animateur_id, date)
 );
 
 alter table public.presence_jour enable row level security;
 
+create trigger presence_jour_etablissement_defaut
+  before insert on public.presence_jour
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "presence_jour: readable by any signed-in user" on public.presence_jour
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "presence_jour: directeur write" on public.presence_jour
   for all
-  using (public.current_role_name() = 'directeur')
-  with check (public.current_role_name() = 'directeur');
+  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
 
 -- Effectifs enfants séparés Trolls / Géants pour la feuille de présence
 -- imprimable de la Répartition uniquement — n'affecte pas effectifs_jour
@@ -626,20 +779,25 @@ create table public.effectifs_sous_groupe (
   date date not null,
   sous_groupe text not null check (sous_groupe in ('trolls', 'geants')),
   effectif integer not null check (effectif >= 0),
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
-  unique (date, sous_groupe)
+  unique (etablissement_id, date, sous_groupe)
 );
 
 alter table public.effectifs_sous_groupe enable row level security;
 
+create trigger effectifs_sous_groupe_etablissement_defaut
+  before insert on public.effectifs_sous_groupe
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "effectifs_sous_groupe: readable by any signed-in user" on public.effectifs_sous_groupe
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "effectifs_sous_groupe: directeur write" on public.effectifs_sous_groupe
   for all
-  using (public.current_role_name() = 'directeur')
-  with check (public.current_role_name() = 'directeur');
+  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
 
 -- Marque une fiche animateur comme "Directeur" ou "Coordinateur" pour la
 -- feuille de présence imprimable de la Répartition, avec sa ou ses
@@ -654,6 +812,7 @@ create table public.direction_roster (
   animateur_id uuid not null unique references public.animateurs (id) on delete cascade,
   role_affiche text not null check (role_affiche in ('directeur', 'directeur_adjoint', 'coordinateur')),
   sections text[] not null default '{}',
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -664,13 +823,17 @@ create table public.direction_roster (
 
 alter table public.direction_roster enable row level security;
 
+create trigger direction_roster_etablissement_defaut
+  before insert on public.direction_roster
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "direction_roster: readable by any signed-in user" on public.direction_roster
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "direction_roster: directeur write" on public.direction_roster
   for all
-  using (public.current_role_name() = 'directeur')
-  with check (public.current_role_name() = 'directeur');
+  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
 
 -- Présence jour par jour du directeur/directeur adjoint sur la feuille
 -- imprimable (saisie D/A dans la grille de Répartition, comme L/T/G pour
@@ -681,20 +844,25 @@ create table public.presence_direction_jour (
   date date not null,
   animateur_id uuid not null references public.animateurs (id) on delete cascade,
   role text not null check (role in ('directeur', 'adjoint')),
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
-  unique (date, animateur_id)
+  unique (etablissement_id, date, animateur_id)
 );
 
 alter table public.presence_direction_jour enable row level security;
 
+create trigger presence_direction_jour_etablissement_defaut
+  before insert on public.presence_direction_jour
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "presence_direction_jour: readable by any signed-in user" on public.presence_direction_jour
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "presence_direction_jour: directeur write" on public.presence_direction_jour
   for all
-  using (public.current_role_name() = 'directeur')
-  with check (public.current_role_name() = 'directeur');
+  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
 
 -- Gestion des stagiaires BAFA : une fiche d'évaluation par animateur
 -- marqué "stagiaire" (grille de compétences + avis final +
@@ -720,6 +888,7 @@ create table public.evaluations_stagiaire (
   verrouille boolean not null default false,
   verrouille_par uuid references public.profiles (id),
   verrouille_at timestamptz,
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -727,14 +896,18 @@ create table public.evaluations_stagiaire (
 
 alter table public.evaluations_stagiaire enable row level security;
 
+create trigger evaluations_stagiaire_etablissement_defaut
+  before insert on public.evaluations_stagiaire
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "evaluations_stagiaire: direction read" on public.evaluations_stagiaire
   for select
-  using (public.current_role_name() in ('directeur', 'coordinateur'));
+  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
 
 create policy "evaluations_stagiaire: direction write" on public.evaluations_stagiaire
   for all
-  using (public.current_role_name() in ('directeur', 'coordinateur'))
-  with check (public.current_role_name() in ('directeur', 'coordinateur'));
+  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
 
 -- Auto-évaluation du stagiaire, remplie en ligne par lui-même — même
 -- grille de critères, fusionnée avec celle de la direction sur la
@@ -745,23 +918,28 @@ create table public.auto_evaluations_stagiaire (
   animateur_id uuid not null unique references public.animateurs (id) on delete cascade,
   criteres jsonb not null default '{}'::jsonb,
   commentaire text,
+  etablissement_id uuid not null references public.etablissements (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 alter table public.auto_evaluations_stagiaire enable row level security;
 
+create trigger auto_evaluations_stagiaire_etablissement_defaut
+  before insert on public.auto_evaluations_stagiaire
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "auto_evaluations_stagiaire: direction ou le stagiaire lisent" on public.auto_evaluations_stagiaire
   for select
   using (
-    public.current_role_name() in ('directeur', 'coordinateur')
-    or public.est_mon_animateur(animateur_id)
+    (public.current_role_name() in ('directeur', 'coordinateur') or public.est_mon_animateur(animateur_id))
+    and public.dans_mon_etablissement(etablissement_id)
   );
 
 create policy "auto_evaluations_stagiaire: le stagiaire ecrit la sienne" on public.auto_evaluations_stagiaire
   for all
-  using (public.est_mon_animateur(animateur_id))
-  with check (public.est_mon_animateur(animateur_id));
+  using (public.est_mon_animateur(animateur_id) and public.dans_mon_etablissement(etablissement_id))
+  with check (public.est_mon_animateur(animateur_id) and public.dans_mon_etablissement(etablissement_id));
 
 -- Fiche d'animation d'un grand jeu (objectifs, lieu, déroulement...),
 -- remplie par le(s) animateur(s) assigné(s) depuis Mon planning —
@@ -779,6 +957,7 @@ create table public.fiches_animation (
   deroulement text,
   conclusion_rangement text,
   animateurs_requis text,
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -786,8 +965,12 @@ create table public.fiches_animation (
 
 alter table public.fiches_animation enable row level security;
 
+create trigger fiches_animation_etablissement_defaut
+  before insert on public.fiches_animation
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "fiches_animation: readable by any signed-in user" on public.fiches_animation
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 -- Même droit que pour modifier l'activité liée : la direction (du
 -- groupe concerné) ou un animateur assigné à cette activité.
@@ -813,8 +996,8 @@ $$;
 
 create policy "fiches_animation: write by assigned or direction" on public.fiches_animation
   for all
-  using (public.peut_modifier_fiche_animation(planning_activite_id))
-  with check (public.peut_modifier_fiche_animation(planning_activite_id));
+  using (public.peut_modifier_fiche_animation(planning_activite_id) and public.dans_mon_etablissement(etablissement_id))
+  with check (public.peut_modifier_fiche_animation(planning_activite_id) and public.dans_mon_etablissement(etablissement_id));
 
 -- Prévisionnel d'achats de goûters :
 -- - un catalogue de produits de base (ex. "Bichocos") ;
@@ -828,6 +1011,7 @@ create table public.produits_gouter (
   id uuid primary key default gen_random_uuid(),
   nom text not null,
   actif boolean not null default true,
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -835,13 +1019,17 @@ create table public.produits_gouter (
 
 alter table public.produits_gouter enable row level security;
 
+create trigger produits_gouter_etablissement_defaut
+  before insert on public.produits_gouter
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "produits_gouter: readable by any signed-in user" on public.produits_gouter
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "produits_gouter: direction write" on public.produits_gouter
   for all
-  using (public.current_role_name() in ('directeur', 'coordinateur'))
-  with check (public.current_role_name() in ('directeur', 'coordinateur'));
+  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
 
 create table public.declinaisons_gouter (
   id uuid primary key default gen_random_uuid(),
@@ -849,6 +1037,7 @@ create table public.declinaisons_gouter (
   marque text not null,
   quantite_par_personne integer not null check (quantite_par_personne > 0),
   taille_paquet integer not null check (taille_paquet > 0),
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -856,63 +1045,84 @@ create table public.declinaisons_gouter (
 
 alter table public.declinaisons_gouter enable row level security;
 
+create trigger declinaisons_gouter_etablissement_defaut
+  before insert on public.declinaisons_gouter
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "declinaisons_gouter: readable by any signed-in user" on public.declinaisons_gouter
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "declinaisons_gouter: direction write" on public.declinaisons_gouter
   for all
-  using (public.current_role_name() in ('directeur', 'coordinateur'))
-  with check (public.current_role_name() in ('directeur', 'coordinateur'));
+  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
 
 create table public.gouters_prevus (
   id uuid primary key default gen_random_uuid(),
   date date not null,
   groupe text not null check (groupe in ('lutins', 'trolls')),
   declinaison_id uuid not null references public.declinaisons_gouter (id) on delete cascade,
+  etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
-  unique (date, groupe, declinaison_id)
+  unique (etablissement_id, date, groupe, declinaison_id)
 );
 
 alter table public.gouters_prevus enable row level security;
 
+create trigger gouters_prevus_etablissement_defaut
+  before insert on public.gouters_prevus
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "gouters_prevus: readable by any signed-in user" on public.gouters_prevus
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "gouters_prevus: write by group management" on public.gouters_prevus
   for all
-  using (public.peut_gerer_groupe(groupe))
-  with check (public.peut_gerer_groupe(groupe));
+  using (public.peut_gerer_groupe(groupe) and public.dans_mon_etablissement(etablissement_id))
+  with check (public.peut_gerer_groupe(groupe) and public.dans_mon_etablissement(etablissement_id));
 
 create table public.plannings_verrous (
-  semaine_debut date primary key,
+  etablissement_id uuid not null references public.etablissements (id),
+  semaine_debut date not null,
   verrouille_par uuid references public.profiles (id),
-  verrouille_at timestamptz not null default now()
+  verrouille_at timestamptz not null default now(),
+  primary key (etablissement_id, semaine_debut)
 );
 
 alter table public.plannings_verrous enable row level security;
 
+create trigger plannings_verrous_etablissement_defaut
+  before insert on public.plannings_verrous
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "plannings_verrous: readable by any signed-in user" on public.plannings_verrous
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "plannings_verrous: directeur write" on public.plannings_verrous
   for all
-  using (public.current_role_name() = 'directeur')
-  with check (public.current_role_name() = 'directeur');
+  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
 
 create table public.plannings_publications (
-  semaine_debut date primary key,
+  etablissement_id uuid not null references public.etablissements (id),
+  semaine_debut date not null,
   publie_par uuid references public.profiles (id),
-  publie_at timestamptz not null default now()
+  publie_at timestamptz not null default now(),
+  primary key (etablissement_id, semaine_debut)
 );
 
 alter table public.plannings_publications enable row level security;
 
+create trigger plannings_publications_etablissement_defaut
+  before insert on public.plannings_publications
+  for each row execute procedure public.etablissement_id_par_defaut();
+
 create policy "plannings_publications: readable by any signed-in user" on public.plannings_publications
-  for select using (auth.role() = 'authenticated');
+  for select using (public.dans_mon_etablissement(etablissement_id));
 
 create policy "plannings_publications: direction write" on public.plannings_publications
   for all
-  using (public.current_role_name() in ('directeur', 'coordinateur'))
-  with check (public.current_role_name() in ('directeur', 'coordinateur'));
+  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
 
