@@ -326,6 +326,17 @@ export interface PalierEncadrement {
   created_at: string;
 }
 
+export interface TrancheAge {
+  id: string;
+  etablissement_id: string;
+  groupe: Groupe;
+  annee_naissance_min: number | null;
+  annee_naissance_max: number | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface FeuilleTemps {
   id: string;
   date: string;
@@ -457,5 +468,5 @@ export interface Message {
 }
 
 export function canManage(role: Role | undefined | null) {
-  return role === "directeur" || role === "coordinateur" || role === "gestionnaire";
+  return role === "directeur" || role === "coordinateur";
 }

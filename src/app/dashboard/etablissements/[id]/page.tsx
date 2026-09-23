@@ -5,15 +5,19 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import {
+  GROUPES,
+  GROUPE_LABELS,
   ROLES,
   ROLE_LABELS,
   TYPE_CRENEAU_LABELS,
   type Creneau,
   type Etablissement,
+  type Groupe,
   type JourFermeture,
   type PalierEncadrement,
   type Profile,
   type Role,
+  type TrancheAge,
   type TypeCreneau,
 } from "@/lib/types";
 
@@ -48,6 +52,7 @@ export default function ParametresEtablissementPage({
   const [paliers, setPaliers] = useState<PalierEncadrement[]>([]);
   const [joursFermeture, setJoursFermeture] = useState<JourFermeture[]>([]);
   const [comptes, setComptes] = useState<Profile[]>([]);
+  const [tranchesAge, setTranchesAge] = useState<TrancheAge[]>([]);
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
 
@@ -60,18 +65,21 @@ export default function ParametresEtablissementPage({
 
   async function charger() {
     setLoading(true);
-    const [{ data: e }, { data: c }, { data: p }, { data: f }, { data: co }] = await Promise.all([
-      supabase.from("etablissements").select("*").eq("id", id).single(),
-      supabase.from("creneaux").select("*").eq("etablissement_id", id).order("type").order("heure_debut"),
-      supabase.from("paliers_encadrement").select("*").eq("etablissement_id", id).order("effectif_min"),
-      supabase.from("jours_fermeture").select("*").eq("etablissement_id", id).order("date"),
-      supabase.from("profiles").select("*").eq("etablissement_id", id).order("full_name"),
-    ]);
+    const [{ data: e }, { data: c }, { data: p }, { data: f }, { data: co }, { data: ta }] =
+      await Promise.all([
+        supabase.from("etablissements").select("*").eq("id", id).single(),
+        supabase.from("creneaux").select("*").eq("etablissement_id", id).order("type").order("heure_debut"),
+        supabase.from("paliers_encadrement").select("*").eq("etablissement_id", id).order("effectif_min"),
+        supabase.from("jours_fermeture").select("*").eq("etablissement_id", id).order("date"),
+        supabase.from("profiles").select("*").eq("etablissement_id", id).order("full_name"),
+        supabase.from("tranches_age").select("*").eq("etablissement_id", id),
+      ]);
     setEtablissement((e as Etablissement) ?? null);
     setCreneaux((c as Creneau[]) ?? []);
     setPaliers((p as PalierEncadrement[]) ?? []);
     setJoursFermeture((f as JourFermeture[]) ?? []);
     setComptes((co as Profile[]) ?? []);
+    setTranchesAge((ta as TrancheAge[]) ?? []);
     setLoading(false);
   }
 
@@ -188,6 +196,35 @@ export default function ParametresEtablissementPage({
     charger();
   }
 
+  function trancheAgeDe(groupe: Groupe) {
+    return tranchesAge.find((t) => t.groupe === groupe);
+  }
+
+  async function majTrancheAge(
+    groupe: Groupe,
+    champ: "annee_naissance_min" | "annee_naissance_max",
+    valeur: string
+  ) {
+    const existante = trancheAgeDe(groupe);
+    const payload = {
+      annee_naissance_min: existante?.annee_naissance_min ?? null,
+      annee_naissance_max: existante?.annee_naissance_max ?? null,
+      [champ]: valeur ? Number(valeur) : null,
+    };
+    setErreur(null);
+    const { error } = await supabase
+      .from("tranches_age")
+      .upsert(
+        { etablissement_id: id, groupe, ...payload },
+        { onConflict: "etablissement_id,groupe" }
+      );
+    if (error) {
+      setErreur(error.message);
+      return;
+    }
+    charger();
+  }
+
   if (!autorise) {
     return (
       <p className="text-sm text-zinc-500">
@@ -211,8 +248,9 @@ export default function ParametresEtablissementPage({
           {loading ? "..." : etablissement?.nom ?? "Établissement introuvable"}
         </h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Paramètres (créneaux, paliers d&apos;encadrement, jours de
-          fermeture) — les groupes/âges ne sont pas encore configurables.
+          Comptes et paramètres (créneaux, paliers d&apos;encadrement, jours
+          de fermeture, tranches d&apos;âge) — pas d&apos;accès aux pages
+          métier (Plannings, Répartition...), réservées à la direction.
         </p>
       </div>
 
@@ -433,6 +471,52 @@ export default function ParametresEtablissementPage({
                 + Ajouter
               </button>
             </form>
+          </div>
+
+          <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <p className="mb-1 text-sm font-medium text-zinc-900">
+              Tranches d&apos;âge
+            </p>
+            <p className="mb-3 text-xs text-zinc-500">
+              Années de naissance des enfants accueillis dans chaque groupe
+              (les groupes eux-mêmes restent Lutins/Trolls &amp; Géants).
+            </p>
+            <div className="flex flex-col gap-3">
+              {GROUPES.map((g) => {
+                const tranche = trancheAgeDe(g);
+                return (
+                  <div key={g} className="flex flex-wrap items-end gap-2">
+                    <span className="w-28 text-sm font-medium text-zinc-700">
+                      {GROUPE_LABELS[g]}
+                    </span>
+                    <div>
+                      <label className="block text-xs text-zinc-500">Né(e) à partir de</label>
+                      <input
+                        type="number"
+                        placeholder="ex. 2019"
+                        defaultValue={tranche?.annee_naissance_min ?? ""}
+                        onBlur={(e) =>
+                          majTrancheAge(g, "annee_naissance_min", e.target.value)
+                        }
+                        className="w-28 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-zinc-500">Jusqu&apos;à</label>
+                      <input
+                        type="number"
+                        placeholder="ex. 2021"
+                        defaultValue={tranche?.annee_naissance_max ?? ""}
+                        onBlur={(e) =>
+                          majTrancheAge(g, "annee_naissance_max", e.target.value)
+                        }
+                        className="w-28 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">

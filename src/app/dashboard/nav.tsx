@@ -88,21 +88,14 @@ export function DashboardNav() {
 
         <nav className="flex flex-1 flex-col gap-1 px-3">
           {LINKS.filter((link) => {
-            // "Établissements" est visible pour tout gestionnaire (global
-            // ou scopé à un établissement).
-            if (link.href === "/dashboard/etablissements") {
-              return profile.role === "gestionnaire";
+            // Un gestionnaire (global ou scopé à un établissement) ne
+            // gère que les comptes et les paramètres de son établissement
+            // — jamais les pages métier (Plannings, Répartition...),
+            // réservées à directeur/coordinateur.
+            if (profile.role === "gestionnaire") {
+              return link.href === "/dashboard/etablissements";
             }
-            // Un gestionnaire global (sans établissement) n'a accès à
-            // aucune autre page métier, qui suppose toutes un
-            // établissement courant.
-            if (profile.role === "gestionnaire" && !profile.etablissement_id) {
-              return false;
-            }
-            // Un gestionnaire scopé à un établissement a les mêmes accès
-            // qu'un directeur pour cet établissement.
-            const roleEffectif = profile.role === "gestionnaire" ? "directeur" : profile.role;
-            return !link.roles || link.roles.includes(roleEffectif);
+            return !link.roles || link.roles.includes(profile.role);
           }).map((link) => {
             // Un gestionnaire scopé à un établissement va directement à
             // ses propres paramètres plutôt qu'à la liste globale.
