@@ -87,27 +87,44 @@ export function DashboardNav() {
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 px-3">
-          {LINKS.filter((link) =>
-            // Le gestionnaire n'a pas d'établissement courant : les pages
-            // "roles: null" (Goûters, Messages...) supposent toutes un
-            // établissement, donc invisibles pour lui sauf mention explicite.
-            profile.role === "gestionnaire"
-              ? link.roles?.includes("gestionnaire")
-              : !link.roles || link.roles.includes(profile.role)
-          ).map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={() => setOuvert(false)}
-              className={`rounded-md px-3 py-2 text-sm ${
-                pathname === link.href
-                  ? "bg-zinc-100 font-medium text-zinc-900"
-                  : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
-              }`}
-            >
-              {link.label}
-            </Link>
-          ))}
+          {LINKS.filter((link) => {
+            // "Établissements" est visible pour tout gestionnaire (global
+            // ou scopé à un établissement).
+            if (link.href === "/dashboard/etablissements") {
+              return profile.role === "gestionnaire";
+            }
+            // Un gestionnaire global (sans établissement) n'a accès à
+            // aucune autre page métier, qui suppose toutes un
+            // établissement courant.
+            if (profile.role === "gestionnaire" && !profile.etablissement_id) {
+              return false;
+            }
+            // Un gestionnaire scopé à un établissement a les mêmes accès
+            // qu'un directeur pour cet établissement.
+            const roleEffectif = profile.role === "gestionnaire" ? "directeur" : profile.role;
+            return !link.roles || link.roles.includes(roleEffectif);
+          }).map((link) => {
+            // Un gestionnaire scopé à un établissement va directement à
+            // ses propres paramètres plutôt qu'à la liste globale.
+            const href =
+              link.href === "/dashboard/etablissements" && profile.etablissement_id
+                ? `/dashboard/etablissements/${profile.etablissement_id}`
+                : link.href;
+            return (
+              <Link
+                key={link.href}
+                href={href}
+                onClick={() => setOuvert(false)}
+                className={`rounded-md px-3 py-2 text-sm ${
+                  pathname === href
+                    ? "bg-zinc-100 font-medium text-zinc-900"
+                    : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
+                }`}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="flex flex-col gap-2 border-t border-zinc-200 px-4 py-4 text-sm">

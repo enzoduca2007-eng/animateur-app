@@ -2,20 +2,31 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { type Etablissement } from "@/lib/types";
 
 const EMPTY_FORM = {
   nomEtablissement: "",
-  directeurNom: "",
-  directeurEmail: "",
-  directeurPassword: "",
+  gestionnaireNom: "",
+  gestionnaireEmail: "",
+  gestionnairePassword: "",
 };
 
 export default function EtablissementsPage() {
   const profile = useProfile();
+  const router = useRouter();
   const supabase = createClient();
+
+  // Un gestionnaire scopé à un établissement n'a rien à faire sur la liste
+  // globale (réservée au gestionnaire sans établissement) — direction
+  // automatique vers ses propres paramètres.
+  useEffect(() => {
+    if (profile.role === "gestionnaire" && profile.etablissement_id) {
+      router.replace(`/dashboard/etablissements/${profile.etablissement_id}`);
+    }
+  }, [profile.role, profile.etablissement_id, router]);
 
   const [etablissements, setEtablissements] = useState<Etablissement[]>([]);
   const [comptesParEtablissement, setComptesParEtablissement] = useState<
@@ -74,10 +85,10 @@ export default function EtablissementsPage() {
     charger();
   }
 
-  if (profile.role !== "gestionnaire") {
+  if (profile.role !== "gestionnaire" || profile.etablissement_id) {
     return (
       <p className="text-sm text-zinc-500">
-        Cette page est réservée au compte gestionnaire.
+        Cette page est réservée au compte gestionnaire global.
       </p>
     );
   }
@@ -121,22 +132,26 @@ export default function EtablissementsPage() {
           </div>
 
           <p className="mt-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
-            Premier compte directeur de cet établissement
+            Premier compte gestionnaire de cet établissement
+          </p>
+          <p className="text-xs text-zinc-400">
+            Ce compte gère uniquement cet établissement (comme un directeur,
+            avec en plus les réglages avancés) — pas les autres.
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <input
               required
               placeholder="Nom complet"
-              value={form.directeurNom}
-              onChange={(e) => setForm({ ...form, directeurNom: e.target.value })}
+              value={form.gestionnaireNom}
+              onChange={(e) => setForm({ ...form, gestionnaireNom: e.target.value })}
               className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
             />
             <input
               required
               type="email"
               placeholder="Email"
-              value={form.directeurEmail}
-              onChange={(e) => setForm({ ...form, directeurEmail: e.target.value })}
+              value={form.gestionnaireEmail}
+              onChange={(e) => setForm({ ...form, gestionnaireEmail: e.target.value })}
               className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
             />
             <input
@@ -144,9 +159,9 @@ export default function EtablissementsPage() {
               type="password"
               minLength={6}
               placeholder="Mot de passe provisoire"
-              value={form.directeurPassword}
+              value={form.gestionnairePassword}
               onChange={(e) =>
-                setForm({ ...form, directeurPassword: e.target.value })
+                setForm({ ...form, gestionnairePassword: e.target.value })
               }
               className="rounded-md border border-zinc-300 px-3 py-2 text-sm sm:col-span-2"
             />

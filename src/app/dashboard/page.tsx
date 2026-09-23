@@ -18,14 +18,21 @@ export default async function DashboardHome() {
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, etablissement_id")
       .eq("id", user.id)
       .single();
     if (profile?.role === "animateur") {
       redirect("/dashboard/mon-planning");
     }
     if (profile?.role === "gestionnaire") {
-      redirect("/dashboard/etablissements");
+      // Un gestionnaire scopé à un établissement atterrit directement sur
+      // ses propres paramètres ; le gestionnaire global (sans
+      // établissement) voit la liste de tous les établissements.
+      redirect(
+        profile.etablissement_id
+          ? `/dashboard/etablissements/${profile.etablissement_id}`
+          : "/dashboard/etablissements"
+      );
     }
   }
 

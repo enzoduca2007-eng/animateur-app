@@ -36,19 +36,26 @@ export async function POST(request: Request) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, etablissement_id")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "gestionnaire") {
+  // Seul le gestionnaire GLOBAL (sans établissement) peut créer un nouvel
+  // établissement — un gestionnaire scopé à un établissement (super
+  // directeur local) ne peut pas en créer d'autres.
+  if (profile?.role !== "gestionnaire" || profile.etablissement_id) {
     return NextResponse.json(
-      { error: "Réservé au compte gestionnaire." },
+      { error: "Réservé au compte gestionnaire global." },
       { status: 403 }
     );
   }
 
-  const { nomEtablissement, directeurNom, directeurEmail, directeurPassword } =
-    await request.json();
-  if (!nomEtablissement || !directeurNom || !directeurEmail || !directeurPassword) {
+  const {
+    nomEtablissement,
+    gestionnaireNom,
+    gestionnaireEmail,
+    gestionnairePassword,
+  } = await request.json();
+  if (!nomEtablissement || !gestionnaireNom || !gestionnaireEmail || !gestionnairePassword) {
     return NextResponse.json(
       { error: "Tous les champs sont requis." },
       { status: 400 }
@@ -100,21 +107,42 @@ export async function POST(request: Request) {
     );
   }
 
+  // handle_new_user() refuse volontairement de créer un compte
+  // "gestionnaire" à partir des métadonnées d'inscription (pour bloquer
+  // toute auto-inscription en gestionnaire) — on crée donc d'abord le
+  // compte avec un rôle neutre, puis on le promeut en gestionnaire juste
+  // après via une simple mise à jour (le client admin contourne RLS et le
+  // trigger anti-auto-promotion, qui ne s'applique qu'aux requêtes
+  // authentifiées comme un utilisateur normal).
   const { data: created, error: errUser } = await admin.auth.admin.createUser({
-    email: directeurEmail,
-    password: directeurPassword,
+    email: gestionnaireEmail,
+    password: gestionnairePassword,
     email_confirm: true,
     user_metadata: {
-      full_name: directeurNom,
-      role: "directeur",
+      full_name: gestionnaireNom,
+      role: "responsable",
       etablissement_id: etablissement.id,
     },
   });
 
-  if (errUser) {
+  if (errUser || !created.user) {
     await admin.from("etablissements").delete().eq("id", etablissement.id);
-    return NextResponse.json({ error: errUser.message }, { status: 400 });
+    return NextResponse.json(
+      { error: errUser?.message ?? "Échec de création du compte." },
+      { status: 400 }
+    );
   }
 
-  return NextResponse.json({ etablissement, directeurId: created.user?.id });
+  const { error: errPromotion } = await admin
+    .from("profiles")
+    .update({ role: "gestionnaire" })
+    .eq("id", created.user.id);
+
+  if (errPromotion) {
+    await admin.auth.admin.deleteUser(created.user.id);
+    await admin.from("etablissements").delete().eq("id", etablissement.id);
+    return NextResponse.json({ error: errPromotion.message }, { status: 400 });
+  }
+
+  return NextResponse.json({ etablissement, gestionnaireId: created.user.id });
 }

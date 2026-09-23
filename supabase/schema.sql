@@ -23,11 +23,6 @@ alter table public.etablissements enable row level security;
 create policy "etablissements: public read" on public.etablissements
   for select using (true);
 
-create policy "etablissements: gestionnaire write" on public.etablissements
-  for all
-  using (public.current_role_name() = 'gestionnaire')
-  with check (public.current_role_name() = 'gestionnaire');
-
 -- One row per account, created automatically on signup (see trigger below).
 create table public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
@@ -71,9 +66,11 @@ as $$
 $$;
 
 -- Vrai si la ligne (via son etablissement_id) appartient à l'établissement
--- du compte connecté, ou si le compte connecté est gestionnaire (accès à
--- tous les établissements). À combiner (AND) avec les règles métier propres
--- à chaque policy.
+-- du compte connecté, ou si le compte connecté est un gestionnaire GLOBAL
+-- (sans établissement — accès transverse à tous). Un gestionnaire scopé à
+-- un établissement (etablissement_id renseigné) est traité comme n'importe
+-- quel compte de cet établissement : ne voit que le sien. À combiner (AND)
+-- avec les règles métier propres à chaque policy.
 create or replace function public.dans_mon_etablissement(p_etablissement_id uuid)
 returns boolean
 language sql
@@ -82,8 +79,18 @@ security definer
 set search_path = public
 as $$
   select p_etablissement_id = public.current_etablissement_id()
-    or public.current_role_name() = 'gestionnaire';
+    or (public.current_role_name() = 'gestionnaire' and public.current_etablissement_id() is null);
 $$;
+
+-- Seul le gestionnaire GLOBAL (sans établissement) peut créer/modifier des
+-- établissements — un gestionnaire scopé à un établissement ne peut pas en
+-- créer d'autres. Définie ici (après current_etablissement_id) plutôt que
+-- juste après la table, car elle en dépend.
+drop policy if exists "etablissements: gestionnaire write" on public.etablissements;
+create policy "etablissements: gestionnaire write" on public.etablissements
+  for all
+  using (public.current_role_name() = 'gestionnaire' and public.current_etablissement_id() is null)
+  with check (public.current_role_name() = 'gestionnaire' and public.current_etablissement_id() is null);
 
 -- Remplit automatiquement etablissement_id à l'insertion quand l'app ne le
 -- précise pas, à partir du profil du compte connecté.
@@ -140,7 +147,7 @@ security definer
 set search_path = public
 as $$
 begin
-  if public.current_role_name() <> 'directeur' then
+  if public.current_role_name() not in ('directeur', 'gestionnaire') then
     if new.role is distinct from old.role then
       new.role := old.role;
     end if;
@@ -166,8 +173,8 @@ create policy "profiles: self can update own row" on public.profiles
 
 create policy "profiles: directeur manages all rows" on public.profiles
   for all
-  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
-  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
 -- Animateurs (the staff being scheduled, not the app accounts).
 create table public.animateurs (
@@ -202,8 +209,8 @@ create policy "animateurs: readable by any signed-in user" on public.animateurs
 
 create policy "animateurs: directeur write" on public.animateurs
   for all
-  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
-  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
 -- Répartition quotidienne des animateurs sur les 2 groupes (Lutins /
 -- Trolls & Géants, fusionnés en un seul groupe réel "trolls"), un
@@ -274,7 +281,7 @@ security definer
 set search_path = public
 as $$
   select
-    public.current_role_name() = 'directeur'
+    public.current_role_name() in ('directeur', 'gestionnaire')
     or (
       public.current_role_name() = 'coordinateur'
       and (
@@ -290,8 +297,8 @@ $$;
 -- de son groupe une fois la répartition faite par le directeur).
 create policy "affectations_jour: directeur write" on public.affectations_jour
   for all
-  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
-  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
 -- Créneaux horaires configurables (arrivées / pauses / départs) qui
 -- forment les lignes de la grille de planning. Pas de valeurs par défaut
@@ -504,7 +511,7 @@ create policy "messages: any signed-in user can post as themselves" on public.me
 create policy "messages: author or directeur can delete" on public.messages
   for delete using (
     auth.uid() = auteur_id
-    or (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
+    or (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
   );
 
 -- Traçabilité des goûters : un animateur affecté à un groupe un jour donné
@@ -767,8 +774,8 @@ create policy "presence_jour: readable by any signed-in user" on public.presence
 
 create policy "presence_jour: directeur write" on public.presence_jour
   for all
-  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
-  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
 -- Effectifs enfants séparés Trolls / Géants pour la feuille de présence
 -- imprimable de la Répartition uniquement — n'affecte pas effectifs_jour
@@ -796,8 +803,8 @@ create policy "effectifs_sous_groupe: readable by any signed-in user" on public.
 
 create policy "effectifs_sous_groupe: directeur write" on public.effectifs_sous_groupe
   for all
-  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
-  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
 -- Marque une fiche animateur comme "Directeur" ou "Coordinateur" pour la
 -- feuille de présence imprimable de la Répartition, avec sa ou ses
@@ -832,8 +839,8 @@ create policy "direction_roster: readable by any signed-in user" on public.direc
 
 create policy "direction_roster: directeur write" on public.direction_roster
   for all
-  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
-  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
 -- Présence jour par jour du directeur/directeur adjoint sur la feuille
 -- imprimable (saisie D/A dans la grille de Répartition, comme L/T/G pour
@@ -861,8 +868,8 @@ create policy "presence_direction_jour: readable by any signed-in user" on publi
 
 create policy "presence_direction_jour: directeur write" on public.presence_direction_jour
   for all
-  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
-  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
 -- Gestion des stagiaires BAFA : une fiche d'évaluation par animateur
 -- marqué "stagiaire" (grille de compétences + avis final +
@@ -902,12 +909,12 @@ create trigger evaluations_stagiaire_etablissement_defaut
 
 create policy "evaluations_stagiaire: direction read" on public.evaluations_stagiaire
   for select
-  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
 create policy "evaluations_stagiaire: direction write" on public.evaluations_stagiaire
   for all
-  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id))
-  with check (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
 -- Auto-évaluation du stagiaire, remplie en ligne par lui-même — même
 -- grille de critères, fusionnée avec celle de la direction sur la
@@ -932,7 +939,7 @@ create trigger auto_evaluations_stagiaire_etablissement_defaut
 create policy "auto_evaluations_stagiaire: direction ou le stagiaire lisent" on public.auto_evaluations_stagiaire
   for select
   using (
-    (public.current_role_name() in ('directeur', 'coordinateur') or public.est_mon_animateur(animateur_id))
+    (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') or public.est_mon_animateur(animateur_id))
     and public.dans_mon_etablissement(etablissement_id)
   );
 
@@ -1028,8 +1035,8 @@ create policy "produits_gouter: readable by any signed-in user" on public.produi
 
 create policy "produits_gouter: direction write" on public.produits_gouter
   for all
-  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id))
-  with check (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
 create table public.declinaisons_gouter (
   id uuid primary key default gen_random_uuid(),
@@ -1054,8 +1061,8 @@ create policy "declinaisons_gouter: readable by any signed-in user" on public.de
 
 create policy "declinaisons_gouter: direction write" on public.declinaisons_gouter
   for all
-  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id))
-  with check (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
 create table public.gouters_prevus (
   id uuid primary key default gen_random_uuid(),
@@ -1101,8 +1108,8 @@ create policy "plannings_verrous: readable by any signed-in user" on public.plan
 
 create policy "plannings_verrous: directeur write" on public.plannings_verrous
   for all
-  using (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id))
-  with check (public.current_role_name() = 'directeur' and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
 create table public.plannings_publications (
   etablissement_id uuid not null references public.etablissements (id),
@@ -1123,6 +1130,6 @@ create policy "plannings_publications: readable by any signed-in user" on public
 
 create policy "plannings_publications: direction write" on public.plannings_publications
   for all
-  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id))
-  with check (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 

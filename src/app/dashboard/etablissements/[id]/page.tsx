@@ -5,21 +5,33 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import {
+  ROLES,
+  ROLE_LABELS,
   TYPE_CRENEAU_LABELS,
   type Creneau,
   type Etablissement,
   type JourFermeture,
   type PalierEncadrement,
+  type Profile,
+  type Role,
   type TypeCreneau,
 } from "@/lib/types";
 
 const TYPES: TypeCreneau[] = ["arrivee", "pause", "depart"];
+const ROLES_COMPTE: Role[] = [...ROLES, "gestionnaire"];
 
 const EMPTY_CRENEAU_FORM = {
   libelle: "",
   type: "arrivee" as TypeCreneau,
   heure_debut: "",
   heure_fin: "",
+};
+
+const EMPTY_COMPTE_FORM = {
+  nom: "",
+  email: "",
+  password: "",
+  role: "animateur" as Role,
 };
 
 export default function ParametresEtablissementPage({
@@ -35,34 +47,76 @@ export default function ParametresEtablissementPage({
   const [creneaux, setCreneaux] = useState<Creneau[]>([]);
   const [paliers, setPaliers] = useState<PalierEncadrement[]>([]);
   const [joursFermeture, setJoursFermeture] = useState<JourFermeture[]>([]);
+  const [comptes, setComptes] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
 
   const [formCreneau, setFormCreneau] = useState(EMPTY_CRENEAU_FORM);
   const [formPalier, setFormPalier] = useState({ effectif_min: "", nb_animateurs: "" });
   const [formFermeture, setFormFermeture] = useState({ date: "", motif: "" });
+  const [showFormCompte, setShowFormCompte] = useState(false);
+  const [formCompte, setFormCompte] = useState(EMPTY_COMPTE_FORM);
+  const [creationCompte, setCreationCompte] = useState(false);
 
   async function charger() {
     setLoading(true);
-    const [{ data: e }, { data: c }, { data: p }, { data: f }] = await Promise.all([
+    const [{ data: e }, { data: c }, { data: p }, { data: f }, { data: co }] = await Promise.all([
       supabase.from("etablissements").select("*").eq("id", id).single(),
       supabase.from("creneaux").select("*").eq("etablissement_id", id).order("type").order("heure_debut"),
       supabase.from("paliers_encadrement").select("*").eq("etablissement_id", id).order("effectif_min"),
       supabase.from("jours_fermeture").select("*").eq("etablissement_id", id).order("date"),
+      supabase.from("profiles").select("*").eq("etablissement_id", id).order("full_name"),
     ]);
     setEtablissement((e as Etablissement) ?? null);
     setCreneaux((c as Creneau[]) ?? []);
     setPaliers((p as PalierEncadrement[]) ?? []);
     setJoursFermeture((f as JourFermeture[]) ?? []);
+    setComptes((co as Profile[]) ?? []);
     setLoading(false);
   }
 
+  const autorise =
+    profile.role === "gestionnaire" &&
+    (!profile.etablissement_id || profile.etablissement_id === id);
+
   useEffect(() => {
-    if (profile.role !== "gestionnaire") return;
+    if (!autorise) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     charger();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, autorise]);
+
+  async function ajouterCompte(e: React.FormEvent) {
+    e.preventDefault();
+    setErreur(null);
+    setCreationCompte(true);
+    const res = await fetch("/api/comptes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ etablissementId: id, ...formCompte }),
+    });
+    const data = await res.json();
+    setCreationCompte(false);
+    if (!res.ok) {
+      setErreur(data.error ?? "Erreur inconnue.");
+      return;
+    }
+    setShowFormCompte(false);
+    setFormCompte(EMPTY_COMPTE_FORM);
+    charger();
+  }
+
+  async function supprimerCompte(compteId: string, nomCompte: string) {
+    if (!confirm(`Supprimer le compte de ${nomCompte} ? Cette action est irréversible.`)) return;
+    setErreur(null);
+    const res = await fetch(`/api/comptes/${compteId}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json();
+      setErreur(data.error ?? "Erreur inconnue.");
+      return;
+    }
+    charger();
+  }
 
   async function ajouterCreneau(e: React.FormEvent) {
     e.preventDefault();
@@ -134,10 +188,10 @@ export default function ParametresEtablissementPage({
     charger();
   }
 
-  if (profile.role !== "gestionnaire") {
+  if (!autorise) {
     return (
       <p className="text-sm text-zinc-500">
-        Cette page est réservée au compte gestionnaire.
+        Cette page est réservée au gestionnaire de cet établissement.
       </p>
     );
   }
@@ -145,12 +199,14 @@ export default function ParametresEtablissementPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link
-          href="/dashboard/etablissements"
-          className="text-sm text-zinc-500 hover:text-zinc-900"
-        >
-          ← Établissements
-        </Link>
+        {!profile.etablissement_id && (
+          <Link
+            href="/dashboard/etablissements"
+            className="text-sm text-zinc-500 hover:text-zinc-900"
+          >
+            ← Établissements
+          </Link>
+        )}
         <h1 className="mt-1 text-2xl font-semibold text-zinc-900">
           {loading ? "..." : etablissement?.nom ?? "Établissement introuvable"}
         </h1>
@@ -377,6 +433,106 @@ export default function ParametresEtablissementPage({
                 + Ajouter
               </button>
             </form>
+          </div>
+
+          <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-zinc-900">Comptes</p>
+              <button
+                onClick={() => setShowFormCompte((v) => !v)}
+                className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                {showFormCompte ? "Annuler" : "+ Ajouter un compte"}
+              </button>
+            </div>
+
+            {comptes.length > 0 && (
+              <div className="mt-3 flex flex-col divide-y divide-zinc-100">
+                {comptes.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between py-2">
+                    <div>
+                      <p className="text-sm text-zinc-900">{c.full_name}</p>
+                      <p className="text-xs text-zinc-400">{c.email}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
+                        {ROLE_LABELS[c.role]}
+                      </span>
+                      {c.id !== profile.id && (
+                        <button
+                          onClick={() => supprimerCompte(c.id, c.full_name)}
+                          className="text-zinc-400 hover:text-red-600"
+                          title="Supprimer ce compte"
+                        >
+                          🗑
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {showFormCompte && (
+              <form
+                onSubmit={ajouterCompte}
+                className="mt-4 flex flex-wrap items-end gap-2 border-t border-zinc-100 pt-4"
+              >
+                <div>
+                  <label className="block text-xs text-zinc-500">Nom complet</label>
+                  <input
+                    required
+                    value={formCompte.nom}
+                    onChange={(e) => setFormCompte({ ...formCompte, nom: e.target.value })}
+                    className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-500">Email</label>
+                  <input
+                    required
+                    type="email"
+                    value={formCompte.email}
+                    onChange={(e) => setFormCompte({ ...formCompte, email: e.target.value })}
+                    className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-500">Mot de passe provisoire</label>
+                  <input
+                    required
+                    type="password"
+                    minLength={6}
+                    value={formCompte.password}
+                    onChange={(e) => setFormCompte({ ...formCompte, password: e.target.value })}
+                    className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-500">Rôle</label>
+                  <select
+                    value={formCompte.role}
+                    onChange={(e) =>
+                      setFormCompte({ ...formCompte, role: e.target.value as Role })
+                    }
+                    className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                  >
+                    {ROLES_COMPTE.map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  disabled={creationCompte}
+                  className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                >
+                  {creationCompte ? "Création..." : "Créer le compte"}
+                </button>
+              </form>
+            )}
           </div>
         </>
       )}

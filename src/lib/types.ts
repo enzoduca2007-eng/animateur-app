@@ -457,5 +457,5 @@ export interface Message {
 }
 
 export function canManage(role: Role | undefined | null) {
-  return role === "directeur" || role === "coordinateur";
+  return role === "directeur" || role === "coordinateur" || role === "gestionnaire";
 }
