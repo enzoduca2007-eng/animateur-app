@@ -40,7 +40,7 @@ create table public.profiles (
 );
 
 alter table public.etablissements
-  add constraint etablissements_created_by_fkey foreign key (created_by) references public.profiles (id);
+  add constraint etablissements_created_by_fkey foreign key (created_by) references public.profiles (id) on delete set null;
 
 -- Reads the caller's own role. security definer lets it bypass profiles' RLS
 -- so it can be used safely inside other tables' policies without recursion.
@@ -193,7 +193,7 @@ create table public.animateurs (
   formation text,
   profile_id uuid unique references public.profiles (id) on delete set null,
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -228,7 +228,7 @@ create table public.affectations_jour (
   -- réel "trolls" (staffing, effectifs, goûters, scoping coordinateur...).
   sous_groupe text check (sous_groupe in ('trolls', 'geants')),
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   unique (etablissement_id, date, animateur_id)
 );
@@ -336,7 +336,7 @@ create table public.affectations_creneau (
   creneau_id uuid not null references public.creneaux (id) on delete cascade,
   animateur_id uuid not null references public.animateurs (id) on delete cascade,
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   unique (etablissement_id, date, creneau_id, animateur_id)
 );
@@ -389,7 +389,7 @@ create table public.effectifs_jour (
   groupe text not null check (groupe in ('lutins', 'trolls')),
   effectif integer not null check (effectif >= 0),
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   unique (etablissement_id, date, groupe)
 );
@@ -445,7 +445,7 @@ create table public.tranches_age (
   groupe text not null check (groupe in ('lutins', 'trolls')),
   annee_naissance_min integer,
   annee_naissance_max integer,
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (etablissement_id, groupe)
@@ -478,7 +478,7 @@ create table public.feuilles_temps (
   heure_depart_reelle time,
   commentaire text,
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (etablissement_id, date, animateur_id)
@@ -520,7 +520,7 @@ create policy "feuilles_temps: animateur writes their own" on public.feuilles_te
 -- Communication interne (simple message board visible to all 3 espaces).
 create table public.messages (
   id uuid primary key default gen_random_uuid(),
-  auteur_id uuid references public.profiles (id),
+  auteur_id uuid references public.profiles (id) on delete set null,
   contenu text not null,
   etablissement_id uuid not null references public.etablissements (id),
   created_at timestamptz not null default now()
@@ -564,8 +564,8 @@ create table public.gouters (
   statut_ia text not null default 'en_attente' check (statut_ia in ('en_attente', 'traite', 'echec')),
   erreur_ia text,
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
-  rempli_par uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
+  rempli_par uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -681,7 +681,7 @@ create table public.planning_activites (
   libelle text not null,
   animateur_ids uuid[] not null default '{}',
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -758,7 +758,7 @@ create table public.themes_semaine (
   semaine_debut date not null,
   theme text,
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (etablissement_id, groupe, semaine_debut)
@@ -788,7 +788,7 @@ create table public.presence_jour (
   date date not null,
   present boolean not null default true,
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   unique (etablissement_id, animateur_id, date)
 );
@@ -817,7 +817,7 @@ create table public.effectifs_sous_groupe (
   sous_groupe text not null check (sous_groupe in ('trolls', 'geants')),
   effectif integer not null check (effectif >= 0),
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   unique (etablissement_id, date, sous_groupe)
 );
@@ -850,7 +850,7 @@ create table public.direction_roster (
   role_affiche text not null check (role_affiche in ('directeur', 'directeur_adjoint', 'coordinateur')),
   sections text[] not null default '{}',
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint direction_roster_sections_valides check (
@@ -882,7 +882,7 @@ create table public.presence_direction_jour (
   animateur_id uuid not null references public.animateurs (id) on delete cascade,
   role text not null check (role in ('directeur', 'adjoint')),
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   unique (etablissement_id, date, animateur_id)
 );
@@ -923,10 +923,10 @@ create table public.evaluations_stagiaire (
   -- Verrouillage par le directeur une fois le bilan finalisé : plus
   -- aucune modification possible tant que non déverrouillée.
   verrouille boolean not null default false,
-  verrouille_par uuid references public.profiles (id),
+  verrouille_par uuid references public.profiles (id) on delete set null,
   verrouille_at timestamptz,
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -995,7 +995,7 @@ create table public.fiches_animation (
   conclusion_rangement text,
   animateurs_requis text,
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -1049,7 +1049,7 @@ create table public.produits_gouter (
   nom text not null,
   actif boolean not null default true,
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -1075,7 +1075,7 @@ create table public.declinaisons_gouter (
   quantite_par_personne integer not null check (quantite_par_personne > 0),
   taille_paquet integer not null check (taille_paquet > 0),
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -1100,7 +1100,7 @@ create table public.gouters_prevus (
   groupe text not null check (groupe in ('lutins', 'trolls')),
   declinaison_id uuid not null references public.declinaisons_gouter (id) on delete cascade,
   etablissement_id uuid not null references public.etablissements (id),
-  created_by uuid references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   unique (etablissement_id, date, groupe, declinaison_id)
 );
@@ -1122,7 +1122,7 @@ create policy "gouters_prevus: write by group management" on public.gouters_prev
 create table public.plannings_verrous (
   etablissement_id uuid not null references public.etablissements (id),
   semaine_debut date not null,
-  verrouille_par uuid references public.profiles (id),
+  verrouille_par uuid references public.profiles (id) on delete set null,
   verrouille_at timestamptz not null default now(),
   primary key (etablissement_id, semaine_debut)
 );
@@ -1144,7 +1144,7 @@ create policy "plannings_verrous: directeur write" on public.plannings_verrous
 create table public.plannings_publications (
   etablissement_id uuid not null references public.etablissements (id),
   semaine_debut date not null,
-  publie_par uuid references public.profiles (id),
+  publie_par uuid references public.profiles (id) on delete set null,
   publie_at timestamptz not null default now(),
   primary key (etablissement_id, semaine_debut)
 );
