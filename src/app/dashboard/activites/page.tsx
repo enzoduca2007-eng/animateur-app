@@ -244,7 +244,7 @@ export default function ActivitesPage() {
       .from("themes_semaine")
       .upsert(
         { groupe, semaine_debut: semaineDebut, theme: valeur || null, created_by: profile.id },
-        { onConflict: "groupe,semaine_debut" }
+        { onConflict: "etablissement_id,groupe,semaine_debut" }
       );
     if (error) setErreur(error.message);
   }

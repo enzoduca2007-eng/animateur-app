@@ -277,7 +277,7 @@ export default function PlanningsPage() {
       .from("effectifs_jour")
       .upsert(
         { date, groupe, effectif: valeur, created_by: profile.id },
-        { onConflict: "date,groupe" }
+        { onConflict: "etablissement_id,date,groupe" }
       );
     if (error) setErreur(error.message);
   }
@@ -290,7 +290,10 @@ export default function PlanningsPage() {
       return;
     const { error } = await supabase
       .from("paliers_encadrement")
-      .upsert({ effectif_min, nb_animateurs }, { onConflict: "effectif_min" });
+      .upsert(
+        { effectif_min, nb_animateurs },
+        { onConflict: "etablissement_id,effectif_min" }
+      );
     if (error) {
       setErreur(error.message);
       return;
@@ -337,7 +340,7 @@ export default function PlanningsPage() {
     if (assigne) {
       const { error } = await supabase.from("affectations_creneau").upsert(
         { date, creneau_id: creneauId, animateur_id: animateurId, created_by: profile.id },
-        { onConflict: "date,creneau_id,animateur_id" }
+        { onConflict: "etablissement_id,date,creneau_id,animateur_id" }
       );
       if (error) setErreur(error.message);
     } else {

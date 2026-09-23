@@ -319,8 +319,8 @@ create policy "creneaux: readable by any signed-in user" on public.creneaux
 
 create policy "creneaux: directeur/coordinateur write" on public.creneaux
   for all
-  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id))
-  with check (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
 -- Qui est affecté à quel créneau, quel jour.
 create table public.affectations_creneau (
@@ -371,8 +371,8 @@ create policy "jours_fermeture: readable by any signed-in user" on public.jours_
 
 create policy "jours_fermeture: directeur/coordinateur write" on public.jours_fermeture
   for all
-  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id))
-  with check (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
 -- Effectif d'enfants par jour et par groupe, pour calculer combien
 -- d'animateurs doivent rester présents à l'ouverture/fermeture.
@@ -425,8 +425,8 @@ create policy "paliers_encadrement: readable by any signed-in user" on public.pa
 
 create policy "paliers_encadrement: directeur/coordinateur write" on public.paliers_encadrement
   for all
-  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id))
-  with check (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
+  using (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
 -- Fiches horaires (pointage) : horaires réels + présence. Les horaires
 -- prévisionnels viennent déjà du planning (affectations_creneau), pas

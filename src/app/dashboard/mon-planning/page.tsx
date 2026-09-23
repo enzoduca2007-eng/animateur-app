@@ -386,7 +386,7 @@ export default function MonPlanningPage() {
       .from("feuilles_temps")
       .upsert(
         { date, animateur_id: moi.id, created_by: profile.id, ...payload },
-        { onConflict: "date,animateur_id" }
+        { onConflict: "etablissement_id,date,animateur_id" }
       );
     if (error) {
       setErreur(error.message);

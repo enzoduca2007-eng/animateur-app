@@ -270,7 +270,7 @@ export default function RepartitionPage() {
                 sous_groupe: config.sous_groupe,
                 created_by: profile.id,
               },
-              { onConflict: "date,animateur_id" }
+              { onConflict: "etablissement_id,date,animateur_id" }
             )
         : supabase.from("affectations_jour").delete().eq("date", date).eq("animateur_id", animateurId),
       ...(toucheDirection
@@ -280,7 +280,7 @@ export default function RepartitionPage() {
                   .from("presence_direction_jour")
                   .upsert(
                     { date, animateur_id: animateurId, role: roleDirection, created_by: profile.id },
-                    { onConflict: "date,animateur_id" }
+                    { onConflict: "etablissement_id,date,animateur_id" }
                   )
               : supabase
                   .from("presence_direction_jour")
@@ -372,7 +372,7 @@ export default function RepartitionPage() {
       .from("effectifs_sous_groupe")
       .upsert(
         { date, sous_groupe: sousGroupe, effectif: valeur, created_by: profile.id },
-        { onConflict: "date,sous_groupe" }
+        { onConflict: "etablissement_id,date,sous_groupe" }
       );
     if (error) setErreur(error.message);
   }
@@ -395,7 +395,7 @@ export default function RepartitionPage() {
       .from("effectifs_jour")
       .upsert(
         { date, groupe: "lutins", effectif: valeur, created_by: profile.id },
-        { onConflict: "date,groupe" }
+        { onConflict: "etablissement_id,date,groupe" }
       );
     if (error) setErreur(error.message);
   }

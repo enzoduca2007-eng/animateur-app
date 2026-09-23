@@ -87,8 +87,13 @@ export function DashboardNav() {
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 px-3">
-          {LINKS.filter(
-            (link) => !link.roles || link.roles.includes(profile.role)
+          {LINKS.filter((link) =>
+            // Le gestionnaire n'a pas d'établissement courant : les pages
+            // "roles: null" (Goûters, Messages...) supposent toutes un
+            // établissement, donc invisibles pour lui sauf mention explicite.
+            profile.role === "gestionnaire"
+              ? link.roles?.includes("gestionnaire")
+              : !link.roles || link.roles.includes(profile.role)
           ).map((link) => (
             <Link
               key={link.href}

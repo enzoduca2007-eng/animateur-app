@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
@@ -170,9 +171,10 @@ export default function EtablissementsPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {etablissements.map((e) => (
-            <div
+            <Link
               key={e.id}
-              className="flex items-center justify-between rounded-xl border border-zinc-200 bg-white p-4 shadow-sm"
+              href={`/dashboard/etablissements/${e.id}`}
+              className="flex items-center justify-between rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-zinc-300"
             >
               <div>
                 <p className="font-medium text-zinc-900">{e.nom}</p>
@@ -184,7 +186,7 @@ export default function EtablissementsPage() {
                 {comptesParEtablissement[e.id] ?? 0} compte
                 {(comptesParEtablissement[e.id] ?? 0) > 1 ? "s" : ""}
               </span>
-            </div>
+            </Link>
           ))}
         </div>
       )}
