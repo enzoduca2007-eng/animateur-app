@@ -102,7 +102,7 @@ function BusButton({
       </button>
       {ouvert && (
         <div
-          className="absolute z-10 mt-1 w-72 rounded-lg border border-zinc-200 bg-white p-3 text-left shadow-lg"
+          className="absolute right-0 z-10 mt-1 w-72 max-w-[90vw] rounded-lg border border-zinc-200 bg-white p-3 text-left shadow-lg"
           onClick={(e) => e.stopPropagation()}
         >
           <p className="text-xs font-medium text-zinc-500">
@@ -113,7 +113,7 @@ function BusButton({
           ) : !options || options.length === 0 ? (
             <p className="mt-2 text-xs text-zinc-400">Pas de bus ce jour-là.</p>
           ) : (
-            <ul className="mt-2 flex flex-col gap-1">
+            <ul className="mt-2 flex max-h-56 flex-col gap-1 overflow-y-auto">
               {options.map((o) => {
                 const estMeilleure = meilleure && o.trip_id === meilleure.trip_id;
                 return (
