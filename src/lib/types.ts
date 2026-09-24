@@ -337,6 +337,19 @@ export interface TrancheAge {
   updated_at: string;
 }
 
+// Le premier id de animateur_ids est le "chauffeur" : seul dont les cases
+// arrivée/départ restent modifiables sur Plannings — les autres suivent
+// automatiquement et sont bloquées.
+export interface Covoiturage {
+  id: string;
+  etablissement_id: string;
+  nom: string | null;
+  animateur_ids: string[];
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface FeuilleTemps {
   id: string;
   date: string;

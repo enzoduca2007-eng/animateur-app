@@ -17,6 +17,7 @@ import {
   type AffectationCreneau,
   type AffectationJour,
   type Animateur,
+  type Covoiturage,
   type Creneau,
   type EffectifJour,
   type Groupe,
@@ -85,10 +86,50 @@ export default function PlanningsPage() {
   const [paliers, setPaliers] = useState<PalierEncadrement[]>([]);
   const [showPaliers, setShowPaliers] = useState(false);
   const [formPalier, setFormPalier] = useState({ effectif_min: "", nb_animateurs: "" });
+  const [covoiturages, setCovoiturages] = useState<Covoiturage[]>([]);
+  const [showCovoiturages, setShowCovoiturages] = useState(false);
+  const [formCovoiturageNom, setFormCovoiturageNom] = useState("");
+  const [formCovoiturageMembres, setFormCovoiturageMembres] = useState<string[]>([]);
   const [verrous, setVerrous] = useState<VerrouPlanningSemaine[]>([]);
   async function chargerVerrous() {
     const { data } = await supabase.from("plannings_verrous").select("*");
     if (data) setVerrous(data as VerrouPlanningSemaine[]);
+  }
+
+  async function chargerCovoiturages() {
+    const { data } = await supabase.from("covoiturages").select("*").order("created_at");
+    if (data) setCovoiturages(data as Covoiturage[]);
+  }
+
+  function covoiturageDe(animateurId: string) {
+    return covoiturages.find((c) => c.animateur_ids.includes(animateurId));
+  }
+
+  function estChauffeur(animateurId: string) {
+    const groupe = covoiturageDe(animateurId);
+    return !groupe || groupe.animateur_ids[0] === animateurId;
+  }
+
+  async function ajouterCovoiturage(e: React.FormEvent) {
+    e.preventDefault();
+    if (formCovoiturageMembres.length < 2) return;
+    const { error } = await supabase.from("covoiturages").insert({
+      nom: formCovoiturageNom.trim() || null,
+      animateur_ids: formCovoiturageMembres,
+      created_by: profile.id,
+    });
+    if (error) {
+      setErreur(error.message);
+      return;
+    }
+    setFormCovoiturageNom("");
+    setFormCovoiturageMembres([]);
+    chargerCovoiturages();
+  }
+
+  async function supprimerCovoiturage(id: string) {
+    await supabase.from("covoiturages").delete().eq("id", id);
+    chargerCovoiturages();
   }
 
   const [publications, setPublications] = useState<PublicationPlanningSemaine[]>([]);
@@ -135,6 +176,7 @@ export default function PlanningsPage() {
     chargerCreneaux();
     chargerFermetures();
     chargerPaliers();
+    chargerCovoiturages();
     chargerVerrous();
     chargerPublications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -307,13 +349,12 @@ export default function PlanningsPage() {
     chargerPaliers();
   }
 
-  async function toggleAffectation(
+  async function appliquerAffectation(
     creneauId: string,
     date: string,
     animateurId: string,
     assigne: boolean
   ) {
-    setErreur(null);
     setAffectations((prev) =>
       assigne
         ? [
@@ -351,6 +392,32 @@ export default function PlanningsPage() {
         .eq("creneau_id", creneauId)
         .eq("animateur_id", animateurId);
       if (error) setErreur(error.message);
+    }
+  }
+
+  // Covoiturage : sur un créneau d'arrivée ou de départ, affecter/retirer
+  // le chauffeur applique automatiquement le même choix à tous les autres
+  // membres de son groupe (leurs propres cases restent bloquées en saisie
+  // directe — voir estChauffeur() côté affichage).
+  async function toggleAffectation(
+    creneauId: string,
+    date: string,
+    animateurId: string,
+    assigne: boolean
+  ) {
+    setErreur(null);
+    await appliquerAffectation(creneauId, date, animateurId, assigne);
+
+    const creneau = creneaux.find((c) => c.id === creneauId);
+    if (creneau && (creneau.type === "arrivee" || creneau.type === "depart")) {
+      const groupe = covoiturageDe(animateurId);
+      if (groupe) {
+        for (const autreId of groupe.animateur_ids) {
+          if (autreId !== animateurId) {
+            await appliquerAffectation(creneauId, date, autreId, assigne);
+          }
+        }
+      }
     }
   }
 
@@ -1187,6 +1254,14 @@ export default function PlanningsPage() {
               {showPaliers ? "Fermer" : "Paliers d'encadrement"}
             </button>
           )}
+          {editable && (
+            <button
+              onClick={() => setShowCovoiturages((v) => !v)}
+              className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              {showCovoiturages ? "Fermer" : "🚗 Covoiturage"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -1253,6 +1328,89 @@ export default function PlanningsPage() {
               className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800"
             >
               + Ajouter
+            </button>
+          </form>
+        </div>
+      )}
+
+      {showCovoiturages && editable && (
+        <div className="no-print rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <p className="mb-1 text-sm font-medium text-zinc-900">🚗 Covoiturage</p>
+          <p className="mb-3 text-xs text-zinc-500">
+            Coche les animateurs qui partagent une voiture — le premier
+            coché est le chauffeur : cocher/décocher son arrivée ou son
+            départ applique automatiquement le même choix aux autres, dont
+            les cases restent bloquées.
+          </p>
+          {covoiturages.length > 0 && (
+            <div className="mb-3 flex flex-col gap-2">
+              {covoiturages.map((c) => {
+                const noms = c.animateur_ids
+                  .map((id) => animateurs.find((a) => a.id === id))
+                  .filter((a): a is Animateur => !!a)
+                  .map((a) => a.prenom);
+                return (
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between rounded-md bg-zinc-50 px-3 py-1.5 text-sm"
+                  >
+                    <span>
+                      {c.nom && <span className="font-medium">{c.nom} · </span>}
+                      <span className="font-semibold">{noms[0]}</span>
+                      {noms.length > 1 && ` (chauffeur) + ${noms.slice(1).join(", ")}`}
+                    </span>
+                    <button
+                      onClick={() => supprimerCovoiturage(c.id)}
+                      className="text-zinc-400 hover:text-red-600"
+                      title="Supprimer"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <form onSubmit={ajouterCovoiturage} className="flex flex-col gap-2">
+            <input
+              placeholder="Nom (optionnel)"
+              value={formCovoiturageNom}
+              onChange={(e) => setFormCovoiturageNom(e.target.value)}
+              className="w-56 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+            />
+            <div className="flex flex-wrap gap-2">
+              {animateurs.map((a) => {
+                const position = formCovoiturageMembres.indexOf(a.id);
+                const coche = position !== -1;
+                return (
+                  <label
+                    key={a.id}
+                    className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
+                      coche ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 text-zinc-700"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={coche}
+                      onChange={(e) =>
+                        setFormCovoiturageMembres((prev) =>
+                          e.target.checked ? [...prev, a.id] : prev.filter((id) => id !== a.id)
+                        )
+                      }
+                      className="hidden"
+                    />
+                    {a.prenom}
+                    {position === 0 && " 🚗"}
+                  </label>
+                );
+              })}
+            </div>
+            <button
+              type="submit"
+              disabled={formCovoiturageMembres.length < 2}
+              className="self-start rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-40"
+            >
+              + Créer ce covoiturage
             </button>
           </form>
         </div>
@@ -1912,6 +2070,9 @@ export default function PlanningsPage() {
                   </p>
                 );
               }
+              const creneauActuel = creneaux.find((c) => c.id === celluleOuverte.creneauId);
+              const estArriveeDepart =
+                creneauActuel?.type === "arrivee" || creneauActuel?.type === "depart";
               return (
                 <div className="flex max-h-72 flex-col gap-1 overflow-y-auto">
                   {animateurs
@@ -1921,14 +2082,31 @@ export default function PlanningsPage() {
                         celluleOuverte.creneauId,
                         celluleOuverte.date
                       ).includes(a.id);
+                      const groupeCovoit = estArriveeDepart ? covoiturageDe(a.id) : undefined;
+                      const chauffeur = groupeCovoit ? estChauffeur(a.id) : true;
+                      const nomChauffeur =
+                        groupeCovoit && !chauffeur
+                          ? animateurs.find((x) => x.id === groupeCovoit.animateur_ids[0])
+                              ?.prenom
+                          : null;
                       return (
                         <label
                           key={a.id}
-                          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-zinc-50"
+                          title={
+                            groupeCovoit && !chauffeur
+                              ? `Covoiturage : suit ${nomChauffeur ?? "le chauffeur"}`
+                              : groupeCovoit
+                                ? "Covoiturage : chauffeur"
+                                : undefined
+                          }
+                          className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-zinc-50 ${
+                            groupeCovoit && !chauffeur ? "opacity-60" : ""
+                          }`}
                         >
                           <input
                             type="checkbox"
                             checked={assigne}
+                            disabled={!!groupeCovoit && !chauffeur}
                             onChange={(e) =>
                               toggleAffectation(
                                 celluleOuverte.creneauId,
@@ -1939,6 +2117,7 @@ export default function PlanningsPage() {
                             }
                           />
                           {a.prenom}
+                          {groupeCovoit && <span>🚗</span>}
                         </label>
                       );
                     })}

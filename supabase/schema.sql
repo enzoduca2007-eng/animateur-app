@@ -465,6 +465,34 @@ create policy "tranches_age: direction write" on public.tranches_age
   using (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id))
   with check (public.current_role_name() in ('directeur', 'coordinateur', 'gestionnaire') and public.dans_mon_etablissement(etablissement_id));
 
+-- Covoiturage : des animateurs qui partagent une voiture doivent arriver
+-- et repartir en même temps. Le premier de animateur_ids est le
+-- "chauffeur" (seul dont les cases arrivée/départ restent modifiables sur
+-- Plannings — les autres suivent automatiquement et sont bloquées).
+create table public.covoiturages (
+  id uuid primary key default gen_random_uuid(),
+  etablissement_id uuid not null references public.etablissements (id),
+  nom text,
+  animateur_ids uuid[] not null default '{}',
+  created_by uuid references public.profiles (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.covoiturages enable row level security;
+
+create trigger covoiturages_etablissement_defaut
+  before insert on public.covoiturages
+  for each row execute procedure public.etablissement_id_par_defaut();
+
+create policy "covoiturages: readable by any signed-in user" on public.covoiturages
+  for select using (public.dans_mon_etablissement(etablissement_id));
+
+create policy "covoiturages: directeur/coordinateur write" on public.covoiturages
+  for all
+  using (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id))
+  with check (public.current_role_name() in ('directeur', 'coordinateur') and public.dans_mon_etablissement(etablissement_id));
+
 -- Fiches horaires (pointage) : horaires réels + présence. Les horaires
 -- prévisionnels viennent déjà du planning (affectations_creneau), pas
 -- besoin de les dupliquer ici.
