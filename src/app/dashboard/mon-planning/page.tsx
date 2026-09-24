@@ -257,6 +257,7 @@ export default function MonPlanningPage() {
   const [ficheOuverte, setFicheOuverte] = useState<string | null>(null);
   const [publications, setPublications] = useState<PublicationPlanningSemaine[]>([]);
   const [gtfsStops, setGtfsStops] = useState<GtfsStop[]>([]);
+  const [gtfsStopTimes, setGtfsStopTimes] = useState<{ trip_id: string; stop_id: string }[]>([]);
   const [savingArretsBus, setSavingArretsBus] = useState(false);
 
   useEffect(() => {
@@ -300,8 +301,41 @@ export default function MonPlanningPage() {
       .then(({ data }) => {
         if (data) setGtfsStops(data as GtfsStop[]);
       });
+    supabase
+      .from("gtfs_stop_times")
+      .select("trip_id,stop_id")
+      .then(({ data }) => {
+        if (data) setGtfsStopTimes(data as { trip_id: string; stop_id: string }[]);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Arrets accessibles par un trajet direct (meme ligne/trajet) depuis un
+  // arret donne — sert a ne proposer, dans l'autre menu, que des arrets
+  // realistes (sans correspondance).
+  const arretsAccessiblesDepuis = useMemo(() => {
+    const tripsParArret = new Map<string, Set<string>>();
+    for (const st of gtfsStopTimes) {
+      if (!tripsParArret.has(st.stop_id)) tripsParArret.set(st.stop_id, new Set());
+      tripsParArret.get(st.stop_id)!.add(st.trip_id);
+    }
+    const arretsParTrip = new Map<string, Set<string>>();
+    for (const st of gtfsStopTimes) {
+      if (!arretsParTrip.has(st.trip_id)) arretsParTrip.set(st.trip_id, new Set());
+      arretsParTrip.get(st.trip_id)!.add(st.stop_id);
+    }
+    return (stopId: string) => {
+      const trips = tripsParArret.get(stopId);
+      if (!trips) return new Set<string>();
+      const accessibles = new Set<string>();
+      for (const tripId of trips) {
+        for (const s of arretsParTrip.get(tripId) ?? []) {
+          if (s !== stopId) accessibles.add(s);
+        }
+      }
+      return accessibles;
+    };
+  }, [gtfsStopTimes]);
 
   async function majArretsBus(departId: string, arriveeId: string) {
     setSavingArretsBus(true);
@@ -691,39 +725,65 @@ export default function MonPlanningPage() {
           Renseigne tes arrêts pour voir le bus à prendre directement sur ton planning.
         </p>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-xs text-zinc-500">Arrêt de départ</label>
-            <select
-              value={moi.arret_bus_depart_id ?? ""}
-              disabled={savingArretsBus}
-              onChange={(e) => majArretsBus(e.target.value, moi.arret_bus_arrivee_id ?? "")}
-              className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-            >
-              <option value="">— Non renseigné —</option>
-              {gtfsStops.map((s) => (
-                <option key={s.stop_id} value={s.stop_id}>
-                  {s.stop_name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-zinc-500">Arrêt d&apos;arrivée</label>
-            <select
-              value={moi.arret_bus_arrivee_id ?? ""}
-              disabled={savingArretsBus}
-              onChange={(e) => majArretsBus(moi.arret_bus_depart_id ?? "", e.target.value)}
-              className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-            >
-              <option value="">— Non renseigné —</option>
-              {gtfsStops.map((s) => (
-                <option key={s.stop_id} value={s.stop_id}>
-                  {s.stop_name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {(() => {
+            const arriveeId = moi.arret_bus_arrivee_id;
+            const departId = moi.arret_bus_depart_id;
+            const accessiblesDepuisArrivee = arriveeId ? arretsAccessiblesDepuis(arriveeId) : null;
+            const accessiblesDepuisDepart = departId ? arretsAccessiblesDepuis(departId) : null;
+            const optionsDepart = accessiblesDepuisArrivee
+              ? gtfsStops.filter(
+                  (s) => accessiblesDepuisArrivee.has(s.stop_id) || s.stop_id === departId
+                )
+              : gtfsStops;
+            const optionsArrivee = accessiblesDepuisDepart
+              ? gtfsStops.filter(
+                  (s) => accessiblesDepuisDepart.has(s.stop_id) || s.stop_id === arriveeId
+                )
+              : gtfsStops;
+
+            return (
+              <>
+                <div>
+                  <label className="mb-1 block text-xs text-zinc-500">Arrêt de départ</label>
+                  <select
+                    value={departId ?? ""}
+                    disabled={savingArretsBus}
+                    onChange={(e) => majArretsBus(e.target.value, arriveeId ?? "")}
+                    className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                  >
+                    <option value="">— Non renseigné —</option>
+                    {optionsDepart.map((s) => (
+                      <option key={s.stop_id} value={s.stop_id}>
+                        {s.stop_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-zinc-500">Arrêt d&apos;arrivée</label>
+                  <select
+                    value={arriveeId ?? ""}
+                    disabled={savingArretsBus}
+                    onChange={(e) => majArretsBus(departId ?? "", e.target.value)}
+                    className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                  >
+                    <option value="">— Non renseigné —</option>
+                    {optionsArrivee.map((s) => (
+                      <option key={s.stop_id} value={s.stop_id}>
+                        {s.stop_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            );
+          })()}
         </div>
+        {(moi.arret_bus_depart_id || moi.arret_bus_arrivee_id) && (
+          <p className="mt-2 text-[11px] text-zinc-400">
+            Seuls les arrêts reliés par une ligne directe (sans changement de bus) sont proposés.
+          </p>
+        )}
       </div>
 
       <PeriodesVacances periodes={periodes} zone={zone} loading={loadingVacances} />
