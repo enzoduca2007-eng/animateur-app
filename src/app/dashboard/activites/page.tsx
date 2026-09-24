@@ -9,7 +9,6 @@ import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances"
 import { PeriodesVacances } from "@/components/periodes-vacances";
 import {
   GROUPES,
-  GROUPE_LABELS,
   MOMENTS_ACTIVITE,
   TYPE_ACTIVITE_EMOJIS,
   TYPE_ACTIVITE_LABELS,
@@ -18,11 +17,28 @@ import {
   type Groupe,
   type MomentActivite,
   type PlanningActivite,
+  type SousGroupe,
   type ThemeSemaine,
   type TypeActivite,
 } from "@/lib/types";
 
 const TYPES_ACTIVITE: TypeActivite[] = ["grand_jeu", "manuelle", "jeu", "autre"];
+
+// Sur cette page, Trolls et Géants sont affichés comme deux blocs séparés
+// (comme la Répartition), même si le groupe réel reste "trolls" partout
+// ailleurs (encadrement, effectifs...).
+interface BlocActivite {
+  cle: string;
+  groupe: Groupe;
+  sousGroupe: SousGroupe | null;
+  label: string;
+}
+
+const LABEL_COMMUN: Record<"lutins" | SousGroupe, string> = {
+  lutins: "Lutins",
+  trolls: "Trolls",
+  geants: "Géants",
+};
 
 function formatEnTeteJour(dateISO: string) {
   return new Date(`${dateISO}T00:00:00Z`)
@@ -50,6 +66,19 @@ export default function ActivitesPage() {
     [monGroupe]
   );
 
+  const blocsGeres = useMemo(() => {
+    const blocs: BlocActivite[] = [];
+    for (const g of groupesGeres) {
+      if (g === "trolls") {
+        blocs.push({ cle: "trolls", groupe: "trolls", sousGroupe: "trolls", label: "Trolls" });
+        blocs.push({ cle: "geants", groupe: "trolls", sousGroupe: "geants", label: "Géants" });
+      } else {
+        blocs.push({ cle: "lutins", groupe: "lutins", sousGroupe: null, label: "Lutins" });
+      }
+    }
+    return blocs;
+  }, [groupesGeres]);
+
   function peutGererGroupe(groupe: Groupe) {
     if (profile.role === "directeur") return true;
     if (profile.role !== "coordinateur") return false;
@@ -58,7 +87,7 @@ export default function ActivitesPage() {
 
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [semaineIndex, setSemaineIndex] = useState(0);
-  const [groupeSelectionne, setGroupeSelectionne] = useState<Groupe>(monGroupe ?? "lutins");
+  const [blocSelectionne, setBlocSelectionne] = useState<string>(monGroupe ?? "lutins");
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
   const [affectationsJour, setAffectationsJour] = useState<AffectationJour[]>([]);
   const [activites, setActivites] = useState<PlanningActivite[]>([]);
@@ -74,6 +103,8 @@ export default function ActivitesPage() {
   const [modalLibelle, setModalLibelle] = useState("");
   const [modalDuree, setModalDuree] = useState("");
   const [modalMateriel, setModalMateriel] = useState("");
+  const [modalSousGroupe, setModalSousGroupe] = useState<SousGroupe>("trolls");
+  const [modalCommunAvec, setModalCommunAvec] = useState<"" | "lutins" | SousGroupe>("");
   const [modalType, setModalType] = useState<TypeActivite | "">("");
   const [modalAnimateurs, setModalAnimateurs] = useState<string[]>([]);
 
@@ -136,9 +167,19 @@ export default function ActivitesPage() {
       .map((a) => a.animateur_id);
   }
 
-  function activitesDe(groupe: Groupe, date: string, moment: MomentActivite) {
+  function activitesDe(bloc: BlocActivite, date: string, moment: MomentActivite) {
     return activites
-      .filter((a) => a.groupe === groupe && a.date === date && a.moment === moment)
+      .filter(
+        (a) =>
+          a.groupe === bloc.groupe &&
+          a.date === date &&
+          a.moment === moment &&
+          // Les activités trolls créées avant cette distinction (sous_groupe
+          // null) restent visibles dans le bloc Trolls plutôt que de
+          // disparaître.
+          (a.sous_groupe === bloc.sousGroupe ||
+            (bloc.sousGroupe === "trolls" && a.sous_groupe === null))
+      )
       .sort((a, b) => a.ordre - b.ordre);
   }
 
@@ -149,14 +190,20 @@ export default function ActivitesPage() {
       .map((a) => a.prenom);
   }
 
+  function labelBloc(groupe: Groupe, sousGroupe: SousGroupe | null) {
+    if (groupe === "lutins") return "Lutins";
+    return sousGroupe === "geants" ? "Géants" : "Trolls";
+  }
 
-  function ouvrirAjout(date: string, moment: MomentActivite, groupe: Groupe) {
-    setModal({ date, moment, groupe, activite: null });
+  function ouvrirAjout(date: string, moment: MomentActivite, bloc: BlocActivite) {
+    setModal({ date, moment, groupe: bloc.groupe, activite: null });
     setModalLibelle("");
     setModalDuree("");
     setModalMateriel("");
     setModalType("");
     setModalAnimateurs([]);
+    setModalSousGroupe(bloc.sousGroupe ?? "trolls");
+    setModalCommunAvec("");
   }
 
   function ouvrirEdition(activite: PlanningActivite) {
@@ -171,11 +218,15 @@ export default function ActivitesPage() {
     setModalMateriel(activite.materiel ?? "");
     setModalType(activite.type_activite ?? "");
     setModalAnimateurs(activite.animateur_ids);
+    setModalSousGroupe(activite.sous_groupe ?? "trolls");
+    setModalCommunAvec(activite.commun_avec ?? "");
   }
 
   async function enregistrerActivite() {
     if (!modal || !modalLibelle.trim()) return;
     setErreur(null);
+    const sousGroupePayload = modal.groupe === "trolls" ? modalSousGroupe : null;
+    const communAvecPayload = modalCommunAvec || null;
     if (modal.activite) {
       const { error } = await supabase
         .from("planning_activites")
@@ -185,6 +236,8 @@ export default function ActivitesPage() {
           materiel: modalMateriel.trim() || null,
           type_activite: modalType || null,
           animateur_ids: modalAnimateurs,
+          sous_groupe: sousGroupePayload,
+          commun_avec: communAvecPayload,
         })
         .eq("id", modal.activite.id);
       if (error) {
@@ -192,10 +245,18 @@ export default function ActivitesPage() {
         return;
       }
     } else {
-      const ordre = activitesDe(modal.groupe, modal.date, modal.moment).length;
+      const ordre = activites.filter(
+        (a) =>
+          a.groupe === modal.groupe &&
+          a.date === modal.date &&
+          a.moment === modal.moment &&
+          a.sous_groupe === sousGroupePayload
+      ).length;
       const { error } = await supabase.from("planning_activites").insert({
         date: modal.date,
         groupe: modal.groupe,
+        sous_groupe: sousGroupePayload,
+        commun_avec: communAvecPayload,
         moment: modal.moment,
         ordre,
         duree: modalDuree.trim() || null,
@@ -321,19 +382,19 @@ export default function ActivitesPage() {
                 </select>
               </div>
             )}
-            {groupesGeres.length > 1 && (
+            {blocsGeres.length > 1 && (
               <div>
                 <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
                   Groupe
                 </p>
                 <select
-                  value={groupeSelectionne}
-                  onChange={(e) => setGroupeSelectionne(e.target.value as Groupe)}
+                  value={blocSelectionne}
+                  onChange={(e) => setBlocSelectionne(e.target.value)}
                   className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
                 >
-                  {groupesGeres.map((g) => (
-                    <option key={g} value={g}>
-                      {GROUPE_LABELS[g]}
+                  {blocsGeres.map((b) => (
+                    <option key={b.cle} value={b.cle}>
+                      {b.label}
                     </option>
                   ))}
                 </select>
@@ -351,36 +412,36 @@ export default function ActivitesPage() {
             <p className="text-sm text-zinc-400">Chargement...</p>
           ) : (
             <div className="flex flex-col gap-6 print:gap-0">
-              {groupesGeres.map((groupe) =>
+              {blocsGeres.map((bloc) =>
                 semaines.map((semaineJours, semaineIdx) => {
                   const semaineDebut = lundiDe(semaineJours[0]);
                   const affichee =
-                    semaineIdx === semaineIndexSafe && groupe === groupeSelectionne;
+                    semaineIdx === semaineIndexSafe && bloc.cle === blocSelectionne;
                   return (
                     <div
-                      key={`${groupe}-${semaineJours[0]}`}
+                      key={`${bloc.cle}-${semaineJours[0]}`}
                       className={`print-page print:pt-8 ${affichee ? "" : "hidden"}`}
                     >
                       <div className="relative rounded-t-xl border border-b-0 border-zinc-300 bg-zinc-100 px-4 py-3 print:rounded-none print:border-black">
                         <p className="text-center text-sm font-bold uppercase tracking-wide text-zinc-700 print:text-base">
-                          {GROUPE_LABELS[groupe]} · Semaine {semaineIdx + 1}
+                          {bloc.label} · Semaine {semaineIdx + 1}
                         </p>
                         <div className="absolute -top-8 -right-4">
                           <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 border-zinc-400 bg-white p-2 print:border-black">
-                            {peutGererGroupe(groupe) ? (
+                            {peutGererGroupe(bloc.groupe) ? (
                               <div
                                 contentEditable
                                 suppressContentEditableWarning
                                 onBlur={(e) =>
-                                  majTheme(groupe, semaineDebut, e.currentTarget.textContent ?? "")
+                                  majTheme(bloc.groupe, semaineDebut, e.currentTarget.textContent ?? "")
                                 }
                                 data-placeholder="Thème"
-                                dangerouslySetInnerHTML={{ __html: themeDe(groupe, semaineDebut) }}
+                                dangerouslySetInnerHTML={{ __html: themeDe(bloc.groupe, semaineDebut) }}
                                 className="max-h-full w-full overflow-hidden text-center text-[10px] font-medium leading-tight text-zinc-700 outline-none empty:before:text-zinc-300 empty:before:content-[attr(data-placeholder)]"
                               />
                             ) : (
                               <div className="max-h-full w-full overflow-hidden text-center text-[10px] font-medium leading-tight text-zinc-700">
-                                {themeDe(groupe, semaineDebut)}
+                                {themeDe(bloc.groupe, semaineDebut)}
                               </div>
                             )}
                           </div>
@@ -417,7 +478,7 @@ export default function ActivitesPage() {
                                     className="h-40 align-top border border-zinc-300 p-2 text-xs print:border-black"
                                   >
                                     <ul className="flex flex-col gap-1.5">
-                                      {activitesDe(groupe, j, m.cle).map((act) => {
+                                      {activitesDe(bloc, j, m.cle).map((act) => {
                                         return (
                                         <li
                                           key={act.id}
@@ -438,7 +499,7 @@ export default function ActivitesPage() {
                                                 <span className="text-zinc-400"> ({act.duree})</span>
                                               )}
                                             </span>
-                                            {peutGererGroupe(groupe) && (
+                                            {peutGererGroupe(bloc.groupe) && (
                                               <span className="no-print hidden shrink-0 gap-1 group-hover:flex">
                                                 <button
                                                   onClick={() => ouvrirEdition(act)}
@@ -457,6 +518,11 @@ export default function ActivitesPage() {
                                               </span>
                                             )}
                                           </div>
+                                          {act.commun_avec && (
+                                            <p className="pl-3 text-[11px] font-medium text-sky-600">
+                                              🤝 avec {LABEL_COMMUN[act.commun_avec]}
+                                            </p>
+                                          )}
                                           {act.animateur_ids.length > 0 && (
                                             <p className="pl-3 text-xs font-semibold text-emerald-700">
                                               → {nomsDe(act.animateur_ids).join(", ")}
@@ -471,9 +537,9 @@ export default function ActivitesPage() {
                                         );
                                       })}
                                     </ul>
-                                    {peutGererGroupe(groupe) && (
+                                    {peutGererGroupe(bloc.groupe) && (
                                       <button
-                                        onClick={() => ouvrirAjout(j, m.cle, groupe)}
+                                        onClick={() => ouvrirAjout(j, m.cle, bloc)}
                                         className="no-print mt-1.5 text-[11px] text-zinc-400 hover:text-zinc-700"
                                       >
                                         + Ajouter
@@ -506,7 +572,8 @@ export default function ActivitesPage() {
           >
             <div className="mb-3 flex items-center justify-between">
               <p className="text-sm font-medium text-zinc-900">
-                {GROUPE_LABELS[modal.groupe]} · {formatEnTeteJour(modal.date)}
+                {labelBloc(modal.groupe, modal.groupe === "trolls" ? modalSousGroupe : null)} ·{" "}
+                {formatEnTeteJour(modal.date)}
               </p>
               <button
                 onClick={() => setModal(null)}
@@ -515,6 +582,28 @@ export default function ActivitesPage() {
                 ✕
               </button>
             </div>
+
+            {modal.groupe === "trolls" && (
+              <>
+                <label className="text-xs font-medium text-zinc-500">Sous-groupe</label>
+                <div className="mt-1 mb-3 flex gap-2">
+                  {(["trolls", "geants"] as SousGroupe[]).map((sg) => (
+                    <button
+                      key={sg}
+                      type="button"
+                      onClick={() => setModalSousGroupe(sg)}
+                      className={`rounded-md border px-3 py-1.5 text-sm font-medium ${
+                        modalSousGroupe === sg
+                          ? "border-zinc-900 bg-zinc-900 text-white"
+                          : "border-zinc-300 text-zinc-700 hover:bg-zinc-50"
+                      }`}
+                    >
+                      {sg === "trolls" ? "Trolls" : "Géants"}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             <label className="text-xs font-medium text-zinc-500">Activité</label>
             <input
@@ -592,6 +681,45 @@ export default function ActivitesPage() {
                   ))
               )}
             </div>
+
+            <label className="mt-3 flex items-center gap-2 text-xs font-medium text-zinc-500">
+              <input
+                type="checkbox"
+                checked={modalCommunAvec !== ""}
+                onChange={(e) =>
+                  setModalCommunAvec(
+                    e.target.checked
+                      ? ((["lutins", "trolls", "geants"] as const).find(
+                          (opt) =>
+                            opt !==
+                            (modal.groupe === "trolls" ? modalSousGroupe : "lutins")
+                        ) ?? "")
+                      : ""
+                  )
+                }
+              />
+              Mettre en commun avec
+            </label>
+            {modalCommunAvec !== "" && (
+              <select
+                value={modalCommunAvec}
+                onChange={(e) =>
+                  setModalCommunAvec(e.target.value as "lutins" | SousGroupe)
+                }
+                className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+              >
+                {(["lutins", "trolls", "geants"] as const)
+                  .filter(
+                    (opt) =>
+                      opt !== (modal.groupe === "trolls" ? modalSousGroupe : "lutins")
+                  )
+                  .map((opt) => (
+                    <option key={opt} value={opt}>
+                      {LABEL_COMMUN[opt]}
+                    </option>
+                  ))}
+              </select>
+            )}
 
             <div className="mt-4 flex justify-between gap-2">
               {modal.activite ? (

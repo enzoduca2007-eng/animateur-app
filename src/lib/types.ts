@@ -437,6 +437,11 @@ export interface PlanningActivite {
   id: string;
   date: string;
   groupe: Groupe;
+  // Distingue Trolls de Géants sur le planning d'activités uniquement ;
+  // null pour Lutins (le groupe réel reste "trolls" partout ailleurs).
+  sous_groupe: SousGroupe | null;
+  // Activité partagée avec un autre groupe/sous-groupe, purement indicatif.
+  commun_avec: "lutins" | SousGroupe | null;
   moment: MomentActivite;
   ordre: number;
   type_activite: TypeActivite | null;

@@ -673,6 +673,15 @@ create table public.planning_activites (
   id uuid primary key default gen_random_uuid(),
   date date not null,
   groupe text not null check (groupe in ('lutins', 'trolls')),
+  -- Distingue Trolls de Géants sur CETTE page uniquement (comme la
+  -- Répartition) : le groupe réel reste "trolls" pour l'encadrement, les
+  -- effectifs, etc. Null pour Lutins, ou une activité créée avant cette
+  -- distinction.
+  sous_groupe text check (sous_groupe in ('trolls', 'geants')),
+  -- Marque une activité comme partagée avec un autre groupe/sous-groupe
+  -- (ex. un grand jeu Trolls fait en commun avec les Lutins) — purement
+  -- indicatif, n'affecte ni l'encadrement ni les effectifs.
+  commun_avec text check (commun_avec in ('lutins', 'trolls', 'geants')),
   moment text not null check (moment in ('matin', 'temps_calme', 'apres_midi')),
   ordre integer not null default 0,
   type_activite text check (type_activite in ('grand_jeu', 'manuelle', 'jeu', 'autre')),
