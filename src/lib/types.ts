@@ -441,7 +441,7 @@ export interface PlanningActivite {
   // null pour Lutins (le groupe réel reste "trolls" partout ailleurs).
   sous_groupe: SousGroupe | null;
   // Activité partagée avec un autre groupe/sous-groupe, purement indicatif.
-  commun_avec: "lutins" | SousGroupe | null;
+  commun_avec: ("lutins" | SousGroupe)[];
   moment: MomentActivite;
   ordre: number;
   type_activite: TypeActivite | null;

@@ -678,10 +678,11 @@ create table public.planning_activites (
   -- effectifs, etc. Null pour Lutins, ou une activité créée avant cette
   -- distinction.
   sous_groupe text check (sous_groupe in ('trolls', 'geants')),
-  -- Marque une activité comme partagée avec un autre groupe/sous-groupe
-  -- (ex. un grand jeu Trolls fait en commun avec les Lutins) — purement
-  -- indicatif, n'affecte ni l'encadrement ni les effectifs.
-  commun_avec text check (commun_avec in ('lutins', 'trolls', 'geants')),
+  -- Marque une activité comme partagée avec un ou plusieurs autres
+  -- groupes/sous-groupes (ex. un grand jeu Trolls fait en commun avec les
+  -- Lutins ET les Géants) — purement indicatif, n'affecte ni
+  -- l'encadrement ni les effectifs.
+  commun_avec text[] not null default '{}',
   moment text not null check (moment in ('matin', 'temps_calme', 'apres_midi')),
   ordre integer not null default 0,
   type_activite text check (type_activite in ('grand_jeu', 'manuelle', 'jeu', 'autre')),
@@ -692,7 +693,10 @@ create table public.planning_activites (
   etablissement_id uuid not null references public.etablissements (id),
   created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint planning_activites_commun_avec_valides check (
+    commun_avec <@ array['lutins', 'trolls', 'geants']::text[]
+  )
 );
 
 create index planning_activites_date_groupe_idx

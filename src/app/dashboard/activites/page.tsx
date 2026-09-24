@@ -104,7 +104,7 @@ export default function ActivitesPage() {
   const [modalDuree, setModalDuree] = useState("");
   const [modalMateriel, setModalMateriel] = useState("");
   const [modalSousGroupe, setModalSousGroupe] = useState<SousGroupe>("trolls");
-  const [modalCommunAvec, setModalCommunAvec] = useState<"" | "lutins" | SousGroupe>("");
+  const [modalCommunAvec, setModalCommunAvec] = useState<("lutins" | SousGroupe)[]>([]);
   const [modalType, setModalType] = useState<TypeActivite | "">("");
   const [modalAnimateurs, setModalAnimateurs] = useState<string[]>([]);
 
@@ -167,19 +167,27 @@ export default function ActivitesPage() {
       .map((a) => a.animateur_id);
   }
 
+  // Code court ("lutins"/"trolls"/"geants") identifiant un bloc, pour le
+  // comparer aux valeurs stockées dans commun_avec.
+  function codeDeBloc(bloc: BlocActivite): "lutins" | SousGroupe {
+    return bloc.groupe === "lutins" ? "lutins" : (bloc.sousGroupe ?? "trolls");
+  }
+
+  function appartientAuBloc(act: PlanningActivite, bloc: BlocActivite) {
+    return (
+      act.groupe === bloc.groupe &&
+      // Les activités trolls créées avant cette distinction (sous_groupe
+      // null) restent visibles dans le bloc Trolls plutôt que de disparaître.
+      (act.sous_groupe === bloc.sousGroupe ||
+        (bloc.sousGroupe === "trolls" && act.sous_groupe === null))
+    );
+  }
+
   function activitesDe(bloc: BlocActivite, date: string, moment: MomentActivite) {
+    const code = codeDeBloc(bloc);
     return activites
-      .filter(
-        (a) =>
-          a.groupe === bloc.groupe &&
-          a.date === date &&
-          a.moment === moment &&
-          // Les activités trolls créées avant cette distinction (sous_groupe
-          // null) restent visibles dans le bloc Trolls plutôt que de
-          // disparaître.
-          (a.sous_groupe === bloc.sousGroupe ||
-            (bloc.sousGroupe === "trolls" && a.sous_groupe === null))
-      )
+      .filter((a) => a.date === date && a.moment === moment)
+      .filter((a) => appartientAuBloc(a, bloc) || a.commun_avec.includes(code))
       .sort((a, b) => a.ordre - b.ordre);
   }
 
@@ -203,7 +211,7 @@ export default function ActivitesPage() {
     setModalType("");
     setModalAnimateurs([]);
     setModalSousGroupe(bloc.sousGroupe ?? "trolls");
-    setModalCommunAvec("");
+    setModalCommunAvec([]);
   }
 
   function ouvrirEdition(activite: PlanningActivite) {
@@ -219,14 +227,14 @@ export default function ActivitesPage() {
     setModalType(activite.type_activite ?? "");
     setModalAnimateurs(activite.animateur_ids);
     setModalSousGroupe(activite.sous_groupe ?? "trolls");
-    setModalCommunAvec(activite.commun_avec ?? "");
+    setModalCommunAvec(activite.commun_avec);
   }
 
   async function enregistrerActivite() {
     if (!modal || !modalLibelle.trim()) return;
     setErreur(null);
     const sousGroupePayload = modal.groupe === "trolls" ? modalSousGroupe : null;
-    const communAvecPayload = modalCommunAvec || null;
+    const communAvecPayload = modalCommunAvec;
     if (modal.activite) {
       const { error } = await supabase
         .from("planning_activites")
@@ -479,10 +487,13 @@ export default function ActivitesPage() {
                                   >
                                     <ul className="flex flex-col gap-1.5">
                                       {activitesDe(bloc, j, m.cle).map((act) => {
+                                        const estEmprunt = !appartientAuBloc(act, bloc);
                                         return (
                                         <li
                                           key={act.id}
-                                          className="group rounded px-1 -mx-1"
+                                          className={`group rounded px-1 -mx-1 ${
+                                            estEmprunt ? "bg-sky-50" : ""
+                                          }`}
                                         >
                                           <div className="flex items-start justify-between gap-1">
                                             <span>
@@ -499,7 +510,7 @@ export default function ActivitesPage() {
                                                 <span className="text-zinc-400"> ({act.duree})</span>
                                               )}
                                             </span>
-                                            {peutGererGroupe(bloc.groupe) && (
+                                            {peutGererGroupe(act.groupe) && (
                                               <span className="no-print hidden shrink-0 gap-1 group-hover:flex">
                                                 <button
                                                   onClick={() => ouvrirEdition(act)}
@@ -518,10 +529,17 @@ export default function ActivitesPage() {
                                               </span>
                                             )}
                                           </div>
-                                          {act.commun_avec && (
+                                          {estEmprunt ? (
                                             <p className="pl-3 text-[11px] font-medium text-sky-600">
-                                              🤝 avec {LABEL_COMMUN[act.commun_avec]}
+                                              🤝 activité {labelBloc(act.groupe, act.sous_groupe)}
                                             </p>
+                                          ) : (
+                                            act.commun_avec.length > 0 && (
+                                              <p className="pl-3 text-[11px] font-medium text-sky-600">
+                                                🤝 avec{" "}
+                                                {act.commun_avec.map((c) => LABEL_COMMUN[c]).join(", ")}
+                                              </p>
+                                            )
                                           )}
                                           {act.animateur_ids.length > 0 && (
                                             <p className="pl-3 text-xs font-semibold text-emerald-700">
@@ -682,44 +700,37 @@ export default function ActivitesPage() {
               )}
             </div>
 
-            <label className="mt-3 flex items-center gap-2 text-xs font-medium text-zinc-500">
-              <input
-                type="checkbox"
-                checked={modalCommunAvec !== ""}
-                onChange={(e) =>
-                  setModalCommunAvec(
-                    e.target.checked
-                      ? ((["lutins", "trolls", "geants"] as const).find(
-                          (opt) =>
-                            opt !==
-                            (modal.groupe === "trolls" ? modalSousGroupe : "lutins")
-                        ) ?? "")
-                      : ""
-                  )
-                }
-              />
+            <label className="mt-3 block text-xs font-medium text-zinc-500">
               Mettre en commun avec
             </label>
-            {modalCommunAvec !== "" && (
-              <select
-                value={modalCommunAvec}
-                onChange={(e) =>
-                  setModalCommunAvec(e.target.value as "lutins" | SousGroupe)
-                }
-                className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
-              >
-                {(["lutins", "trolls", "geants"] as const)
-                  .filter(
-                    (opt) =>
-                      opt !== (modal.groupe === "trolls" ? modalSousGroupe : "lutins")
-                  )
-                  .map((opt) => (
-                    <option key={opt} value={opt}>
+            {(() => {
+              const optionsDisponibles = (["lutins", "trolls", "geants"] as const).filter(
+                (opt) => opt !== (modal.groupe === "trolls" ? modalSousGroupe : "lutins")
+              );
+              return (
+                <div className="mt-1 flex flex-wrap gap-3">
+                  {optionsDisponibles.map((opt) => (
+                    <label
+                      key={opt}
+                      className="flex items-center gap-1.5 text-sm text-zinc-700"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={modalCommunAvec.includes(opt)}
+                        onChange={(e) =>
+                          setModalCommunAvec((prev) =>
+                            e.target.checked
+                              ? [...prev, opt]
+                              : prev.filter((o) => o !== opt)
+                          )
+                        }
+                      />
                       {LABEL_COMMUN[opt]}
-                    </option>
+                    </label>
                   ))}
-              </select>
-            )}
+                </div>
+              );
+            })()}
 
             <div className="mt-4 flex justify-between gap-2">
               {modal.activite ? (
