@@ -259,6 +259,10 @@ export default function MonPlanningPage() {
   const [gtfsStops, setGtfsStops] = useState<GtfsStop[]>([]);
   const [gtfsStopTimes, setGtfsStopTimes] = useState<{ trip_id: string; stop_id: string }[]>([]);
   const [savingArretsBus, setSavingArretsBus] = useState(false);
+  const [vue, setVue] = useState<"individuel" | "collectif">("individuel");
+  const [affectationsCollectif, setAffectationsCollectif] = useState<AffectationCreneau[]>([]);
+  const [affectationsJourCollectif, setAffectationsJourCollectif] = useState<AffectationJour[]>([]);
+  const [loadingCollectif, setLoadingCollectif] = useState(false);
 
   useEffect(() => {
     supabase
@@ -438,6 +442,32 @@ export default function MonPlanningPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moi, periode]);
 
+  // Vue collective : horaires de toute l'équipe pour la période, sans le
+  // détail des activités (chargé à la demande, une fois la vue ouverte).
+  useEffect(() => {
+    if (vue !== "collectif" || !periode) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoadingCollectif(true);
+    Promise.all([
+      supabase
+        .from("affectations_creneau")
+        .select("*")
+        .gte("date", periode.debut)
+        .lte("date", periode.fin),
+      supabase
+        .from("affectations_jour")
+        .select("*")
+        .gte("date", periode.debut)
+        .lte("date", periode.fin),
+    ]).then(([{ data: c }, { data: j }]) => {
+      setAffectationsCollectif((c as AffectationCreneau[]) ?? []);
+      setAffectationsJourCollectif((j as AffectationJour[]) ?? []);
+      setLoadingCollectif(false);
+      setJourIndex(0);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vue, periode]);
+
   useEffect(() => {
     const idsGrandJeu = activites
       .filter((a) => a.type_activite === "grand_jeu")
@@ -590,6 +620,11 @@ export default function MonPlanningPage() {
     [joursOuvres, affectations, affectationsJour]
   );
 
+  // Vue individuelle : seulement les jours où moi je travaille. Vue
+  // collective : tous les jours ouverts de la période (pour voir toute
+  // l'équipe, même les jours où moi je ne travaille pas).
+  const joursAffiches = vue === "individuel" ? joursTravailles : joursOuvres;
+
   function nomsDe(ids: string[]) {
     return ids
       .map((id) => animateurs.find((a) => a.id === id))
@@ -697,8 +732,8 @@ export default function MonPlanningPage() {
   }
 
   const aujourdhui = new Date().toISOString().slice(0, 10);
-  const jourIndexSafe = Math.min(jourIndex, Math.max(0, joursTravailles.length - 1));
-  const jourCourant = joursTravailles[jourIndexSafe] ?? null;
+  const jourIndexSafe = Math.min(jourIndex, Math.max(0, joursAffiches.length - 1));
+  const jourCourant = joursAffiches[jourIndexSafe] ?? null;
 
   const activiteImprimee = activites.find((a) => a.id === ficheOuverte) ?? null;
   const ficheImprimee = activiteImprimee ? ficheDe(activiteImprimee.id) : null;
@@ -706,11 +741,33 @@ export default function MonPlanningPage() {
   return (
     <>
     <div className="no-print flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-zinc-900">Mon planning</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          {moi.prenom} {moi.nom}
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-zinc-900">Mon planning</h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            {moi.prenom} {moi.nom}
+          </p>
+        </div>
+        <div className="flex rounded-lg border border-zinc-300 p-0.5 text-sm">
+          <button
+            type="button"
+            onClick={() => setVue("individuel")}
+            className={`rounded-md px-3 py-1.5 font-medium ${
+              vue === "individuel" ? "bg-zinc-900 text-white" : "text-zinc-500 hover:text-zinc-900"
+            }`}
+          >
+            Vue individuelle
+          </button>
+          <button
+            type="button"
+            onClick={() => setVue("collectif")}
+            className={`rounded-md px-3 py-1.5 font-medium ${
+              vue === "collectif" ? "bg-zinc-900 text-white" : "text-zinc-500 hover:text-zinc-900"
+            }`}
+          >
+            Vue collective
+          </button>
+        </div>
       </div>
 
       {erreur && (
@@ -811,7 +868,7 @@ export default function MonPlanningPage() {
             </select>
           </div>
 
-          {loading ? (
+          {vue === "individuel" && (loading ? (
             <p className="text-sm text-zinc-400">Chargement...</p>
           ) : (
             <>
@@ -1041,7 +1098,133 @@ export default function MonPlanningPage() {
                 </>
               )}
             </>
-          )}
+          ))}
+
+          {vue === "collectif" && (loadingCollectif ? (
+            <p className="text-sm text-zinc-400">Chargement...</p>
+          ) : joursAffiches.length === 0 || !jourCourant ? (
+            <p className="text-sm text-zinc-400">
+              Aucun jour ouvert sur cette période.
+            </p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => setJourIndex((i) => Math.max(0, i - 1))}
+                  disabled={jourIndexSafe === 0}
+                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-30"
+                >
+                  ← Jour précédent
+                </button>
+                <span className="text-xs text-zinc-400">
+                  Jour {jourIndexSafe + 1} / {joursAffiches.length}
+                </span>
+                <button
+                  onClick={() =>
+                    setJourIndex((i) => Math.min(joursAffiches.length - 1, i + 1))
+                  }
+                  disabled={jourIndexSafe === joursAffiches.length - 1}
+                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-30"
+                >
+                  Jour suivant →
+                </button>
+              </div>
+
+              {(() => {
+                const j = jourCourant;
+                if (!semainePublieePour(j)) {
+                  return (
+                    <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-8 text-center shadow-sm">
+                      <p className="text-lg font-bold capitalize text-zinc-900">
+                        {formatJourLong(j)}
+                      </p>
+                      <p className="mt-3 text-sm font-medium text-zinc-500">
+                        🚫 Planning non publié.
+                      </p>
+                    </div>
+                  );
+                }
+
+                const estAujourdhui = j === aujourdhui;
+                const parGroupe = new Map<Groupe, Animateur[]>();
+                for (const a of animateurs) {
+                  const groupe = affectationsJourCollectif.find(
+                    (aj) => aj.date === j && aj.animateur_id === a.id
+                  )?.groupe;
+                  const travaille =
+                    affectationsCollectif.some((c) => c.date === j && c.animateur_id === a.id) ||
+                    !!groupe;
+                  if (!travaille) continue;
+                  const cle = groupe ?? ("lutins" as Groupe);
+                  if (!parGroupe.has(cle)) parGroupe.set(cle, []);
+                  parGroupe.get(cle)!.push(a);
+                }
+
+                return (
+                  <div
+                    className={`mt-4 rounded-2xl border p-5 shadow-sm ${
+                      estAujourdhui
+                        ? "border-zinc-900 bg-zinc-50 ring-1 ring-zinc-900"
+                        : "border-zinc-200 bg-white"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        {estAujourdhui && (
+                          <span className="mb-1 inline-block rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                            Aujourd&apos;hui
+                          </span>
+                        )}
+                        <p className="text-lg font-bold capitalize text-zinc-900">
+                          {formatJourLong(j)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {parGroupe.size === 0 ? (
+                      <p className="mt-3 text-xs text-zinc-400">Personne d&apos;affecté ce jour-là.</p>
+                    ) : (
+                      <div className="mt-4 flex flex-col gap-4">
+                        {Array.from(parGroupe.entries()).map(([groupe, membres]) => (
+                          <div key={groupe} className="overflow-hidden rounded-xl border border-zinc-200">
+                            <p
+                              className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${COULEUR_GROUPE[groupe]}`}
+                            >
+                              {GROUPE_LABELS[groupe]}
+                            </p>
+                            <ul className="flex flex-col divide-y divide-zinc-100">
+                              {membres.map((a) => {
+                                const idsCreneaux = new Set(
+                                  affectationsCollectif
+                                    .filter((c) => c.date === j && c.animateur_id === a.id)
+                                    .map((c) => c.creneau_id)
+                                );
+                                const assignes = creneaux
+                                  .filter((c) => idsCreneaux.has(c.id))
+                                  .sort((c1, c2) => c1.heure_debut.localeCompare(c2.heure_debut));
+                                return (
+                                  <li key={a.id} className="px-3 py-2">
+                                    <p className="text-sm font-medium text-zinc-900">
+                                      {a.prenom} {a.nom}
+                                    </p>
+                                    {assignes.length > 0 ? (
+                                      <TimelineJour creneaux={assignes} />
+                                    ) : (
+                                      <p className="mt-1 text-xs text-zinc-400">Horaires non précisés.</p>
+                                    )}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </>
+          ))}
         </>
       )}
 
