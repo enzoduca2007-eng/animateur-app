@@ -11,11 +11,10 @@ workflows:
         bundle_identifier: com.animateurapp.app
       vars:
         BUNDLE_ID: "com.animateurapp.app"
-        XCODE_WORKSPACE: "ios/App/App.xcworkspace"
+        XCODE_PROJECT: "ios/App/App.xcodeproj"
         XCODE_SCHEME: "App"
       node: latest
       xcode: latest
-      cocoapods: default
     triggering:
       events:
         - push
@@ -28,9 +27,6 @@ workflows:
         script: npm ci
       - name: Sync Capacitor iOS
         script: npx cap sync ios
-      - name: Install CocoaPods dependencies
-        script: |
-          cd ios/App && pod install
       - name: Fetch signing files
         script: |
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
@@ -45,7 +41,7 @@ workflows:
       - name: Build ipa for App Store distribution
         script: |
           xcode-project build-ipa \
-            --workspace "$XCODE_WORKSPACE" \
+            --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME"
     artifacts:
       - build/ios/ipa/*.ipa
