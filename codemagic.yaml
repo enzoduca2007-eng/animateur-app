@@ -10,6 +10,7 @@ workflows:
         distribution_type: app_store
         bundle_identifier: com.animateurapp.app
       vars:
+        BUNDLE_ID: "com.animateurapp.app"
         XCODE_WORKSPACE: "ios/App/App.xcworkspace"
         XCODE_SCHEME: "App"
       node: latest
@@ -30,6 +31,11 @@ workflows:
       - name: Install CocoaPods dependencies
         script: |
           cd ios/App && pod install
+      - name: Fetch signing files
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
       - name: Set up code signing
         script: xcode-project use-profiles
       - name: Increment build number
