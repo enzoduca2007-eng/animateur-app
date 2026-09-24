@@ -8,7 +8,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 // coquille native qui affiche le site dans une WebView.
 const config: CapacitorConfig = {
   appId: "com.animateurapp.app",
-  appName: "Animateur",
+  appName: "AnimTaStructure",
   webDir: "public",
   server: {
     url: "https://animateur-app.vercel.app",

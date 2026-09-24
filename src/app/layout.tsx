@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Gestion Animateurs",
+  title: "AnimTaStructure",
   description: "Gestion des animateurs, plannings et communication interne",
 };
 

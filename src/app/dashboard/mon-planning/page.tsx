@@ -438,7 +438,7 @@ export default function MonPlanningPage() {
     const maintenant =
       new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
 
-    const lignes = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Animateur App//FR", "CALSCALE:GREGORIAN"];
+    const lignes = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//AnimTaStructure//FR", "CALSCALE:GREGORIAN"];
 
     for (const j of joursTravailles) {
       const idsCreneaux = new Set(

@@ -42,7 +42,7 @@ export function DashboardNav() {
     <>
       {/* Barre du haut, uniquement sur mobile/tablette */}
       <div className="no-print flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3 md:hidden">
-        <span className="font-semibold text-zinc-900">Animateurs</span>
+        <span className="font-semibold text-zinc-900">AnimTaStructure</span>
         <button
           onClick={() => setOuvert(true)}
           aria-label="Ouvrir le menu"
@@ -70,10 +70,10 @@ export function DashboardNav() {
         }`}
       >
         <div className="hidden px-5 py-4 md:block">
-          <span className="font-semibold text-zinc-900">Animateurs</span>
+          <span className="font-semibold text-zinc-900">AnimTaStructure</span>
         </div>
         <div className="flex items-center justify-between px-5 py-4 md:hidden">
-          <span className="font-semibold text-zinc-900">Animateurs</span>
+          <span className="font-semibold text-zinc-900">AnimTaStructure</span>
           <button
             onClick={() => setOuvert(false)}
             aria-label="Fermer le menu"
