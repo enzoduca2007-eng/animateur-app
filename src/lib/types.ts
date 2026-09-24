@@ -59,6 +59,23 @@ export interface Animateur {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  arret_bus_depart_id: string | null;
+  arret_bus_arrivee_id: string | null;
+}
+
+export interface GtfsStop {
+  stop_id: string;
+  stop_name: string;
+  stop_lat: number | null;
+  stop_lon: number | null;
+  parent_station: string | null;
+}
+
+export interface BusOption {
+  trip_id: string;
+  route_short_name: string | null;
+  heure_depart: string;
+  heure_arrivee: string;
 }
 
 export type Groupe = "lutins" | "trolls";

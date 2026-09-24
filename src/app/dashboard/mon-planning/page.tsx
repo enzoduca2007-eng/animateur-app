@@ -17,15 +17,131 @@ import {
   type AffectationCreneau,
   type AffectationJour,
   type Animateur,
+  type BusOption,
   type Creneau,
   type FeuilleTemps,
   type FicheAnimation,
   type Groupe,
+  type GtfsStop,
   type JourFermeture,
   type MomentActivite,
   type PlanningActivite,
   type PublicationPlanningSemaine,
 } from "@/lib/types";
+
+// 1=lundi ... 6=samedi, comme gtfs_trips.jour_semaine. 0 (dimanche) -> null.
+function jourSemaineDe(dateISO: string): number | null {
+  const jour = new Date(`${dateISO}T00:00:00Z`).getUTCDay();
+  return jour === 0 ? null : jour;
+}
+
+function formatHeureBus(interval: string) {
+  // Postgres renvoie les interval sous forme "HH:MM:SS" (ou "1 day HH:MM:SS"
+  // pour les trajets après minuit) — on ne garde que HH:MM.
+  const m = interval.match(/(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  return m ? `${m[1].padStart(2, "0")}h${m[2]}` : interval;
+}
+
+function BusButton({
+  dateISO,
+  heureCible,
+  moi,
+  gtfsStops,
+  supabase,
+}: {
+  dateISO: string;
+  heureCible: string | null;
+  moi: Animateur;
+  gtfsStops: GtfsStop[];
+  supabase: ReturnType<typeof createClient>;
+}) {
+  const [ouvert, setOuvert] = useState(false);
+  const [options, setOptions] = useState<BusOption[] | null>(null);
+  const [chargement, setChargement] = useState(false);
+
+  if (!moi.arret_bus_depart_id || !moi.arret_bus_arrivee_id) return null;
+
+  const nomArret = (id: string) =>
+    gtfsStops.find((s) => s.stop_id === id)?.stop_name ?? id;
+
+  async function ouvrir() {
+    setOuvert(true);
+    if (options !== null) return;
+    const jour = jourSemaineDe(dateISO);
+    if (jour === null) {
+      setOptions([]);
+      return;
+    }
+    setChargement(true);
+    const { data } = await supabase.rpc("bus_options", {
+      p_arret_depart_id: moi.arret_bus_depart_id,
+      p_arret_arrivee_id: moi.arret_bus_arrivee_id,
+      p_jour_semaine: jour,
+    });
+    setOptions((data as BusOption[]) ?? []);
+    setChargement(false);
+  }
+
+  // Le dernier bus qui arrive avant (ou pile à) l'heure cible.
+  const meilleure =
+    heureCible && options
+      ? options
+          .filter((o) => formatHeureBus(o.heure_arrivee) <= heureCible)
+          .at(-1)
+      : null;
+
+  return (
+    <div className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => (ouvert ? setOuvert(false) : ouvrir())}
+        className="ml-1 rounded-full p-1 text-sm hover:bg-zinc-100"
+        title="Bus à prendre"
+      >
+        🚌
+      </button>
+      {ouvert && (
+        <div
+          className="absolute z-10 mt-1 w-72 rounded-lg border border-zinc-200 bg-white p-3 text-left shadow-lg"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="text-xs font-medium text-zinc-500">
+            {nomArret(moi.arret_bus_depart_id)} → {nomArret(moi.arret_bus_arrivee_id)}
+          </p>
+          {chargement ? (
+            <p className="mt-2 text-xs text-zinc-400">Chargement...</p>
+          ) : !options || options.length === 0 ? (
+            <p className="mt-2 text-xs text-zinc-400">Pas de bus ce jour-là.</p>
+          ) : (
+            <ul className="mt-2 flex flex-col gap-1">
+              {options.map((o) => {
+                const estMeilleure = meilleure && o.trip_id === meilleure.trip_id;
+                return (
+                  <li
+                    key={o.trip_id}
+                    className={`flex items-center justify-between rounded px-2 py-1 text-xs ${
+                      estMeilleure ? "bg-emerald-50 font-semibold text-emerald-700" : "text-zinc-600"
+                    }`}
+                  >
+                    <span>Ligne {o.route_short_name}</span>
+                    <span>
+                      {formatHeureBus(o.heure_depart)} → {formatHeureBus(o.heure_arrivee)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {heureCible && (
+            <p className="mt-2 text-[11px] text-zinc-400">
+              Activité à {heureCible.slice(0, 5)} — le bus en vert est celui à prendre.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const COULEUR_GROUPE: Record<Groupe, string> = {
   lutins: "bg-sky-100 text-sky-700",
@@ -140,6 +256,8 @@ export default function MonPlanningPage() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [ficheOuverte, setFicheOuverte] = useState<string | null>(null);
   const [publications, setPublications] = useState<PublicationPlanningSemaine[]>([]);
+  const [gtfsStops, setGtfsStops] = useState<GtfsStop[]>([]);
+  const [savingArretsBus, setSavingArretsBus] = useState(false);
 
   useEffect(() => {
     supabase
@@ -175,8 +293,29 @@ export default function MonPlanningPage() {
       .then(({ data }) => {
         if (data) setPublications(data as PublicationPlanningSemaine[]);
       });
+    supabase
+      .from("gtfs_stops")
+      .select("*")
+      .order("stop_name")
+      .then(({ data }) => {
+        if (data) setGtfsStops(data as GtfsStop[]);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function majArretsBus(departId: string, arriveeId: string) {
+    setSavingArretsBus(true);
+    await supabase.rpc("set_mes_arrets_bus", {
+      p_arret_depart_id: departId || null,
+      p_arret_arrivee_id: arriveeId || null,
+    });
+    setMoi((prev) =>
+      prev
+        ? { ...prev, arret_bus_depart_id: departId || null, arret_bus_arrivee_id: arriveeId || null }
+        : prev
+    );
+    setSavingArretsBus(false);
+  }
 
   useEffect(() => {
     if (loadingVacances || periodes.length === 0 || periodeIndex !== null)
@@ -546,6 +685,47 @@ export default function MonPlanningPage() {
         </p>
       )}
 
+      <div className="rounded-xl border border-zinc-200 bg-white p-4">
+        <p className="text-sm font-semibold text-zinc-900">🚌 Mes arrêts de bus (Citéa)</p>
+        <p className="mt-0.5 text-xs text-zinc-400">
+          Renseigne tes arrêts pour voir le bus à prendre directement sur ton planning.
+        </p>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-xs text-zinc-500">Arrêt de départ</label>
+            <select
+              value={moi.arret_bus_depart_id ?? ""}
+              disabled={savingArretsBus}
+              onChange={(e) => majArretsBus(e.target.value, moi.arret_bus_arrivee_id ?? "")}
+              className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+            >
+              <option value="">— Non renseigné —</option>
+              {gtfsStops.map((s) => (
+                <option key={s.stop_id} value={s.stop_id}>
+                  {s.stop_name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-zinc-500">Arrêt d&apos;arrivée</label>
+            <select
+              value={moi.arret_bus_arrivee_id ?? ""}
+              disabled={savingArretsBus}
+              onChange={(e) => majArretsBus(moi.arret_bus_depart_id ?? "", e.target.value)}
+              className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+            >
+              <option value="">— Non renseigné —</option>
+              {gtfsStops.map((s) => (
+                <option key={s.stop_id} value={s.stop_id}>
+                  {s.stop_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
       <PeriodesVacances periodes={periodes} zone={zone} loading={loadingVacances} />
 
       {loadingVacances || periodeIndex === null ? (
@@ -693,7 +873,23 @@ export default function MonPlanningPage() {
                         </div>
 
                         {assignesJour.length > 0 ? (
-                          <TimelineJour creneaux={assignesJour} />
+                          <div className="flex items-start gap-1">
+                            <div className="flex-1">
+                              <TimelineJour creneaux={assignesJour} />
+                            </div>
+                            <BusButton
+                              dateISO={j}
+                              heureCible={
+                                assignesJour
+                                  .filter((c) => c.type === "arrivee")
+                                  .sort((a, b) => a.heure_debut.localeCompare(b.heure_debut))[0]
+                                  ?.heure_debut ?? null
+                              }
+                              moi={moi}
+                              gtfsStops={gtfsStops}
+                              supabase={supabase}
+                            />
+                          </div>
                         ) : (
                           <p className="mt-3 text-xs text-zinc-400">
                             Affecté au groupe, pas encore d&apos;horaires précis.
