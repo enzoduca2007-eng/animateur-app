@@ -387,8 +387,10 @@ export interface Gouter {
   id: string;
   date: string;
   groupe: Groupe;
-  type_produit: string | null;
-  marque: string | null;
+  // null pour Lutins ; le groupe réel (encadrement/effectifs) reste
+  // "trolls" pour Trolls et Géants, comme sur planning_activites.
+  sous_groupe: SousGroupe | null;
+  produit_id: string | null;
   photo_url: string | null;
   nom_produit: string | null;
   numero_lot: string | null;
@@ -402,39 +404,31 @@ export interface Gouter {
   updated_at: string;
 }
 
-// Catalogue de produits de goûter, de base (ex. "Bichocos").
+// Catalogue de produits de goûter (ex. "Bichocos") : pas de déclinaison
+// par marque, une quantité/personne et une taille de paquet directement
+// sur le produit.
 export interface ProduitGouter {
   id: string;
   nom: string;
+  quantite_par_personne: number;
+  taille_paquet: number;
   actif: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
 }
 
-// Déclinaison d'un produit par marque (ex. "LU" : 2 par personne,
-// paquet de 20 — "Carrefour" : 3 par personne, paquet de 24) : chaque
-// marque a sa propre quantité, pour calculer le nombre de paquets à
-// prendre selon l'effectif enfants + animateurs.
-export interface DeclinaisonGouter {
-  id: string;
-  produit_id: string;
-  marque: string;
-  quantite_par_personne: number;
-  taille_paquet: number;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-// Une déclinaison prévue pour un groupe un jour donné — plusieurs
-// peuvent être prévues le même (jour, groupe) pour combiner plusieurs
-// produits, et le choix peut différer d'un groupe à l'autre.
+// Un produit prévu pour un bloc (Lutins/Trolls/Géants) un jour donné —
+// plusieurs peuvent être prévus le même (jour, bloc), et commun_avec
+// permet de partager le même goûter prévu avec 1 ou 2 autres blocs (ex.
+// prévu pour Trolls, en commun avec Géants) sans le dupliquer.
 export interface GouterPrevu {
   id: string;
   date: string;
   groupe: Groupe;
-  declinaison_id: string;
+  sous_groupe: SousGroupe | null;
+  commun_avec: ("lutins" | SousGroupe)[];
+  produit_id: string;
   created_by: string | null;
   created_at: string;
 }

@@ -81,15 +81,13 @@ async function appellerGeminiAvecRetry(url: string, body: string) {
 }
 
 const PROMPT = `Tu regardes la photo de l'emballage d'un produit alimentaire (goûter de centre de loisirs). Extrait UNIQUEMENT les informations suivantes, telles qu'elles apparaissent sur l'emballage :
-- type_produit : la catégorie courte du produit (ex: "Biscuits", "Compote", "Jus de fruit", "Pain", "Fruit", "Gâteau", "Autre")
-- marque : le nom de la marque telle qu'écrite sur l'emballage
-- nom_produit : le nom exact du produit
+- nom_produit : le nom exact du produit (marque incluse si présente, ex: "Petit Écolier LU")
 - numero_lot : le numéro de lot (souvent précédé de "Lot", "L", ou un code court)
 - date_peremption : la date de péremption / DLC / DLUO, au format AAAA-MM-JJ (déduis l'année si seul le jour/mois est visible, en supposant l'année la plus proche dans le futur)
 - quantite : le poids ou la quantité (ex: "125g", "6x20cl")
 
 Réponds STRICTEMENT en JSON, sans aucun texte autour, avec exactement ces clés. Mets null pour une valeur que tu ne trouves pas ou dont tu n'es pas sûr :
-{"type_produit": string|null, "marque": string|null, "nom_produit": string|null, "numero_lot": string|null, "date_peremption": string|null, "quantite": string|null}`;
+{"nom_produit": string|null, "numero_lot": string|null, "date_peremption": string|null, "quantite": string|null}`;
 
 export async function POST(request: Request) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -145,17 +143,12 @@ export async function POST(request: Request) {
         generationConfig: { responseMimeType: "application/json", temperature: 0 },
       })
     )) as {
-      type_produit: string | null;
-      marque: string | null;
       nom_produit: string | null;
       numero_lot: string | null;
       date_peremption: string | null;
       quantite: string | null;
     };
 
-    // type_produit/marque ne sont écrasés par l'IA que s'ils n'ont pas déjà
-    // été renseignés (saisie manuelle du directeur/coordinateur, ou analyse
-    // précédente) — une nouvelle photo ne doit pas effacer une correction.
     const misAJour: Record<string, unknown> = {
       nom_produit: extrait.nom_produit ?? null,
       numero_lot: extrait.numero_lot ?? null,
@@ -164,8 +157,6 @@ export async function POST(request: Request) {
       statut_ia: "traite",
       erreur_ia: null,
     };
-    if (!gouter.type_produit) misAJour.type_produit = extrait.type_produit ?? null;
-    if (!gouter.marque) misAJour.marque = extrait.marque ?? null;
 
     const { data: mis_a_jour, error: erreurEcriture } = await supabase
       .from("gouters")
