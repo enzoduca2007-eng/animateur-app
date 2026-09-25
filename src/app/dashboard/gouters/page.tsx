@@ -4,20 +4,26 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
-import { estWeekend, joursDe, periodeEnCours } from "@/lib/vacances";
+import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
 import { PeriodesVacances } from "@/components/periodes-vacances";
 import {
   canManage,
   type AffectationJour,
   type Animateur,
-  type EffectifJour,
-  type EffectifSousGroupe,
   type Gouter,
   type GouterPrevu,
   type Groupe,
   type ProduitGouter,
   type SousGroupe,
 } from "@/lib/types";
+
+const JOURS_SEMAINE = [
+  { numero: 1, label: "Lundi" },
+  { numero: 2, label: "Mardi" },
+  { numero: 3, label: "Mercredi" },
+  { numero: 4, label: "Jeudi" },
+  { numero: 5, label: "Vendredi" },
+];
 
 const STATUT_LABELS: Record<Gouter["statut_ia"], { texte: string; classe: string }> = {
   en_attente: { texte: "En attente de photo", classe: "bg-zinc-100 text-zinc-500" },
@@ -118,22 +124,13 @@ export default function GoutersPage() {
   const [envoiEnCours, setEnvoiEnCours] = useState<Record<string, boolean>>({});
   const [creationEnCours, setCreationEnCours] = useState<Record<string, boolean>>({});
 
-  // Prévisionnel d'achats : catalogue (produits, avec quantité/personne et
-  // taille de paquet directement dessus, plus de déclinaison par marque),
-  // les produits prévus pour chaque (jour, bloc) — un même produit prévu
-  // peut être partagé entre 2 ou 3 blocs via commun_avec — et les
-  // effectifs/animateurs de la période pour en déduire la quantité à
-  // acheter.
+  // Prévisionnel : catalogue de produits (juste un nom) et les produits
+  // prévus pour chaque (jour, bloc) — un même produit prévu peut être
+  // partagé entre 2 ou 3 blocs via commun_avec, auquel cas les cellules du
+  // tableau se fusionnent visuellement.
   const [produits, setProduits] = useState<ProduitGouter[]>([]);
   const [goutersPrevus, setGoutersPrevus] = useState<GouterPrevu[]>([]);
-  const [effectifsPeriode, setEffectifsPeriode] = useState<EffectifJour[]>([]);
-  const [effectifsSousGroupePeriode, setEffectifsSousGroupePeriode] = useState<EffectifSousGroupe[]>([]);
-  const [affectationsJourPeriode, setAffectationsJourPeriode] = useState<AffectationJour[]>([]);
-  const [formNouveauProduit, setFormNouveauProduit] = useState({
-    nom: "",
-    quantite_par_personne: "2",
-    taille_paquet: "20",
-  });
+  const [formNouveauProduit, setFormNouveauProduit] = useState({ nom: "" });
   const [ajoutsCellule, setAjoutsCellule] = useState<Record<string, string>>({});
   const compteurUpload = useRef(0);
 
@@ -175,6 +172,7 @@ export default function GoutersPage() {
     () => (periode ? joursDe(periode).filter((j) => !estWeekend(j)) : []),
     [periode]
   );
+  const semaines = useMemo(() => semainesDe(joursOuvrables), [joursOuvrables]);
 
   useEffect(() => {
     if (joursOuvrables.length === 0) return;
@@ -247,33 +245,12 @@ export default function GoutersPage() {
 
   useEffect(() => {
     if (!periode || !canManage(profile.role)) return;
-    Promise.all([
-      supabase
-        .from("effectifs_jour")
-        .select("*")
-        .gte("date", periode.debut)
-        .lte("date", periode.fin),
-      supabase
-        .from("effectifs_sous_groupe")
-        .select("*")
-        .gte("date", periode.debut)
-        .lte("date", periode.fin),
-      supabase
-        .from("affectations_jour")
-        .select("*")
-        .gte("date", periode.debut)
-        .lte("date", periode.fin),
-      supabase
-        .from("gouters_prevus")
-        .select("*")
-        .gte("date", periode.debut)
-        .lte("date", periode.fin),
-    ]).then(([{ data: e }, { data: esg }, { data: aj }, { data: gp }]) => {
-      setEffectifsPeriode((e as EffectifJour[]) ?? []);
-      setEffectifsSousGroupePeriode((esg as EffectifSousGroupe[]) ?? []);
-      setAffectationsJourPeriode((aj as AffectationJour[]) ?? []);
-      setGoutersPrevus((gp as GouterPrevu[]) ?? []);
-    });
+    supabase
+      .from("gouters_prevus")
+      .select("*")
+      .gte("date", periode.debut)
+      .lte("date", periode.fin)
+      .then(({ data: gp }) => setGoutersPrevus((gp as GouterPrevu[]) ?? []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periode, profile.role]);
 
@@ -282,49 +259,26 @@ export default function GoutersPage() {
     return produits.find((p) => p.id === produitId)?.nom ?? "—";
   }
 
-  // Effectif + animateurs affectés à CE bloc précis ce jour-là.
-  function totalPersonnesDuBloc(bloc: Bloc, date: string) {
-    if (bloc.groupe === "lutins") {
-      const effectifEnfants = effectifsPeriode
-        .filter((e) => e.date === date && e.groupe === "lutins")
-        .reduce((s, e) => s + e.effectif, 0);
-      const nbAnimateurs = new Set(
-        affectationsJourPeriode
-          .filter((a) => a.date === date && appartientAuBloc(a, bloc))
-          .map((a) => a.animateur_id)
-      ).size;
-      return effectifEnfants + nbAnimateurs;
-    }
-    const effectifEnfants = effectifsSousGroupePeriode
-      .filter((e) => e.date === date && e.sous_groupe === bloc.sousGroupe)
-      .reduce((s, e) => s + e.effectif, 0);
-    const nbAnimateurs = new Set(
-      affectationsJourPeriode
-        .filter((a) => a.date === date && appartientAuBloc(a, bloc))
-        .map((a) => a.animateur_id)
-    ).size;
-    return effectifEnfants + nbAnimateurs;
-  }
-
-  function blocsDuPrevu(prevu: GouterPrevu): Bloc[] {
-    const propre = BLOCS.find((b) => appartientAuBloc(prevu, b));
-    const communs = BLOCS.filter((b) => prevu.commun_avec.includes(codeDeBloc(b)));
-    const tous = propre ? [propre, ...communs] : communs;
-    return tous.filter((b, i) => tous.findIndex((b2) => codeDeBloc(b2) === codeDeBloc(b)) === i);
-  }
-
-  function paquetsNecessaires(prevu: GouterPrevu, date: string) {
-    const produit = produits.find((p) => p.id === prevu.produit_id);
-    if (!produit) return { quantite: 0, paquets: 0 };
-    const total =
-      blocsDuPrevu(prevu).reduce((s, b) => s + totalPersonnesDuBloc(b, date), 0) *
-      produit.quantite_par_personne;
-    if (total === 0) return { quantite: 0, paquets: 0 };
-    return { quantite: total, paquets: Math.ceil(total / produit.taille_paquet) + 1 };
-  }
-
   function prevusDuBloc(bloc: Bloc, date: string) {
     return goutersPrevus.filter((g) => g.date === date && visibleDansBloc(g, bloc));
+  }
+
+  // Regroupe les 3 blocs (Lutins/Trolls/Géants) contigus qui partagent
+  // exactement le même ensemble de produits prévus ce jour-là, pour
+  // fusionner leurs cellules dans le tableau (colSpan).
+  function groupesDuJour(date: string) {
+    const groupes: { blocs: Bloc[]; prevus: GouterPrevu[]; cle: string }[] = [];
+    for (const bloc of BLOCS) {
+      const prevus = prevusDuBloc(bloc, date);
+      const cle = prevus.map((p) => p.id).sort().join(",");
+      const dernier = groupes[groupes.length - 1];
+      if (dernier && cle !== "" && dernier.cle === cle) {
+        dernier.blocs.push(bloc);
+      } else {
+        groupes.push({ blocs: [bloc], prevus, cle });
+      }
+    }
+    return groupes;
   }
 
   async function ajouterGouterPrevu(bloc: Bloc, date: string, produitId: string) {
@@ -397,18 +351,11 @@ export default function GoutersPage() {
 
   async function ajouterProduitGouter() {
     const nom = formNouveauProduit.nom.trim();
-    const qte = Number(formNouveauProduit.quantite_par_personne);
-    const taille = Number(formNouveauProduit.taille_paquet);
-    if (!nom || !qte || !taille) return;
+    if (!nom) return;
     setErreur(null);
     const { data, error } = await supabase
       .from("produits_gouter")
-      .insert({
-        nom,
-        quantite_par_personne: qte,
-        taille_paquet: taille,
-        created_by: profile.id,
-      })
+      .insert({ nom, created_by: profile.id })
       .select()
       .single();
     if (error) {
@@ -416,7 +363,7 @@ export default function GoutersPage() {
       return;
     }
     setProduits((prev) => [...prev, data as ProduitGouter].sort((a, b) => a.nom.localeCompare(b.nom)));
-    setFormNouveauProduit({ nom: "", quantite_par_personne: "2", taille_paquet: "20" });
+    setFormNouveauProduit({ nom: "" });
   }
 
   async function majProduit(id: string, updates: Partial<ProduitGouter>) {
@@ -438,22 +385,6 @@ export default function GoutersPage() {
         .sort((a, b) => (a.date + a.groupe + (a.sous_groupe ?? "")).localeCompare(b.date + b.groupe + (b.sous_groupe ?? ""))),
     [goutersPeriode, monGroupe]
   );
-
-  // Prévisionnel d'achats agrégé pour l'impression : une ligne par produit,
-  // en additionnant les blocs concernés par CHAQUE prévu distinct (pas de
-  // double-comptage quand un prévu est partagé entre plusieurs blocs).
-  const lignesImprimables = useMemo(() => {
-    const parProduit = new Map<string, GouterPrevu[]>();
-    for (const p of goutersPrevus) {
-      if (!parProduit.has(p.produit_id)) parProduit.set(p.produit_id, []);
-      parProduit.get(p.produit_id)!.push(p);
-    }
-    return Array.from(parProduit.entries())
-      .map(([produitId, prevus]) => ({ produitId, prevus }))
-      .filter(({ produitId }) => produits.some((p) => p.id === produitId))
-      .sort((a, b) => nomProduit(a.produitId).localeCompare(nomProduit(b.produitId)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goutersPrevus, produits]);
 
   async function trouverOuCreerGouter(bloc: Bloc, date: string, produitId: string | null) {
     const existant = gouters.find(
@@ -631,24 +562,15 @@ export default function GoutersPage() {
 
           {canManage(profile.role) && (
             <div className="no-print flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                    Prévisionnel d&apos;achats — {periode?.description}
-                  </h2>
-                  <p className="mt-1 text-xs text-zinc-400">
-                    Un même produit prévu peut être coché en commun pour 2 ou
-                    3 blocs. Paquets = (effectif enfants + animateurs
-                    affectés, additionnés sur les blocs concernés) × quantité/
-                    personne, arrondi au paquet supérieur, + 1 de secours.
-                  </p>
-                </div>
-                <button
-                  onClick={() => window.print()}
-                  className="shrink-0 rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-                >
-                  Imprimer le tableau des quantités
-                </button>
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                  Prévisionnel — {periode?.description}
+                </h2>
+                <p className="mt-1 text-xs text-zinc-400">
+                  Un même produit prévu peut être coché en commun pour 2 ou 3
+                  blocs (Lutins/Trolls/Géants) : les cellules du tableau se
+                  fusionnent alors.
+                </p>
               </div>
 
               <div>
@@ -658,39 +580,10 @@ export default function GoutersPage() {
                 <div className="flex flex-wrap items-end gap-2">
                   <input
                     value={formNouveauProduit.nom}
-                    onChange={(e) =>
-                      setFormNouveauProduit((f) => ({ ...f, nom: e.target.value }))
-                    }
+                    onChange={(e) => setFormNouveauProduit({ nom: e.target.value })}
                     placeholder="Nouveau produit (ex. Bichocos)"
                     className="w-48 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
                   />
-                  <div>
-                    <label className="block text-[11px] text-zinc-400">Qté/pers.</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={formNouveauProduit.quantite_par_personne}
-                      onChange={(e) =>
-                        setFormNouveauProduit((f) => ({
-                          ...f,
-                          quantite_par_personne: e.target.value,
-                        }))
-                      }
-                      className="w-16 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-zinc-400">Taille paquet</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={formNouveauProduit.taille_paquet}
-                      onChange={(e) =>
-                        setFormNouveauProduit((f) => ({ ...f, taille_paquet: e.target.value }))
-                      }
-                      className="w-16 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-                    />
-                  </div>
                   <button
                     onClick={ajouterProduitGouter}
                     className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
@@ -704,11 +597,11 @@ export default function GoutersPage() {
                     Aucun produit configuré pour l&apos;instant.
                   </p>
                 ) : (
-                  <div className="mt-3 flex flex-col gap-1.5">
+                  <div className="mt-3 flex flex-wrap gap-1.5">
                     {produits.map((produit) => (
                       <div
                         key={produit.id}
-                        className="flex flex-wrap items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-sm"
+                        className="flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-sm"
                       >
                         <input
                           defaultValue={produit.nom}
@@ -716,33 +609,12 @@ export default function GoutersPage() {
                             e.target.value.trim() &&
                             majProduit(produit.id, { nom: e.target.value.trim() })
                           }
-                          className="w-40 rounded border border-transparent px-1 py-0.5 font-medium hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
-                        />
-                        <input
-                          type="number"
-                          min={1}
-                          defaultValue={produit.quantite_par_personne}
-                          onBlur={(e) => {
-                            const v = Number(e.target.value);
-                            if (v > 0) majProduit(produit.id, { quantite_par_personne: v });
-                          }}
-                          className="w-10 rounded border border-transparent px-1 text-xs text-zinc-500 hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
-                        />
-                        <span className="text-xs text-zinc-400">/pers., paquet de</span>
-                        <input
-                          type="number"
-                          min={1}
-                          defaultValue={produit.taille_paquet}
-                          onBlur={(e) => {
-                            const v = Number(e.target.value);
-                            if (v > 0) majProduit(produit.id, { taille_paquet: v });
-                          }}
-                          className="w-12 rounded border border-transparent px-1 text-xs text-zinc-500 hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
+                          className="w-32 rounded border border-transparent px-1 py-0.5 font-medium hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
                         />
                         <button
                           onClick={() => supprimerProduitGouter(produit.id)}
                           title="Supprimer ce produit"
-                          className="ml-auto text-zinc-300 hover:text-red-600"
+                          className="text-zinc-300 hover:text-red-600"
                         >
                           🗑
                         </button>
@@ -755,207 +627,141 @@ export default function GoutersPage() {
               {produits.length > 0 && (
                 <div>
                   <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
-                    Goûter du jour par bloc — {periode?.description} (
-                    {joursOuvrables.length} jours)
+                    Goûters de la période — {periode?.description}
                   </p>
                   <div className="overflow-x-auto">
-                    <table className="border-collapse text-left text-sm">
+                    <table className="w-full table-fixed border-collapse text-left text-sm">
                       <thead>
                         <tr>
-                          <th className="sticky left-0 z-10 border border-zinc-300 bg-zinc-50 px-3 py-2 font-medium">
-                            Bloc
-                          </th>
-                          {joursOuvrables.map((j) => (
+                          {JOURS_SEMAINE.map((j) => (
                             <th
-                              key={j}
-                              className="border border-zinc-300 bg-zinc-50 px-2 py-2 text-center font-medium capitalize"
+                              key={j.numero}
+                              className="w-1/5 border border-zinc-300 bg-zinc-50 px-2 py-2 text-center font-medium"
                             >
-                              {formatJourCourt(j)}
+                              {j.label}
                             </th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {BLOCS.map((bloc) => {
-                          const code = codeDeBloc(bloc);
-                          const autresBlocs = BLOCS.filter((b) => codeDeBloc(b) !== code);
-                          return (
-                            <tr key={code} className="border-b border-zinc-100 last:border-0">
-                              <td className="sticky left-0 z-10 whitespace-nowrap border border-zinc-300 bg-white px-3 py-2 font-medium text-zinc-900">
-                                {LABEL_BLOC[code]}
-                              </td>
-                              {joursOuvrables.map((j) => {
-                                const cle = `${j}|${code}`;
-                                const prevus = prevusDuBloc(bloc, j);
+                        {semaines.map((semaine) => (
+                          <tr key={semaine[0]} className="border-b border-zinc-100 last:border-0">
+                            {JOURS_SEMAINE.map(({ numero }) => {
+                              const date = semaine.find(
+                                (d) => new Date(`${d}T00:00:00Z`).getUTCDay() === numero
+                              );
+                              if (!date) {
                                 return (
                                   <td
-                                    key={j}
-                                    className="min-w-[170px] border border-zinc-300 px-1.5 py-1.5 align-top"
-                                  >
-                                    <div className="flex flex-col gap-1.5">
-                                      {prevus.map((prevu) => {
-                                        const { quantite, paquets } = paquetsNecessaires(prevu, j);
-                                        const estEmprunt = !appartientAuBloc(prevu, bloc);
-                                        return (
-                                          <div
-                                            key={prevu.id}
-                                            className="rounded border border-zinc-200 px-1.5 py-1 text-[11px]"
-                                          >
-                                            <div className="flex items-start justify-between gap-1">
-                                              <span className="font-medium text-zinc-700">
-                                                {nomProduit(prevu.produit_id)}
-                                              </span>
-                                              {!estEmprunt && (
-                                                <button
-                                                  onClick={() => retirerGouterPrevu(prevu.id)}
-                                                  className="shrink-0 text-zinc-300 hover:text-red-600"
-                                                >
-                                                  🗑
-                                                </button>
-                                              )}
-                                            </div>
-                                            {paquets > 0 ? (
-                                              <p>
-                                                <span className="font-semibold text-zinc-900">
-                                                  {paquets} paquet{paquets > 1 ? "s" : ""}
-                                                </span>{" "}
-                                                <span className="text-zinc-400">({quantite}u)</span>
-                                              </p>
-                                            ) : (
-                                              <p className="text-zinc-300">Effectif ?</p>
-                                            )}
-                                            {estEmprunt ? (
-                                              <p className="mt-0.5 text-zinc-400">
-                                                🤝 avec {LABEL_BLOC[codeDeBloc(BLOCS.find((b) => appartientAuBloc(prevu, b))!)]}
-                                              </p>
-                                            ) : (
-                                              <div className="mt-1 flex flex-wrap gap-1.5">
-                                                {autresBlocs.map((autre) => {
-                                                  const autreCode = codeDeBloc(autre);
-                                                  return (
-                                                    <label
-                                                      key={autreCode}
-                                                      className="flex items-center gap-0.5 text-zinc-400"
-                                                    >
-                                                      <input
-                                                        type="checkbox"
-                                                        checked={prevu.commun_avec.includes(autreCode)}
-                                                        onChange={() => basculerCommunAvec(prevu, autreCode)}
-                                                        className="h-2.5 w-2.5"
-                                                      />
-                                                      {LABEL_BLOC[autreCode]}
-                                                    </label>
-                                                  );
-                                                })}
-                                              </div>
-                                            )}
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-
-                                    <div className="mt-1.5 flex items-center gap-1">
-                                      <select
-                                        value={ajoutsCellule[cle] ?? ""}
-                                        onChange={(e) =>
-                                          setAjoutsCellule((prev) => ({
-                                            ...prev,
-                                            [cle]: e.target.value,
-                                          }))
-                                        }
-                                        className="w-full rounded-md border border-zinc-300 px-1 py-1 text-xs"
-                                      >
-                                        <option value="">+ Choisir...</option>
-                                        {produits.map((p) => (
-                                          <option key={p.id} value={p.id}>
-                                            {p.nom}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <button
-                                        onClick={() => ajouterGouterPrevu(bloc, j, ajoutsCellule[cle] ?? "")}
-                                        title="Ajouter ce goûter"
-                                        className="shrink-0 rounded-md border border-zinc-300 px-1.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
-                                      >
-                                        +
-                                      </button>
-                                    </div>
-                                  </td>
+                                    key={numero}
+                                    className="border border-zinc-200 bg-zinc-50/50 px-1.5 py-1.5"
+                                  />
                                 );
-                              })}
-                            </tr>
-                          );
-                        })}
+                              }
+                              return (
+                                <td key={numero} className="align-top border border-zinc-300 px-1.5 py-1.5">
+                                  <p className="mb-1 text-[11px] font-medium capitalize text-zinc-400">
+                                    {formatJourCourt(date)}
+                                  </p>
+                                  <div className="flex gap-1">
+                                    {groupesDuJour(date).map((groupe) => {
+                                      const codesGroupe = groupe.blocs.map(codeDeBloc);
+                                      const autresBlocs = BLOCS.filter(
+                                        (b) => !codesGroupe.includes(codeDeBloc(b))
+                                      );
+                                      const cle = `${date}|${codesGroupe.join("+")}`;
+                                      return (
+                                        <div
+                                          key={codesGroupe.join("+")}
+                                          className="min-w-0 flex-1 rounded border border-zinc-200 p-1"
+                                        >
+                                          <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+                                            {groupe.blocs.map((b) => LABEL_BLOC[codeDeBloc(b)]).join(" + ")}
+                                          </p>
+                                          <div className="mt-1 flex flex-col gap-1">
+                                            {groupe.prevus.map((prevu) => (
+                                              <div
+                                                key={prevu.id}
+                                                className="rounded bg-zinc-50 px-1 py-0.5 text-[11px]"
+                                              >
+                                                <div className="flex items-start justify-between gap-1">
+                                                  <span className="font-medium text-zinc-700">
+                                                    {nomProduit(prevu.produit_id)}
+                                                  </span>
+                                                  <button
+                                                    onClick={() => retirerGouterPrevu(prevu.id)}
+                                                    className="shrink-0 text-zinc-300 hover:text-red-600"
+                                                  >
+                                                    🗑
+                                                  </button>
+                                                </div>
+                                                {autresBlocs.length > 0 && (
+                                                  <div className="mt-0.5 flex flex-wrap gap-1 text-zinc-400">
+                                                    {autresBlocs.map((autre) => {
+                                                      const autreCode = codeDeBloc(autre);
+                                                      return (
+                                                        <label
+                                                          key={autreCode}
+                                                          className="flex items-center gap-0.5"
+                                                        >
+                                                          <input
+                                                            type="checkbox"
+                                                            checked={prevu.commun_avec.includes(autreCode)}
+                                                            onChange={() => basculerCommunAvec(prevu, autreCode)}
+                                                            className="h-2.5 w-2.5"
+                                                          />
+                                                          {LABEL_BLOC[autreCode]}
+                                                        </label>
+                                                      );
+                                                    })}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+
+                                          <div className="mt-1 flex items-center gap-0.5">
+                                            <select
+                                              value={ajoutsCellule[cle] ?? ""}
+                                              onChange={(e) =>
+                                                setAjoutsCellule((prev) => ({
+                                                  ...prev,
+                                                  [cle]: e.target.value,
+                                                }))
+                                              }
+                                              className="w-full min-w-0 rounded border border-zinc-300 px-0.5 py-0.5 text-[10px]"
+                                            >
+                                              <option value="">+ ...</option>
+                                              {produits.map((p) => (
+                                                <option key={p.id} value={p.id}>
+                                                  {p.nom}
+                                                </option>
+                                              ))}
+                                            </select>
+                                            <button
+                                              onClick={() =>
+                                                ajouterGouterPrevu(groupe.blocs[0], date, ajoutsCellule[cle] ?? "")
+                                              }
+                                              title="Ajouter ce goûter"
+                                              className="shrink-0 rounded border border-zinc-300 px-1 py-0.5 text-[10px] text-zinc-600 hover:bg-zinc-50"
+                                            >
+                                              +
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
                 </div>
               )}
-            </div>
-          )}
-
-          {canManage(profile.role) && lignesImprimables.length > 0 && (
-            <div className="hidden print:block">
-              <h2 className="text-lg font-bold text-zinc-900">
-                Prévisionnel d&apos;achats de goûters
-              </h2>
-              <p className="mt-1 text-sm text-zinc-600">
-                {periode?.description} ({periode?.debut} – {periode?.fin}) · Zone {zone}
-              </p>
-              <table className="mt-4 w-full border-collapse text-left text-xs">
-                <thead>
-                  <tr>
-                    <th className="border border-black px-2 py-1 font-semibold">Produit</th>
-                    {joursOuvrables.map((j) => (
-                      <th
-                        key={j}
-                        className="border border-black px-2 py-1 text-center font-semibold capitalize"
-                      >
-                        {formatJourCourt(j)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {lignesImprimables.map(({ produitId, prevus }) => (
-                    <tr key={produitId}>
-                      <td className="border border-black px-2 py-1 font-semibold">
-                        {nomProduit(produitId)}
-                      </td>
-                      {joursOuvrables.map((j) => {
-                        const prevusDuJour = prevus.filter((p) => p.date === j);
-                        if (prevusDuJour.length === 0) {
-                          return (
-                            <td
-                              key={j}
-                              className="border border-black px-2 py-1 text-center text-zinc-300"
-                            >
-                              —
-                            </td>
-                          );
-                        }
-                        const totalPaquets = prevusDuJour.reduce(
-                          (s, p) => s + paquetsNecessaires(p, j).paquets,
-                          0
-                        );
-                        const totalQuantite = prevusDuJour.reduce(
-                          (s, p) => s + paquetsNecessaires(p, j).quantite,
-                          0
-                        );
-                        return (
-                          <td key={j} className="border border-black px-2 py-1 text-center">
-                            <span className="font-semibold">
-                              {totalPaquets} paquet{totalPaquets > 1 ? "s" : ""}
-                            </span>
-                            <br />
-                            <span className="text-zinc-500">({totalQuantite}u)</span>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
           )}
 

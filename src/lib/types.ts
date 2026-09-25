@@ -404,14 +404,11 @@ export interface Gouter {
   updated_at: string;
 }
 
-// Catalogue de produits de goûter (ex. "Bichocos") : pas de déclinaison
-// par marque, une quantité/personne et une taille de paquet directement
-// sur le produit.
+// Catalogue de produits de goûter (ex. "Bichocos") : juste un nom, pas de
+// marque ni de quantité à calculer.
 export interface ProduitGouter {
   id: string;
   nom: string;
-  quantite_par_personne: number;
-  taille_paquet: number;
   actif: boolean;
   created_by: string | null;
   created_at: string;
