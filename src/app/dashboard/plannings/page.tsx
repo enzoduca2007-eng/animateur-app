@@ -91,6 +91,27 @@ export default function PlanningsPage() {
   const [formCovoiturageNom, setFormCovoiturageNom] = useState("");
   const [formCovoiturageMembres, setFormCovoiturageMembres] = useState<string[]>([]);
   const [verrous, setVerrous] = useState<VerrouPlanningSemaine[]>([]);
+  // Plafonds hebdomadaires (mineur/majeur), configurables par le
+  // gestionnaire sur la page Établissements — 40h/45h par défaut.
+  const [plafonds, setPlafonds] = useState({ mineur: 40, majeur: 45 });
+  useEffect(() => {
+    if (!profile.etablissement_id) return;
+    supabase
+      .from("etablissements")
+      .select("plafond_heures_mineur, plafond_heures_majeur")
+      .eq("id", profile.etablissement_id)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          setPlafonds({
+            mineur: data.plafond_heures_mineur,
+            majeur: data.plafond_heures_majeur,
+          });
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.etablissement_id]);
+
   async function chargerVerrous() {
     const { data } = await supabase.from("plannings_verrous").select("*");
     if (data) setVerrous(data as VerrouPlanningSemaine[]);
@@ -864,7 +885,7 @@ export default function PlanningsPage() {
     function cibleDuJour(id: string) {
       const a = animateurs.find((x) => x.id === id);
       const mineur = estMineur(a?.date_naissance ?? null, finSemaineSelectionnee);
-      const plafond = plafondHeuresSemaine(mineur);
+      const plafond = plafondHeuresSemaine(mineur, plafonds);
       const restant = plafond - (heuresAccumulees.get(id) ?? 0);
       const joursRestants = Math.max(
         1,
@@ -1138,7 +1159,7 @@ export default function PlanningsPage() {
         }
       }
       const mineur = estMineur(a.date_naissance, finSemaineSelectionnee);
-      const plafond = plafondHeuresSemaine(mineur);
+      const plafond = plafondHeuresSemaine(mineur, plafonds);
       const total = heuresSemaineParAnimateur.get(a.id) ?? 0;
       if (animateursActifsSemaine.has(a.id)) {
         const ecart = total - plafond;
@@ -1719,7 +1740,7 @@ export default function PlanningsPage() {
                   .filter((a) => !monGroupe || animateursActifsSemaine.has(a.id))
                   .map((a) => {
                   const mineur = estMineur(a.date_naissance, finSemaineSelectionnee);
-                  const plafond = plafondHeuresSemaine(mineur);
+                  const plafond = plafondHeuresSemaine(mineur, plafonds);
                   const total = heuresSemaineParAnimateur.get(a.id) ?? 0;
                   const ratio = plafond > 0 ? total / plafond : 0;
                   const horsTolerance =

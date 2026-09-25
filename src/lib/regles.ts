@@ -15,9 +15,17 @@ export function estMineur(
   return age(dateNaissance, dateReference) < 18;
 }
 
-/** Plafond hebdomadaire légal. Par défaut (âge inconnu) : plafond majeur. */
-export function plafondHeuresSemaine(mineur: boolean | null) {
-  return mineur ? 38 : 43;
+/**
+ * Plafond hebdomadaire. Par défaut (âge inconnu) : plafond majeur.
+ * `plafonds` vient des paramètres de l'établissement (modifiable par le
+ * gestionnaire) ; à défaut, valeurs par défaut 40h mineur / 45h majeur.
+ */
+export function plafondHeuresSemaine(
+  mineur: boolean | null,
+  plafonds?: { mineur: number; majeur: number }
+) {
+  const p = plafonds ?? { mineur: 40, majeur: 45 };
+  return mineur ? p.mineur : p.majeur;
 }
 
 /**

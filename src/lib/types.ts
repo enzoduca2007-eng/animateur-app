@@ -37,6 +37,8 @@ export interface Profile {
 export interface Etablissement {
   id: string;
   nom: string;
+  plafond_heures_mineur: number;
+  plafond_heures_majeur: number;
   created_by: string | null;
   created_at: string;
 }

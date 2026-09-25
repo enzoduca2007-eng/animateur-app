@@ -60,6 +60,8 @@ export default function ParametresEtablissementPage({
   const [erreur, setErreur] = useState<string | null>(null);
 
   const [formCreneau, setFormCreneau] = useState(EMPTY_CRENEAU_FORM);
+  const [formPlafonds, setFormPlafonds] = useState({ mineur: "40", majeur: "45" });
+  const [savingPlafonds, setSavingPlafonds] = useState(false);
   const [formPalier, setFormPalier] = useState({ effectif_min: "", nb_animateurs: "" });
   const [formFermeture, setFormFermeture] = useState({ date: "", motif: "" });
   const [formTrancheAge, setFormTrancheAge] = useState(EMPTY_TRANCHE_AGE_FORM);
@@ -79,6 +81,12 @@ export default function ParametresEtablissementPage({
         supabase.from("tranches_age").select("*").eq("etablissement_id", id),
       ]);
     setEtablissement((e as Etablissement) ?? null);
+    if (e) {
+      setFormPlafonds({
+        mineur: String((e as Etablissement).plafond_heures_mineur),
+        majeur: String((e as Etablissement).plafond_heures_majeur),
+      });
+    }
     setCreneaux((c as Creneau[]) ?? []);
     setPaliers((p as PalierEncadrement[]) ?? []);
     setJoursFermeture((f as JourFermeture[]) ?? []);
@@ -174,6 +182,24 @@ export default function ParametresEtablissementPage({
     charger();
   }
 
+  async function majPlafonds(e: React.FormEvent) {
+    e.preventDefault();
+    const mineur = Number(formPlafonds.mineur);
+    const majeur = Number(formPlafonds.majeur);
+    if (!Number.isFinite(mineur) || mineur <= 0 || !Number.isFinite(majeur) || majeur <= 0) return;
+    setSavingPlafonds(true);
+    const { error } = await supabase
+      .from("etablissements")
+      .update({ plafond_heures_mineur: mineur, plafond_heures_majeur: majeur })
+      .eq("id", id);
+    setSavingPlafonds(false);
+    if (error) {
+      setErreur(error.message);
+      return;
+    }
+    charger();
+  }
+
   async function supprimerPalier(palierId: string) {
     await supabase.from("paliers_encadrement").delete().eq("id", palierId);
     charger();
@@ -265,6 +291,54 @@ export default function ParametresEtablissementPage({
         <p className="text-sm text-zinc-400">Chargement...</p>
       ) : (
         <>
+          <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <p className="mb-1 text-sm font-medium text-zinc-900">
+              Plafonds horaires hebdomadaires
+            </p>
+            <p className="mb-3 text-xs text-zinc-500">
+              Au-delà, une alerte s&apos;affiche sur les plannings. Mineurs :
+              animateurs de moins de 18 ans ; majeurs : les autres (et les
+              fiches sans date de naissance renseignée).
+            </p>
+            <form onSubmit={majPlafonds} className="flex flex-wrap items-end gap-2">
+              <div>
+                <label className="block text-xs text-zinc-500">Plafond mineur</label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={formPlafonds.mineur}
+                    onChange={(e) => setFormPlafonds({ ...formPlafonds, mineur: e.target.value })}
+                    className="w-20 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                  />
+                  <span className="text-sm text-zinc-400">h</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500">Plafond majeur</label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={formPlafonds.majeur}
+                    onChange={(e) => setFormPlafonds({ ...formPlafonds, majeur: e.target.value })}
+                    className="w-20 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                  />
+                  <span className="text-sm text-zinc-400">h</span>
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={savingPlafonds}
+                className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+              >
+                {savingPlafonds ? "Enregistrement..." : "Enregistrer"}
+              </button>
+            </form>
+          </div>
+
           <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
             <p className="mb-1 text-sm font-medium text-zinc-900">
               Paliers d&apos;encadrement (ouverture/fermeture)
