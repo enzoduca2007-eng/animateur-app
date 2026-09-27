@@ -492,8 +492,28 @@ export interface Message {
   id: string;
   auteur_id: string;
   contenu: string;
+  // null = fil général (Communication interne), visible par tous.
+  conversation_id: string | null;
   created_at: string;
   profiles?: { full_name: string; role: Role } | null;
+}
+
+export type TypeConversation = "direct" | "groupe";
+
+export interface Conversation {
+  id: string;
+  type: TypeConversation;
+  // Nom du groupe ; null pour une conversation individuelle (le libellé
+  // affiché est calculé côté app à partir de l'autre membre).
+  nom: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ConversationMembre {
+  conversation_id: string;
+  profile_id: string;
+  created_at: string;
 }
 
 export function canManage(role: Role | undefined | null) {
