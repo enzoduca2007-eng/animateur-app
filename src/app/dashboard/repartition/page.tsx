@@ -512,16 +512,6 @@ export default function RepartitionPage() {
       .sort((a, b) => a.nom.localeCompare(b.nom));
   }
 
-  // Seuls Directeur/Directeur adjoint sortent de la liste normale des
-  // animateurs sur la feuille imprimée — un coordinateur apparaît là-bas
-  // en plus de sa ligne dédiée dans Direction (cf. plus bas), comme un
-  // animateur normal.
-  const idsDirection = new Set(
-    directionRoster
-      .filter((d) => d.role_affiche === "directeur" || d.role_affiche === "directeur_adjoint")
-      .map((d) => d.animateur_id)
-  );
-
   const ORDRE_SECTION: Record<SectionDirection, number> = { lutins: 0, trolls: 1, geants: 2 };
   const LETTRE_PAR_SECTION: Record<SectionDirection, string> = {
     lutins: "L",
@@ -536,9 +526,13 @@ export default function RepartitionPage() {
       .join("/");
   }
 
+  // Un animateur classé Directeur/Directeur adjoint/Coordinateur dans
+  // l'équipe administrative apparaît quand même ici, en plus de sa ligne
+  // dédiée dans Direction, s'il a aussi des jours L/T/G dans la période
+  // (ex. directeur une semaine, animateur une autre semaine) — la lettre du
+  // jour fait foi, pas le rôle administratif fixe.
   const rosterParLettre: Record<Lettre, Animateur[]> = { L: [], T: [], G: [] };
   for (const a of animateurs) {
-    if (idsDirection.has(a.id)) continue;
     for (const l of lettresDeLaPeriode(a.id)) rosterParLettre[l].push(a);
   }
 
@@ -991,68 +985,6 @@ export default function RepartitionPage() {
                   })}
 
                 {(() => {
-                  const roulants = idsAvecRoleSpecial("roulant");
-                  const inclusifs = idsAvecRoleSpecial("inclusif");
-                  if (roulants.length === 0 && inclusifs.length === 0) return null;
-                  return (
-                    <>
-                      <tr>
-                        <td
-                          colSpan={3 + joursOuvrables.length}
-                          className="border border-black bg-zinc-300 px-1 py-1 font-bold"
-                        >
-                          Roulants & inclusifs
-                        </td>
-                      </tr>
-                      {roulants.map((a) => (
-                        <tr key={`roulant-${a.id}`}>
-                          <td className="border border-black bg-rose-100 px-1 py-1">Roulant</td>
-                          <td className="border border-black bg-rose-100 px-1 py-1 font-semibold uppercase">
-                            {a.nom}
-                          </td>
-                          <td className="border border-black bg-rose-100 px-1 py-1">{a.prenom}</td>
-                          {joursOuvrables.map((j) => {
-                            const present = directionPresentCeJour(a.id, j, "roulant");
-                            return (
-                              <td
-                                key={j}
-                                className={`border border-black px-1 py-1 text-center ${
-                                  present ? "bg-rose-100" : bandeSemaine(j)
-                                } ${bordureSemaine(j, false)}`}
-                              >
-                                {present ? "X" : ""}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                      {inclusifs.map((a) => (
-                        <tr key={`inclusif-${a.id}`}>
-                          <td className="border border-black bg-teal-100 px-1 py-1">Inclusif</td>
-                          <td className="border border-black bg-teal-100 px-1 py-1 font-semibold uppercase">
-                            {a.nom}
-                          </td>
-                          <td className="border border-black bg-teal-100 px-1 py-1">{a.prenom}</td>
-                          {joursOuvrables.map((j) => {
-                            const present = directionPresentCeJour(a.id, j, "inclusif");
-                            return (
-                              <td
-                                key={j}
-                                className={`border border-black px-1 py-1 text-center ${
-                                  present ? "bg-teal-100" : bandeSemaine(j)
-                                } ${bordureSemaine(j, false)}`}
-                              >
-                                {present ? "X" : ""}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </>
-                  );
-                })()}
-
-                {(() => {
                   // Bandeau gris "Animation" (comme "Direction") juste avant
                   // les sections Lutins/Trolls/Géants, dès qu'au moins une
                   // d'entre elles a du contenu (animateur assigné, ou
@@ -1178,6 +1110,68 @@ export default function RepartitionPage() {
                       </>
                     );
                   })}
+                    </>
+                  );
+                })()}
+
+                {(() => {
+                  const roulants = idsAvecRoleSpecial("roulant");
+                  const inclusifs = idsAvecRoleSpecial("inclusif");
+                  if (roulants.length === 0 && inclusifs.length === 0) return null;
+                  return (
+                    <>
+                      <tr>
+                        <td
+                          colSpan={3 + joursOuvrables.length}
+                          className="border border-black bg-zinc-300 px-1 py-1 font-bold"
+                        >
+                          Roulants & inclusifs
+                        </td>
+                      </tr>
+                      {roulants.map((a) => (
+                        <tr key={`roulant-${a.id}`}>
+                          <td className="border border-black bg-rose-100 px-1 py-1">Roulant</td>
+                          <td className="border border-black bg-rose-100 px-1 py-1 font-semibold uppercase">
+                            {a.nom}
+                          </td>
+                          <td className="border border-black bg-rose-100 px-1 py-1">{a.prenom}</td>
+                          {joursOuvrables.map((j) => {
+                            const present = directionPresentCeJour(a.id, j, "roulant");
+                            return (
+                              <td
+                                key={j}
+                                className={`border border-black px-1 py-1 text-center ${
+                                  present ? "bg-rose-100" : bandeSemaine(j)
+                                } ${bordureSemaine(j, false)}`}
+                              >
+                                {present ? "X" : ""}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                      {inclusifs.map((a) => (
+                        <tr key={`inclusif-${a.id}`}>
+                          <td className="border border-black bg-teal-100 px-1 py-1">Inclusif</td>
+                          <td className="border border-black bg-teal-100 px-1 py-1 font-semibold uppercase">
+                            {a.nom}
+                          </td>
+                          <td className="border border-black bg-teal-100 px-1 py-1">{a.prenom}</td>
+                          {joursOuvrables.map((j) => {
+                            const present = directionPresentCeJour(a.id, j, "inclusif");
+                            return (
+                              <td
+                                key={j}
+                                className={`border border-black px-1 py-1 text-center ${
+                                  present ? "bg-teal-100" : bandeSemaine(j)
+                                } ${bordureSemaine(j, false)}`}
+                              >
+                                {present ? "X" : ""}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
                     </>
                   );
                 })()}
