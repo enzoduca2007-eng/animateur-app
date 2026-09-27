@@ -1319,7 +1319,7 @@ export default function MonPlanningPage() {
 
                   <div>
                     <label className="mb-1 block text-xs text-zinc-500">
-                      Matériel nécessaire / Coût
+                      Matériel nécessaire
                     </label>
                     <textarea
                       defaultValue={act.materiel ?? ""}
@@ -1433,7 +1433,7 @@ export default function MonPlanningPage() {
           </div>
           <div className="border-l border-black">
             <p className="border-b border-black bg-zinc-200 px-2 py-1 text-center text-xs font-semibold">
-              Matériel nécessaire / Coût
+              Matériel nécessaire
             </p>
             <p className="whitespace-pre-wrap px-3 py-3 text-sm">
               {activiteImprimee.materiel || "—"}
