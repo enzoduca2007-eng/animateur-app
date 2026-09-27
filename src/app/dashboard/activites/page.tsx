@@ -191,13 +191,6 @@ export default function ActivitesPage() {
       .sort((a, b) => a.ordre - b.ordre);
   }
 
-  function nomsDe(ids: string[]) {
-    return ids
-      .map((id) => animateurs.find((a) => a.id === id))
-      .filter((a): a is Animateur => !!a)
-      .map((a) => a.prenom);
-  }
-
   function labelBloc(groupe: Groupe, sousGroupe: SousGroupe | null) {
     if (groupe === "lutins") return "Lutins";
     return sousGroupe === "geants" ? "Géants" : "Trolls";
@@ -506,9 +499,6 @@ export default function ActivitesPage() {
                                                 </span>
                                               )}
                                               – {act.libelle}
-                                              {act.duree && (
-                                                <span className="text-zinc-400"> ({act.duree})</span>
-                                              )}
                                             </span>
                                             {peutGererGroupe(act.groupe) && (
                                               <span className="no-print hidden shrink-0 gap-1 group-hover:flex">
@@ -540,16 +530,6 @@ export default function ActivitesPage() {
                                                 {act.commun_avec.map((c) => LABEL_COMMUN[c]).join(", ")}
                                               </p>
                                             )
-                                          )}
-                                          {act.animateur_ids.length > 0 && (
-                                            <p className="pl-3 text-xs font-semibold text-emerald-700">
-                                              → {nomsDe(act.animateur_ids).join(", ")}
-                                            </p>
-                                          )}
-                                          {act.materiel && (
-                                            <p className="pl-3 text-[11px] text-zinc-400">
-                                              🧰 {act.materiel}
-                                            </p>
                                           )}
                                         </li>
                                         );
