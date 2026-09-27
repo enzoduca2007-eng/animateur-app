@@ -499,14 +499,19 @@ export default function RepartitionPage() {
     return map;
   }, [animateurs]);
 
-  // Animateurs marqués inclusif/roulant au moins un jour de la période, pour
-  // la section dédiée de la feuille imprimable — contrairement à
-  // Directeur/Directeur adjoint, pas de roster séparé : n'importe quel
-  // animateur peut être ponctuellement inclusif ou roulant un jour donné.
-  function idsAvecRoleSpecial(role: RoleDirectionJour): Animateur[] {
-    const set = new Set<string>();
-    for (const p of presenceDirection) if (p.role === role) set.add(p.animateur_id);
-    return [...set]
+  // Animateurs ayant ce rôle (D/A/I/R) au moins un jour de la période, pour
+  // les sections dédiées de la feuille imprimable — un animateur inscrit à
+  // l'équipe administrative (roleAffiche) apparaît même sans saisie D/A du
+  // tout, et inversement quelqu'un jamais inscrit mais tapé D/A/I/R sur la
+  // grille un jour donné (ex. animateur une semaine, adjoint l'autre)
+  // apparaît quand même, ce qui manquait avant.
+  function animateursAvecRole(role: RoleDirectionJour, roleAffiche?: RoleAffiche): Animateur[] {
+    const ids = new Set<string>();
+    for (const p of presenceDirection) if (p.role === role) ids.add(p.animateur_id);
+    if (roleAffiche) {
+      for (const d of directionRoster) if (d.role_affiche === roleAffiche) ids.add(d.animateur_id);
+    }
+    return [...ids]
       .map((id) => animateurParId.get(id))
       .filter((a): a is Animateur => !!a)
       .sort((a, b) => a.nom.localeCompare(b.nom));
@@ -880,78 +885,75 @@ export default function RepartitionPage() {
                 </tr>
               </thead>
               <tbody>
-                {directionRoster.some(
-                  (d) => d.role_affiche === "directeur" || d.role_affiche === "directeur_adjoint"
-                ) && (
-                  <tr>
-                    <td
-                      colSpan={3 + joursOuvrables.length}
-                      className="border border-black bg-zinc-300 px-1 py-1 font-bold"
-                    >
-                      Direction
-                    </td>
-                  </tr>
-                )}
-                {directionRoster
-                  .filter((d) => d.role_affiche === "directeur")
-                  .map((d) => {
-                    const a = animateurParId.get(d.animateur_id);
-                    if (!a) return null;
-                    const couleur = "bg-orange-200";
-                    return (
-                      <tr key={d.id}>
-                        <td className={`border border-black px-1 py-1 ${couleur}`}>Directeur</td>
-                        <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
-                          {a.nom}
+                {(() => {
+                  const directeurs = animateursAvecRole("directeur", "directeur");
+                  const adjoints = animateursAvecRole("adjoint", "directeur_adjoint");
+                  if (directeurs.length === 0 && adjoints.length === 0) return null;
+                  return (
+                    <>
+                      <tr>
+                        <td
+                          colSpan={3 + joursOuvrables.length}
+                          className="border border-black bg-zinc-300 px-1 py-1 font-bold"
+                        >
+                          Direction
                         </td>
-                        <td className={`border border-black px-1 py-1 ${couleur}`}>{a.prenom}</td>
-                        {joursOuvrables.map((j) => {
-                          const present = directionPresentCeJour(a.id, j, "directeur");
-                          return (
-                            <td
-                              key={j}
-                              className={`border border-black px-1 py-1 text-center ${
-                                present ? couleur : bandeSemaine(j)
-                              } ${bordureSemaine(j, false)}`}
-                            >
-                              {present ? "X" : ""}
-                            </td>
-                          );
-                        })}
                       </tr>
-                    );
-                  })}
-                {directionRoster
-                  .filter((d) => d.role_affiche === "directeur_adjoint")
-                  .map((d) => {
-                    const a = animateurParId.get(d.animateur_id);
-                    if (!a) return null;
-                    const couleur = "bg-purple-100";
-                    return (
-                      <tr key={d.id}>
-                        <td className={`border border-black px-1 py-1 ${couleur}`}>
-                          Directeur adjoint
-                        </td>
-                        <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
-                          {a.nom}
-                        </td>
-                        <td className={`border border-black px-1 py-1 ${couleur}`}>{a.prenom}</td>
-                        {joursOuvrables.map((j) => {
-                          const present = directionPresentCeJour(a.id, j, "adjoint");
-                          return (
-                            <td
-                              key={j}
-                              className={`border border-black px-1 py-1 text-center ${
-                                present ? couleur : bandeSemaine(j)
-                              } ${bordureSemaine(j, false)}`}
-                            >
-                              {present ? "X" : ""}
+                      {directeurs.map((a) => {
+                        const couleur = "bg-orange-200";
+                        return (
+                          <tr key={`directeur-${a.id}`}>
+                            <td className={`border border-black px-1 py-1 ${couleur}`}>Directeur</td>
+                            <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
+                              {a.nom}
                             </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
+                            <td className={`border border-black px-1 py-1 ${couleur}`}>{a.prenom}</td>
+                            {joursOuvrables.map((j) => {
+                              const present = directionPresentCeJour(a.id, j, "directeur");
+                              return (
+                                <td
+                                  key={j}
+                                  className={`border border-black px-1 py-1 text-center ${
+                                    present ? couleur : bandeSemaine(j)
+                                  } ${bordureSemaine(j, false)}`}
+                                >
+                                  {present ? "X" : ""}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                      {adjoints.map((a) => {
+                        const couleur = "bg-purple-100";
+                        return (
+                          <tr key={`adjoint-${a.id}`}>
+                            <td className={`border border-black px-1 py-1 ${couleur}`}>
+                              Directeur adjoint
+                            </td>
+                            <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
+                              {a.nom}
+                            </td>
+                            <td className={`border border-black px-1 py-1 ${couleur}`}>{a.prenom}</td>
+                            {joursOuvrables.map((j) => {
+                              const present = directionPresentCeJour(a.id, j, "adjoint");
+                              return (
+                                <td
+                                  key={j}
+                                  className={`border border-black px-1 py-1 text-center ${
+                                    present ? couleur : bandeSemaine(j)
+                                  } ${bordureSemaine(j, false)}`}
+                                >
+                                  {present ? "X" : ""}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </>
+                  );
+                })()}
                 {directionRoster
                   .filter((d) => d.role_affiche === "coordinateur")
                   .map((d) => {
@@ -1115,8 +1117,8 @@ export default function RepartitionPage() {
                 })()}
 
                 {(() => {
-                  const roulants = idsAvecRoleSpecial("roulant");
-                  const inclusifs = idsAvecRoleSpecial("inclusif");
+                  const roulants = animateursAvecRole("roulant");
+                  const inclusifs = animateursAvecRole("inclusif");
                   if (roulants.length === 0 && inclusifs.length === 0) return null;
                   return (
                     <>
