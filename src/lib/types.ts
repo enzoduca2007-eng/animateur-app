@@ -191,10 +191,11 @@ export interface DirectionRoster {
   updated_at: string;
 }
 
-// Présence jour par jour du directeur/directeur adjoint sur la feuille de
-// Répartition (saisie D/A dans la grille) — distincte des affectations de
-// groupe (L/T/G) car un directeur n'appartient à aucun groupe réel.
-export type RoleDirectionJour = "directeur" | "adjoint";
+// Présence jour par jour du directeur/directeur adjoint, ou d'un animateur
+// inclusif/roulant, sur la feuille de Répartition (saisie D/A/I/R dans la
+// grille) — distincte des affectations de groupe (L/T/G) car aucun d'eux
+// n'appartient à un groupe réel ce jour-là.
+export type RoleDirectionJour = "directeur" | "adjoint" | "inclusif" | "roulant";
 
 export interface PresenceDirectionJour {
   id: string;

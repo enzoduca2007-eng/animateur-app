@@ -25,9 +25,11 @@ import {
 // l'application — sous_groupe est une étiquette purement visuelle,
 // propre à cette page.
 type Lettre = "L" | "T" | "G";
-// D/A : présence du directeur / directeur adjoint ce jour-là — pas un
-// groupe réel, stockée à part (presence_direction_jour).
-type LettreGrille = Lettre | "D" | "A";
+// D/A/I/R : présence du directeur / directeur adjoint / animateur inclusif
+// / animateur roulant ce jour-là — pas un groupe réel, stockée à part
+// (presence_direction_jour).
+type LettreSpeciale = "D" | "A" | "I" | "R";
+type LettreGrille = Lettre | LettreSpeciale;
 
 const CONFIG_PAR_LETTRE: Record<Lettre, { groupe: Groupe; sous_groupe: "trolls" | "geants" | null }> = {
   L: { groupe: "lutins", sous_groupe: null },
@@ -35,9 +37,18 @@ const CONFIG_PAR_LETTRE: Record<Lettre, { groupe: Groupe; sous_groupe: "trolls" 
   G: { groupe: "trolls", sous_groupe: "geants" },
 };
 
-const ROLE_PAR_LETTRE_DIRECTION: Record<"D" | "A", RoleDirectionJour> = {
+const ROLE_PAR_LETTRE_SPECIALE: Record<LettreSpeciale, RoleDirectionJour> = {
   D: "directeur",
   A: "adjoint",
+  I: "inclusif",
+  R: "roulant",
+};
+
+const LETTRE_PAR_ROLE_SPECIALE: Record<RoleDirectionJour, LettreSpeciale> = {
+  directeur: "D",
+  adjoint: "A",
+  inclusif: "I",
+  roulant: "R",
 };
 
 const COULEUR_PAR_LETTRE: Record<LettreGrille, string> = {
@@ -46,6 +57,8 @@ const COULEUR_PAR_LETTRE: Record<LettreGrille, string> = {
   G: "bg-amber-100 text-amber-700",
   D: "bg-orange-200 text-orange-800",
   A: "bg-purple-100 text-purple-700",
+  I: "bg-teal-100 text-teal-700",
+  R: "bg-rose-100 text-rose-700",
 };
 
 function lettreDe(a: AffectationJour | undefined): Lettre | null {
@@ -181,7 +194,7 @@ export default function RepartitionPage() {
     const g = lettreDe(parCle.get(`${date}|${animateurId}`));
     if (g) return g;
     const d = parCleDirection.get(`${date}|${animateurId}`);
-    if (d) return d.role === "directeur" ? "D" : "A";
+    if (d) return LETTRE_PAR_ROLE_SPECIALE[d.role];
     return null;
   }
 
@@ -193,7 +206,9 @@ export default function RepartitionPage() {
     const config =
       lettre === "L" || lettre === "T" || lettre === "G" ? CONFIG_PAR_LETTRE[lettre] : null;
     const roleDirection =
-      lettre === "D" || lettre === "A" ? ROLE_PAR_LETTRE_DIRECTION[lettre] : null;
+      lettre === "D" || lettre === "A" || lettre === "I" || lettre === "R"
+        ? ROLE_PAR_LETTRE_SPECIALE[lettre]
+        : null;
     const precedenteGroupe = affectations.find(
       (a) => a.animateur_id === animateurId && a.date === date
     );
@@ -309,7 +324,7 @@ export default function RepartitionPage() {
     e: React.ChangeEvent<HTMLInputElement>
   ) {
     const lettre = e.target.value.trim().toUpperCase().slice(-1);
-    if (lettre && !["L", "T", "G", "D", "A"].includes(lettre)) return; // caractère invalide ignoré
+    if (lettre && !["L", "T", "G", "D", "A", "I", "R"].includes(lettre)) return; // caractère invalide ignoré
     assigner(animateurId, date, lettre);
   }
 
@@ -484,6 +499,19 @@ export default function RepartitionPage() {
     return map;
   }, [animateurs]);
 
+  // Animateurs marqués inclusif/roulant au moins un jour de la période, pour
+  // la section dédiée de la feuille imprimable — contrairement à
+  // Directeur/Directeur adjoint, pas de roster séparé : n'importe quel
+  // animateur peut être ponctuellement inclusif ou roulant un jour donné.
+  function idsAvecRoleSpecial(role: RoleDirectionJour): Animateur[] {
+    const set = new Set<string>();
+    for (const p of presenceDirection) if (p.role === role) set.add(p.animateur_id);
+    return [...set]
+      .map((id) => animateurParId.get(id))
+      .filter((a): a is Animateur => !!a)
+      .sort((a, b) => a.nom.localeCompare(b.nom));
+  }
+
   // Seuls Directeur/Directeur adjoint sortent de la liste normale des
   // animateurs sur la feuille imprimée — un coordinateur apparaît là-bas
   // en plus de sa ligne dédiée dans Direction (cf. plus bas), comme un
@@ -518,7 +546,7 @@ export default function RepartitionPage() {
   // affectation trouvée sur la période) pour repérer les groupes d'un
   // coup d'œil, plutôt qu'un simple ordre alphabétique mélangeant tout le
   // monde. Non affectés à la fin.
-  const ORDRE_LETTRE: Record<LettreGrille, number> = { L: 0, T: 1, G: 2, D: 3, A: 4 };
+  const ORDRE_LETTRE: Record<LettreGrille, number> = { L: 0, T: 1, G: 2, D: 3, A: 4, I: 5, R: 6 };
   function lettrePrincipale(animateurId: string): LettreGrille | null {
     for (const j of joursOuvrables) {
       const l = lettreAffichee(animateurId, j);
@@ -541,7 +569,7 @@ export default function RepartitionPage() {
         <h1 className="text-2xl font-semibold text-zinc-900">Répartition</h1>
         <p className="mt-1 text-sm text-zinc-500">
           {editable
-            ? "Tape L (Lutins), T (Trolls), G (Géants), D (Directeur) ou A (Directeur adjoint) dans chaque case — la saisie avance automatiquement au jour suivant. Le tableau se regroupe automatiquement par lettre. Trolls et Géants restent gérés comme un seul groupe partout ailleurs (Planning, Effectifs, Goûters...), cette distinction est propre à cette page."
+            ? "Tape L (Lutins), T (Trolls), G (Géants), D (Directeur), A (Directeur adjoint), I (Inclusif) ou R (Roulant) dans chaque case — la saisie avance automatiquement au jour suivant. Le tableau se regroupe automatiquement par lettre. Trolls et Géants restent gérés comme un seul groupe partout ailleurs (Planning, Effectifs, Goûters...), cette distinction est propre à cette page."
             : "Consulte la répartition des animateurs par groupe."}
         </p>
       </div>
@@ -592,6 +620,12 @@ export default function RepartitionPage() {
               </span>
               <span className="flex items-center gap-1">
                 <span className="inline-block h-3 w-3 rounded bg-purple-100" /> A = Directeur adjoint
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-3 w-3 rounded bg-teal-100" /> I = Inclusif
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-3 w-3 rounded bg-rose-100" /> R = Roulant
               </span>
               <span className="flex items-center gap-1">
                 <span className="inline-block h-3 w-3 rounded bg-zinc-200" /> Week-end (fermé)
@@ -955,6 +989,68 @@ export default function RepartitionPage() {
                       </tr>
                     );
                   })}
+
+                {(() => {
+                  const roulants = idsAvecRoleSpecial("roulant");
+                  const inclusifs = idsAvecRoleSpecial("inclusif");
+                  if (roulants.length === 0 && inclusifs.length === 0) return null;
+                  return (
+                    <>
+                      <tr>
+                        <td
+                          colSpan={3 + joursOuvrables.length}
+                          className="border border-black bg-zinc-300 px-1 py-1 font-bold"
+                        >
+                          Roulants & inclusifs
+                        </td>
+                      </tr>
+                      {roulants.map((a) => (
+                        <tr key={`roulant-${a.id}`}>
+                          <td className="border border-black bg-rose-100 px-1 py-1">Roulant</td>
+                          <td className="border border-black bg-rose-100 px-1 py-1 font-semibold uppercase">
+                            {a.nom}
+                          </td>
+                          <td className="border border-black bg-rose-100 px-1 py-1">{a.prenom}</td>
+                          {joursOuvrables.map((j) => {
+                            const present = directionPresentCeJour(a.id, j, "roulant");
+                            return (
+                              <td
+                                key={j}
+                                className={`border border-black px-1 py-1 text-center ${
+                                  present ? "bg-rose-100" : bandeSemaine(j)
+                                } ${bordureSemaine(j, false)}`}
+                              >
+                                {present ? "X" : ""}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                      {inclusifs.map((a) => (
+                        <tr key={`inclusif-${a.id}`}>
+                          <td className="border border-black bg-teal-100 px-1 py-1">Inclusif</td>
+                          <td className="border border-black bg-teal-100 px-1 py-1 font-semibold uppercase">
+                            {a.nom}
+                          </td>
+                          <td className="border border-black bg-teal-100 px-1 py-1">{a.prenom}</td>
+                          {joursOuvrables.map((j) => {
+                            const present = directionPresentCeJour(a.id, j, "inclusif");
+                            return (
+                              <td
+                                key={j}
+                                className={`border border-black px-1 py-1 text-center ${
+                                  present ? "bg-teal-100" : bandeSemaine(j)
+                                } ${bordureSemaine(j, false)}`}
+                              >
+                                {present ? "X" : ""}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </>
+                  );
+                })()}
 
                 {(() => {
                   // Bandeau gris "Animation" (comme "Direction") juste avant
