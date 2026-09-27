@@ -929,7 +929,7 @@ export default function RepartitionPage() {
                         return (
                           <tr key={`adjoint-${a.id}`}>
                             <td className={`border border-black px-1 py-1 ${couleur}`}>
-                              Directeur adjoint
+                              Adjoint
                             </td>
                             <td className={`border border-black px-1 py-1 font-semibold uppercase ${couleur}`}>
                               {a.nom}
