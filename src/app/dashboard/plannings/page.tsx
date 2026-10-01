@@ -1324,10 +1324,13 @@ export default function PlanningsPage() {
         ]);
         titreRow.height = 22;
         ws.mergeCells(titreRow.number, 1, titreRow.number, colCount);
-        const titreCell = titreRow.getCell(1);
-        titreCell.font = { bold: true };
-        titreCell.alignment = ALIGNEMENT_CENTRE;
-        titreCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS_TITRE } };
+        for (let col = 1; col <= colCount; col++) {
+          const cell = titreRow.getCell(col);
+          cell.font = { bold: true };
+          cell.alignment = ALIGNEMENT_CENTRE;
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS_TITRE } };
+          cell.border = BORDURE;
+        }
 
         const headerRow = ws.addRow(["", "Créneau", ...semaineJours.map((j) => formatJourCourt(j))]);
         headerRow.height = 24;
@@ -1382,14 +1385,20 @@ export default function PlanningsPage() {
           if (lignes.length > 1) {
             ws.mergeCells(premiereLigne, 1, premiereLigne + lignes.length - 1, 1);
           }
+          for (let r = premiereLigne; r < premiereLigne + lignes.length; r++) {
+            const cell = ws.getCell(r, 1);
+            cell.border = { ...BORDURE, top: r === premiereLigne ? BORDURE_EPAISSE : BORDURE_FINE };
+          }
           const celluleType = ws.getCell(premiereLigne, 1);
           celluleType.value = TYPE_CRENEAU_LABELS[type];
           celluleType.font = { bold: true, size: 9 };
           celluleType.alignment = { vertical: "middle", horizontal: "center", textRotation: 90 };
-          celluleType.border = { ...BORDURE, top: BORDURE_EPAISSE };
         }
 
-        ws.addRow([]);
+        const espaceRow = ws.addRow([]);
+        for (let col = 1; col <= colCount; col++) {
+          ws.getCell(espaceRow.number, col).border = BORDURE;
+        }
       }
 
       ws.getColumn(1).width = 4;
