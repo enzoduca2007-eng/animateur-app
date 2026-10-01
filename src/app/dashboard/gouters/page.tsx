@@ -1275,110 +1275,115 @@ export default function GoutersPage() {
                   {periode?.description} · {periode?.debut} – {periode?.fin} · Zone {zone}
                 </p>
               </div>
-              <table className="mt-4 w-full border-collapse text-left text-[11px] leading-tight">
-                <thead>
-                  <tr>
-                    <th className="border border-black bg-zinc-200 px-2 py-1 font-semibold capitalize">
-                      Jour
-                    </th>
-                    <th className="border border-black bg-zinc-200 px-2 py-1 font-semibold">Bloc</th>
-                    <th className="border border-black bg-zinc-200 px-2 py-1 font-semibold">
-                      Produit
-                    </th>
-                    <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
-                      Qté/enfant
-                    </th>
-                    <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
-                      Qté/anim
-                    </th>
-                    <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
-                      Enfants + anims
-                    </th>
-                    <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
-                      Paquets
-                    </th>
-                    <th className="border border-black bg-zinc-200 px-2 py-1 text-right font-semibold">
-                      Prix
-                    </th>
-                    <th className="border border-black bg-zinc-200 px-2 py-1 text-right font-semibold">
-                      Total jour
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lignesPrix.map(
-                    ({
-                      prevu,
-                      produit,
-                      besoin,
-                      codes,
-                      premiereDuJour,
-                      rowSpanJour,
-                      totalJour,
-                      prixParTete,
-                    }) => {
-                    const quantites = [...new Set(codes.map((c) => quantiteParGroupe(produit, c)))];
-                    return (
-                      <tr key={prevu.id}>
-                        {premiereDuJour && (
-                          <td
-                            rowSpan={rowSpanJour}
-                            className="border border-black px-2 py-1 align-top capitalize"
-                          >
-                            {formatJourCourt(prevu.date)}
-                          </td>
+              {semaines.map((semaine, iSemaine) => {
+                const lignesSemaine = lignesPrix.filter((l) => semaine.includes(l.prevu.date));
+                if (lignesSemaine.length === 0) return null;
+                return (
+                  <div key={semaine[0]} className={iSemaine > 0 ? "print-page mt-6" : "mt-4"}>
+                    <p className="mb-1.5 text-sm font-semibold text-zinc-700">
+                      Semaine du {formatJourLong(semaine[0])} au {formatJourLong(semaine[semaine.length - 1])}
+                    </p>
+                    <table className="w-full border-collapse text-left text-[11px] leading-tight">
+                      <thead>
+                        <tr>
+                          <th className="border border-black bg-zinc-200 px-2 py-1 font-semibold capitalize">
+                            Jour
+                          </th>
+                          <th className="border border-black bg-zinc-200 px-2 py-1 font-semibold">
+                            Bloc
+                          </th>
+                          <th className="border border-black bg-zinc-200 px-2 py-1 font-semibold">
+                            Produit
+                          </th>
+                          <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
+                            Qté/enfant
+                          </th>
+                          <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
+                            Qté/anim
+                          </th>
+                          <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
+                            Enfants + anims
+                          </th>
+                          <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
+                            Paquets
+                          </th>
+                          <th className="border border-black bg-zinc-200 px-2 py-1 text-right font-semibold">
+                            Prix
+                          </th>
+                          <th className="border border-black bg-zinc-200 px-2 py-1 text-right font-semibold">
+                            Total jour
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lignesSemaine.map(
+                          ({
+                            prevu,
+                            produit,
+                            besoin,
+                            codes,
+                            premiereDuJour,
+                            rowSpanJour,
+                            totalJour,
+                            prixParTete,
+                          }) => {
+                          const quantites = [...new Set(codes.map((c) => quantiteParGroupe(produit, c)))];
+                          return (
+                            <tr key={prevu.id}>
+                              {premiereDuJour && (
+                                <td
+                                  rowSpan={rowSpanJour}
+                                  className="border border-black px-2 py-1 align-top capitalize"
+                                >
+                                  {formatJourCourt(prevu.date)}
+                                </td>
+                              )}
+                              <td className="border border-black px-2 py-1">
+                                {codes.map((c) => LABEL_BLOC[c]).join(" + ")}
+                              </td>
+                              <td className="border border-black px-2 py-1 font-medium">{produit.nom}</td>
+                              <td className="border border-black px-2 py-1 text-center">
+                                {quantites.length === 1 ? quantites[0] : quantites.join(" / ")}
+                              </td>
+                              <td className="border border-black px-2 py-1 text-center">
+                                {besoin.animateurs > 0 ? produit.quantite_animateur : "—"}
+                              </td>
+                              <td className="border border-black px-2 py-1 text-center">
+                                {besoin.enfants}
+                                {besoin.animateurs > 0 ? ` + ${besoin.animateurs}` : ""}
+                              </td>
+                              <td className="border border-black px-2 py-1 text-center">
+                                {besoin.paquets}
+                              </td>
+                              <td className="border border-black px-2 py-1 text-right">
+                                {FORMAT_EUR.format(besoin.cout)}
+                              </td>
+                              {premiereDuJour && (
+                                <td
+                                  rowSpan={rowSpanJour}
+                                  className="border border-black px-2 py-1 text-right align-top font-semibold"
+                                >
+                                  {FORMAT_EUR.format(totalJour)}
+                                  <br />
+                                  <span className="font-normal text-zinc-600">
+                                    {prixParTete !== null
+                                      ? `${FORMAT_EUR.format(prixParTete)}/tête`
+                                      : "—"}
+                                  </span>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        }
                         )}
-                        <td className="border border-black px-2 py-1">
-                          {codes.map((c) => LABEL_BLOC[c]).join(" + ")}
-                        </td>
-                        <td className="border border-black px-2 py-1 font-medium">{produit.nom}</td>
-                        <td className="border border-black px-2 py-1 text-center">
-                          {quantites.length === 1 ? quantites[0] : quantites.join(" / ")}
-                        </td>
-                        <td className="border border-black px-2 py-1 text-center">
-                          {besoin.animateurs > 0 ? produit.quantite_animateur : "—"}
-                        </td>
-                        <td className="border border-black px-2 py-1 text-center">
-                          {besoin.enfants}
-                          {besoin.animateurs > 0 ? ` + ${besoin.animateurs}` : ""}
-                        </td>
-                        <td className="border border-black px-2 py-1 text-center">{besoin.paquets}</td>
-                        <td className="border border-black px-2 py-1 text-right">
-                          {FORMAT_EUR.format(besoin.cout)}
-                        </td>
-                        {premiereDuJour && (
-                          <td
-                            rowSpan={rowSpanJour}
-                            className="border border-black px-2 py-1 text-right align-top font-semibold"
-                          >
-                            {FORMAT_EUR.format(totalJour)}
-                            <br />
-                            <span className="font-normal text-zinc-600">
-                              {prixParTete !== null
-                                ? `${FORMAT_EUR.format(prixParTete)}/tête`
-                                : "—"}
-                            </span>
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  }
-                  )}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="border border-black px-2 py-1 text-right font-semibold"
-                    >
-                      Total période
-                    </td>
-                    <td className="border border-black px-2 py-1 text-right font-semibold">
-                      {FORMAT_EUR.format(coutTotalPeriode)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
+              <p className="mt-3 text-right text-sm font-semibold text-zinc-900">
+                Total période : {FORMAT_EUR.format(coutTotalPeriode)}
+              </p>
             </div>
           )}
 
