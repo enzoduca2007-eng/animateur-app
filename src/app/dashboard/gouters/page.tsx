@@ -139,7 +139,9 @@ export default function GoutersPage() {
   const [formNouveauProduit, setFormNouveauProduit] = useState({
     nom: "",
     marque: "",
-    quantite_par_enfant: "1",
+    quantite_lutins: "1",
+    quantite_trolls: "1",
+    quantite_geants: "1",
     taille_paquet: "20",
     prix_paquet: "",
   });
@@ -312,16 +314,29 @@ export default function GoutersPage() {
     return produits.find((p) => p.id === produitId)?.nom ?? "—";
   }
 
+  // La quantité/enfant d'un produit dépend du bloc (un Géant mange plus
+  // qu'un Lutin), d'où le besoin d'un lookup par code plutôt qu'une seule
+  // valeur sur le produit.
+  function quantiteParGroupe(produit: ProduitGouter, code: CodeBloc) {
+    if (code === "lutins") return produit.quantite_lutins;
+    if (code === "trolls") return produit.quantite_trolls;
+    return produit.quantite_geants;
+  }
+
   // Nombre de paquets à acheter et coût pour un produit prévu : à partir
   // des effectifs du/des bloc(s) concernés (bloc natif + commun_avec) ce
-  // jour-là, et de la quantité/enfant + taille de paquet + prix du produit.
+  // jour-là, chacun pondéré par la quantité/enfant propre à son groupe,
+  // puis taille de paquet + prix du produit.
   function besoinPrevu(prevu: GouterPrevu) {
     const produit = produits.find((p) => p.id === prevu.produit_id);
     if (!produit) return null;
     const codeNatif: CodeBloc = prevu.groupe === "lutins" ? "lutins" : (prevu.sous_groupe ?? "trolls");
     const codes: CodeBloc[] = [codeNatif, ...prevu.commun_avec];
     const enfants = codes.reduce((total, code) => total + effectifDuCode(code, prevu.date), 0);
-    const quantiteTotale = enfants * produit.quantite_par_enfant;
+    const quantiteTotale = codes.reduce(
+      (total, code) => total + effectifDuCode(code, prevu.date) * quantiteParGroupe(produit, code),
+      0
+    );
     const paquets = Math.ceil(quantiteTotale / produit.taille_paquet);
     const cout = paquets * produit.prix_paquet;
     return { enfants, paquets, cout };
@@ -426,7 +441,9 @@ export default function GoutersPage() {
       .insert({
         nom,
         marque: formNouveauProduit.marque.trim() || null,
-        quantite_par_enfant: Number(formNouveauProduit.quantite_par_enfant) || 1,
+        quantite_lutins: Number(formNouveauProduit.quantite_lutins) || 1,
+        quantite_trolls: Number(formNouveauProduit.quantite_trolls) || 1,
+        quantite_geants: Number(formNouveauProduit.quantite_geants) || 1,
         taille_paquet: Number(formNouveauProduit.taille_paquet) || 20,
         prix_paquet: Number(formNouveauProduit.prix_paquet) || 0,
         created_by: profile.id,
@@ -438,7 +455,15 @@ export default function GoutersPage() {
       return;
     }
     setProduits((prev) => [...prev, data as ProduitGouter].sort((a, b) => a.nom.localeCompare(b.nom)));
-    setFormNouveauProduit({ nom: "", marque: "", quantite_par_enfant: "1", taille_paquet: "20", prix_paquet: "" });
+    setFormNouveauProduit({
+      nom: "",
+      marque: "",
+      quantite_lutins: "1",
+      quantite_trolls: "1",
+      quantite_geants: "1",
+      taille_paquet: "20",
+      prix_paquet: "",
+    });
   }
 
   async function majProduit(id: string, updates: Partial<ProduitGouter>) {
@@ -690,19 +715,29 @@ export default function GoutersPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] text-zinc-400">Qté/enfant</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={formNouveauProduit.quantite_par_enfant}
-                      onChange={(e) =>
-                        setFormNouveauProduit((prev) => ({
-                          ...prev,
-                          quantite_par_enfant: e.target.value,
-                        }))
-                      }
-                      className="block w-20 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-                    />
+                    <label className="text-[10px] text-zinc-400">Qté/enfant (L · T · G)</label>
+                    <div className="flex gap-1">
+                      {(
+                        [
+                          ["quantite_lutins", "L"],
+                          ["quantite_trolls", "T"],
+                          ["quantite_geants", "G"],
+                        ] as const
+                      ).map(([champ, label]) => (
+                        <input
+                          key={champ}
+                          type="number"
+                          min={1}
+                          title={LABEL_BLOC[champ === "quantite_lutins" ? "lutins" : champ === "quantite_trolls" ? "trolls" : "geants"]}
+                          placeholder={label}
+                          value={formNouveauProduit[champ]}
+                          onChange={(e) =>
+                            setFormNouveauProduit((prev) => ({ ...prev, [champ]: e.target.value }))
+                          }
+                          className="block w-10 rounded-md border border-zinc-300 px-1 py-1.5 text-center text-sm"
+                        />
+                      ))}
+                    </div>
                   </div>
                   <div>
                     <label className="text-[10px] text-zinc-400">Unités/paquet</label>
@@ -763,19 +798,34 @@ export default function GoutersPage() {
                           placeholder="Marque"
                           className="w-20 rounded border border-transparent px-1 py-0.5 text-zinc-500 hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
                         />
-                        <label className="flex items-center gap-1 text-xs text-zinc-400">
-                          <input
-                            type="number"
-                            min={1}
-                            defaultValue={produit.quantite_par_enfant}
-                            onBlur={(e) => {
-                              const v = Number(e.target.value);
-                              if (v > 0) majProduit(produit.id, { quantite_par_enfant: v });
-                            }}
-                            className="w-14 rounded border border-zinc-200 px-1 py-0.5 text-zinc-700"
-                          />
-                          /enfant
-                        </label>
+                        <div className="flex items-center gap-1 text-xs text-zinc-400">
+                          {(
+                            [
+                              ["quantite_lutins", "L"],
+                              ["quantite_trolls", "T"],
+                              ["quantite_geants", "G"],
+                            ] as const
+                          ).map(([champ, label]) => (
+                            <label
+                              key={champ}
+                              title={LABEL_BLOC[champ === "quantite_lutins" ? "lutins" : champ === "quantite_trolls" ? "trolls" : "geants"]}
+                              className="flex items-center gap-0.5"
+                            >
+                              {label}
+                              <input
+                                type="number"
+                                min={1}
+                                defaultValue={produit[champ]}
+                                onBlur={(e) => {
+                                  const v = Number(e.target.value);
+                                  if (v > 0) majProduit(produit.id, { [champ]: v });
+                                }}
+                                className="w-10 rounded border border-zinc-200 px-1 py-0.5 text-center text-zinc-700"
+                              />
+                            </label>
+                          ))}
+                          <span>/enfant</span>
+                        </div>
                         <label className="flex items-center gap-1 text-xs text-zinc-400">
                           <input
                             type="number"

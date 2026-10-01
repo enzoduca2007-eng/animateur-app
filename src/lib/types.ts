@@ -413,7 +413,9 @@ export interface ProduitGouter {
   id: string;
   nom: string;
   marque: string | null;
-  quantite_par_enfant: number;
+  quantite_lutins: number;
+  quantite_trolls: number;
+  quantite_geants: number;
   taille_paquet: number;
   prix_paquet: number;
   actif: boolean;
