@@ -536,14 +536,26 @@ export default function GoutersPage() {
         return { prevu, produit, besoin, codes };
       })
       .filter((ligne): ligne is NonNullable<typeof ligne> => ligne !== null);
-    return lignes.map((ligne, i) => ({
-      ...ligne,
-      premiereDuJour: i === 0 || lignes[i - 1].prevu.date !== ligne.prevu.date,
-      rowSpanJour: lignes.filter((l) => l.prevu.date === ligne.prevu.date).length,
-      totalJour: lignes
+    return lignes.map((ligne, i) => {
+      const totalJour = lignes
         .filter((l) => l.prevu.date === ligne.prevu.date)
-        .reduce((total, l) => total + l.besoin.cout, 0),
-    }));
+        .reduce((total, l) => total + l.besoin.cout, 0);
+      // Prix/tête = coût du jour (anims compris) / enfants du jour
+      // uniquement — effectif réel de chaque bloc une seule fois, pas
+      // sommé par occurrence (sinon un même enfant compterait 2 fois s'il
+      // a 2 produits prévus le même jour).
+      const enfantsJour = BLOCS.reduce(
+        (total, bloc) => total + effectifDuBloc(bloc, ligne.prevu.date),
+        0
+      );
+      return {
+        ...ligne,
+        premiereDuJour: i === 0 || lignes[i - 1].prevu.date !== ligne.prevu.date,
+        rowSpanJour: lignes.filter((l) => l.prevu.date === ligne.prevu.date).length,
+        totalJour,
+        prixParTete: enfantsJour > 0 ? totalJour / enfantsJour : null,
+      };
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goutersPrevus, produits, effectifsJour, effectifsSousGroupe, affectationsPeriode]);
 
@@ -1185,7 +1197,16 @@ export default function GoutersPage() {
                 </thead>
                 <tbody>
                   {lignesPrix.map(
-                    ({ prevu, produit, besoin, codes, premiereDuJour, rowSpanJour, totalJour }) => {
+                    ({
+                      prevu,
+                      produit,
+                      besoin,
+                      codes,
+                      premiereDuJour,
+                      rowSpanJour,
+                      totalJour,
+                      prixParTete,
+                    }) => {
                     const quantites = [...new Set(codes.map((c) => quantiteParGroupe(produit, c)))];
                     return (
                       <tr key={prevu.id}>
@@ -1221,6 +1242,12 @@ export default function GoutersPage() {
                             className="border border-black px-3 py-2 text-right align-top font-semibold"
                           >
                             {FORMAT_EUR.format(totalJour)}
+                            <br />
+                            <span className="font-normal text-zinc-600">
+                              {prixParTete !== null
+                                ? `${FORMAT_EUR.format(prixParTete)}/tête`
+                                : "—"}
+                            </span>
                           </td>
                         )}
                       </tr>
