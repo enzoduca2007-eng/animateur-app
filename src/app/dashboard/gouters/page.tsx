@@ -781,55 +781,54 @@ export default function GoutersPage() {
 
           {canManage(profile.role) && modeImpression === "menu" && produits.length > 0 && (
             <div className="hidden print:block">
-              <h2 className="text-lg font-bold text-zinc-900">Tableau des goûters</h2>
-              <p className="mt-1 text-sm text-zinc-600">
-                {periode?.description} ({periode?.debut} – {periode?.fin}) · Zone {zone}
-              </p>
-              <table className="mt-4 w-full table-fixed border-collapse text-left text-xs">
+              <div className="flex items-baseline justify-between border-b-2 border-black pb-2">
+                <h2 className="text-xl font-bold text-zinc-900">Tableau des goûters</h2>
+                <p className="text-sm text-zinc-600">
+                  {periode?.description} · {periode?.debut} – {periode?.fin} · Zone {zone}
+                </p>
+              </div>
+              <table className="mt-4 w-full border-collapse text-left text-sm">
                 <thead>
                   <tr>
-                    {JOURS_SEMAINE.map((j) => (
+                    <th className="w-[16%] border border-black bg-zinc-200 px-3 py-2 font-semibold">
+                      Jour
+                    </th>
+                    {BLOCS.map((bloc) => (
                       <th
-                        key={j.numero}
-                        className="w-1/5 border border-black px-2 py-1 text-center font-semibold"
+                        key={codeDeBloc(bloc)}
+                        className="border border-black bg-zinc-200 px-3 py-2 font-semibold"
                       >
-                        {j.label}
+                        {LABEL_BLOC[codeDeBloc(bloc)]}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {semaines.map((semaine) => (
-                    <tr key={semaine[0]}>
-                      {JOURS_SEMAINE.map(({ numero }) => {
-                        const date = semaine.find(
-                          (d) => new Date(`${d}T00:00:00Z`).getUTCDay() === numero
-                        );
-                        if (!date) {
-                          return <td key={numero} className="border border-black px-2 py-1" />;
-                        }
-                        return (
-                          <td key={numero} className="align-top border border-black px-2 py-1">
-                            <p className="mb-1 font-semibold capitalize">{formatJourCourt(date)}</p>
-                            {groupesDuJour(date).map((groupe) => (
-                              <div key={groupe.blocs.map(codeDeBloc).join("+")} className="mb-1.5">
-                                <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-600">
-                                  {groupe.blocs.map((b) => LABEL_BLOC[codeDeBloc(b)]).join(" + ")}
-                                </p>
-                                {groupe.prevus.length === 0 ? (
-                                  <p className="text-zinc-500">—</p>
-                                ) : (
-                                  groupe.prevus.map((p) => (
-                                    <p key={p.id}>{nomProduit(p.produit_id)}</p>
-                                  ))
-                                )}
-                              </div>
-                            ))}
+                  {joursOuvrables.map((date) => {
+                    const lundi = new Date(`${date}T00:00:00Z`).getUTCDay() === 1;
+                    return (
+                      <tr key={date} className={lundi ? "border-t-2 border-t-black" : ""}>
+                        <td className="border border-black px-3 py-2 align-top font-medium capitalize">
+                          {formatJourLong(date)}
+                        </td>
+                        {groupesDuJour(date).map((groupe) => (
+                          <td
+                            key={groupe.blocs.map(codeDeBloc).join("+")}
+                            colSpan={groupe.blocs.length}
+                            className="border border-black px-3 py-2 align-top"
+                          >
+                            {groupe.prevus.length === 0 ? (
+                              <span className="text-zinc-500">—</span>
+                            ) : (
+                              groupe.prevus.map((p) => (
+                                <p key={p.id}>{nomProduit(p.produit_id)}</p>
+                              ))
+                            )}
                           </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
+                        ))}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -837,31 +836,31 @@ export default function GoutersPage() {
 
           {canManage(profile.role) && modeImpression === "tracabilite" && (
             <div className="hidden print:block">
-              <h2 className="text-lg font-bold text-zinc-900">
-                Traçabilité des goûters
-              </h2>
-              <p className="mt-1 text-sm text-zinc-600">
-                {periode?.description} ({periode?.debut} – {periode?.fin}) · Zone {zone}
-              </p>
+              <div className="flex items-baseline justify-between border-b-2 border-black pb-2">
+                <h2 className="text-xl font-bold text-zinc-900">Traçabilité des goûters</h2>
+                <p className="text-sm text-zinc-600">
+                  {periode?.description} · {periode?.debut} – {periode?.fin} · Zone {zone}
+                </p>
+              </div>
               <table className="mt-4 w-full border-collapse text-left text-xs">
                 <thead>
                   <tr>
-                    <th className="border border-black px-2 py-1 font-semibold capitalize">
+                    <th className="border border-black bg-zinc-200 px-2 py-1.5 font-semibold capitalize">
                       Date
                     </th>
-                    <th className="border border-black px-2 py-1 font-semibold">Bloc</th>
-                    <th className="border border-black px-2 py-1 font-semibold">Produit</th>
-                    <th className="border border-black px-2 py-1 font-semibold">Photo</th>
-                    <th className="border border-black px-2 py-1 font-semibold">
+                    <th className="border border-black bg-zinc-200 px-2 py-1.5 font-semibold">Bloc</th>
+                    <th className="border border-black bg-zinc-200 px-2 py-1.5 font-semibold">Produit</th>
+                    <th className="border border-black bg-zinc-200 px-2 py-1.5 font-semibold">Photo</th>
+                    <th className="border border-black bg-zinc-200 px-2 py-1.5 font-semibold">
                       Nom produit (IA)
                     </th>
-                    <th className="border border-black px-2 py-1 font-semibold">
+                    <th className="border border-black bg-zinc-200 px-2 py-1.5 font-semibold">
                       N° de lot
                     </th>
-                    <th className="border border-black px-2 py-1 font-semibold">
+                    <th className="border border-black bg-zinc-200 px-2 py-1.5 font-semibold">
                       DLC/DLUO
                     </th>
-                    <th className="border border-black px-2 py-1 font-semibold">
+                    <th className="border border-black bg-zinc-200 px-2 py-1.5 font-semibold">
                       Quantité
                     </th>
                   </tr>
