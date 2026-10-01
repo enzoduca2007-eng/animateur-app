@@ -147,9 +147,9 @@ export default function GoutersPage() {
   });
   const [ajoutsCellule, setAjoutsCellule] = useState<Record<string, string>>({});
   const compteurUpload = useRef(0);
-  const [modeImpression, setModeImpression] = useState<"menu" | "tracabilite">("menu");
+  const [modeImpression, setModeImpression] = useState<"menu" | "prix" | "tracabilite">("menu");
 
-  function imprimer(mode: "menu" | "tracabilite") {
+  function imprimer(mode: "menu" | "prix" | "tracabilite") {
     setModeImpression(mode);
     setTimeout(() => window.print(), 50);
   }
@@ -665,6 +665,12 @@ export default function GoutersPage() {
                   Imprimer le tableau des goûters
                 </button>
                 <button
+                  onClick={() => imprimer("prix")}
+                  className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  Imprimer quantités & prix
+                </button>
+                <button
                   onClick={() => imprimer("tracabilite")}
                   className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
                 >
@@ -1078,6 +1084,69 @@ export default function GoutersPage() {
                           </td>
                         );
                       })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {canManage(profile.role) && modeImpression === "prix" && produits.length > 0 && (
+            <div className="hidden print:block">
+              <div className="flex items-baseline justify-between border-b-2 border-black pb-2">
+                <h2 className="text-xl font-bold text-zinc-900">Quantités & prix des goûters</h2>
+                <p className="text-sm text-zinc-600">
+                  {periode?.description} · {periode?.debut} – {periode?.fin} · Zone {zone}
+                </p>
+              </div>
+              <table className="mt-4 w-full border-collapse text-left text-sm">
+                <thead>
+                  <tr>
+                    <th className="border border-black bg-zinc-200 px-3 py-2 font-semibold">
+                      Produit
+                    </th>
+                    <th className="border border-black bg-zinc-200 px-3 py-2 font-semibold">
+                      Marque
+                    </th>
+                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
+                      Qté/enfant Lutins
+                    </th>
+                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
+                      Qté/enfant Trolls
+                    </th>
+                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
+                      Qté/enfant Géants
+                    </th>
+                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
+                      Unités/paquet
+                    </th>
+                    <th className="border border-black bg-zinc-200 px-3 py-2 text-right font-semibold">
+                      Prix/paquet
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {produits.map((produit) => (
+                    <tr key={produit.id}>
+                      <td className="border border-black px-3 py-2 font-medium">{produit.nom}</td>
+                      <td className="border border-black px-3 py-2 text-zinc-600">
+                        {produit.marque || "—"}
+                      </td>
+                      <td className="border border-black px-3 py-2 text-center">
+                        {produit.quantite_lutins}
+                      </td>
+                      <td className="border border-black px-3 py-2 text-center">
+                        {produit.quantite_trolls}
+                      </td>
+                      <td className="border border-black px-3 py-2 text-center">
+                        {produit.quantite_geants}
+                      </td>
+                      <td className="border border-black px-3 py-2 text-center">
+                        {produit.taille_paquet}
+                      </td>
+                      <td className="border border-black px-3 py-2 text-right">
+                        {FORMAT_EUR.format(produit.prix_paquet)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
