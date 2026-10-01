@@ -23,6 +23,7 @@ import {
   type Groupe,
   type JourFermeture,
   type PalierEncadrement,
+  type PresenceDirectionJour,
   type PublicationPlanningSemaine,
   type TypeCreneau,
   type VerrouPlanningSemaine,
@@ -69,6 +70,7 @@ export default function PlanningsPage() {
   const [creneaux, setCreneaux] = useState<Creneau[]>([]);
   const [affectations, setAffectations] = useState<AffectationCreneau[]>([]);
   const [affectationsJour, setAffectationsJour] = useState<AffectationJour[]>([]);
+  const [presencesDirection, setPresencesDirection] = useState<PresenceDirectionJour[]>([]);
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -243,7 +245,7 @@ export default function PlanningsPage() {
 
   async function loadAffectations(debut: string, fin: string) {
     setLoading(true);
-    const [{ data: c }, { data: j }, { data: e }] = await Promise.all([
+    const [{ data: c }, { data: j }, { data: e }, { data: pd }] = await Promise.all([
       supabase
         .from("affectations_creneau")
         .select("*")
@@ -259,10 +261,17 @@ export default function PlanningsPage() {
         .select("*")
         .gte("date", debut)
         .lte("date", fin),
+      supabase
+        .from("presence_direction_jour")
+        .select("*")
+        .gte("date", debut)
+        .lte("date", fin)
+        .in("role", ["roulant", "inclusif"]),
     ]);
     setAffectations((c as AffectationCreneau[]) ?? []);
     setAffectationsJour((j as AffectationJour[]) ?? []);
     setEffectifs((e as EffectifJour[]) ?? []);
+    setPresencesDirection((pd as PresenceDirectionJour[]) ?? []);
     setLoading(false);
   }
 
@@ -298,6 +307,26 @@ export default function PlanningsPage() {
     return animateursParGroupeJour.get(`${groupe}|${date}`) ?? [];
   }
 
+  // Les roulants/inclusifs (Répartition, codes R/I) n'appartiennent à
+  // aucun groupe réel ce jour-là (presence_direction_jour, pas
+  // affectations_jour) : ils peuvent ouvrir/fermer aussi bien chez les
+  // Lutins que chez Trolls & Géants, donc éligibles sur les deux blocs.
+  const animateursRoulantInclusifParJour = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const p of presencesDirection) {
+      map.set(p.date, [...(map.get(p.date) ?? []), p.animateur_id]);
+    }
+    return map;
+  }, [presencesDirection]);
+
+  function animateursRoulantInclusifDuJour(date: string) {
+    return animateursRoulantInclusifParJour.get(date) ?? [];
+  }
+
+  function roleDirectionDe(animateurId: string, date: string) {
+    return presencesDirection.find((p) => p.animateur_id === animateurId && p.date === date)?.role ?? null;
+  }
+
   const effectifParCle = useMemo(() => {
     const map = new Map<string, number>();
     for (const e of effectifs) map.set(`${e.groupe}|${e.date}`, e.effectif);
@@ -324,7 +353,8 @@ export default function PlanningsPage() {
   // seul groupe réel désormais, mais l'abstraction évite de dupliquer le
   // rendu du tableau).
   function eligiblesBloc(groupes: Groupe[], date: string) {
-    return groupes.flatMap((g) => animateursDuGroupe(g, date));
+    const base = groupes.flatMap((g) => animateursDuGroupe(g, date));
+    return [...new Set([...base, ...animateursRoulantInclusifDuJour(date)])];
   }
 
   function nbRequisEncadrementBloc(groupes: Groupe[], date: string) {
@@ -2110,6 +2140,7 @@ export default function PlanningsPage() {
                           ? animateurs.find((x) => x.id === groupeCovoit.animateur_ids[0])
                               ?.prenom
                           : null;
+                      const roleDirection = roleDirectionDe(a.id, celluleOuverte.date);
                       return (
                         <label
                           key={a.id}
@@ -2138,6 +2169,11 @@ export default function PlanningsPage() {
                             }
                           />
                           {a.prenom}
+                          {roleDirection && (
+                            <span className="text-xs text-zinc-400">
+                              ({roleDirection === "roulant" ? "Roulant" : "Inclusif"})
+                            </span>
+                          )}
                           {groupeCovoit && <span>🚗</span>}
                         </label>
                       );
