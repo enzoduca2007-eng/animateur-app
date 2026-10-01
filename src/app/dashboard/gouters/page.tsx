@@ -149,9 +149,11 @@ export default function GoutersPage() {
   });
   const [ajoutsCellule, setAjoutsCellule] = useState<Record<string, string>>({});
   const compteurUpload = useRef(0);
-  const [modeImpression, setModeImpression] = useState<"menu" | "prix" | "tracabilite">("menu");
+  const [modeImpression, setModeImpression] = useState<
+    "menu" | "prix" | "distribution" | "tracabilite"
+  >("menu");
 
-  function imprimer(mode: "menu" | "prix" | "tracabilite") {
+  function imprimer(mode: "menu" | "prix" | "distribution" | "tracabilite") {
     setModeImpression(mode);
     setTimeout(() => window.print(), 50);
   }
@@ -559,6 +561,43 @@ export default function GoutersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goutersPrevus, produits, effectifsJour, effectifsSousGroupe, affectationsPeriode]);
 
+  // Lignes du tableau imprimable "Distribution" : un paquet calculé par
+  // bloc indépendamment (pas mutualisé comme dans "Quantités & prix"), pour
+  // savoir combien de paquets remettre à chaque groupe séparément — un
+  // produit commun à Trolls + Géants donne ici 2 lignes, chacune arrondie
+  // à son propre paquet entier.
+  const lignesDistribution = useMemo(() => {
+    const lignes: {
+      date: string;
+      code: CodeBloc;
+      produit: ProduitGouter;
+      enfants: number;
+      animateurs: number;
+      paquets: number;
+    }[] = [];
+    for (const prevu of goutersPrevus) {
+      const produit = produits.find((p) => p.id === prevu.produit_id);
+      if (!produit) continue;
+      const codeNatif: CodeBloc = prevu.groupe === "lutins" ? "lutins" : (prevu.sous_groupe ?? "trolls");
+      const codes: CodeBloc[] = [codeNatif, ...prevu.commun_avec];
+      for (const code of codes) {
+        const enfants = effectifDuCode(code, prevu.date);
+        const animateurs = animateursDuCode(code, prevu.date);
+        const quantite = enfants * quantiteParGroupe(produit, code) + animateurs * produit.quantite_animateur;
+        const paquets = Math.ceil(quantite / produit.taille_paquet);
+        lignes.push({ date: prevu.date, code, produit, enfants, animateurs, paquets });
+      }
+    }
+    const ordreCode = (c: CodeBloc) => BLOCS.findIndex((b) => codeDeBloc(b) === c);
+    lignes.sort((a, b) => (a.date !== b.date ? a.date.localeCompare(b.date) : ordreCode(a.code) - ordreCode(b.code)));
+    return lignes.map((ligne, i) => ({
+      ...ligne,
+      premiereDuJour: i === 0 || lignes[i - 1].date !== ligne.date,
+      rowSpanJour: lignes.filter((l) => l.date === ligne.date).length,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goutersPrevus, produits, effectifsJour, effectifsSousGroupe, affectationsPeriode]);
+
   async function trouverOuCreerGouter(bloc: Bloc, date: string, produitId: string | null) {
     const existant = gouters.find(
       (g) => g.date === date && appartientAuBloc(g, bloc) && g.produit_id === produitId
@@ -736,6 +775,12 @@ export default function GoutersPage() {
                   className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
                 >
                   Imprimer quantités & prix
+                </button>
+                <button
+                  onClick={() => imprimer("distribution")}
+                  className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  Imprimer la distribution
                 </button>
                 <button
                   onClick={() => imprimer("tracabilite")}
@@ -1268,6 +1313,61 @@ export default function GoutersPage() {
                     </td>
                   </tr>
                 </tfoot>
+              </table>
+            </div>
+          )}
+
+          {canManage(profile.role) && modeImpression === "distribution" && (
+            <div className="hidden print:block">
+              <div className="flex items-baseline justify-between border-b-2 border-black pb-2">
+                <h2 className="text-xl font-bold text-zinc-900">Distribution des goûters</h2>
+                <p className="text-sm text-zinc-600">
+                  {periode?.description} · {periode?.debut} – {periode?.fin} · Zone {zone}
+                </p>
+              </div>
+              <table className="mt-4 w-full border-collapse text-left text-sm">
+                <thead>
+                  <tr>
+                    <th className="w-[16%] border border-black bg-zinc-200 px-3 py-2 font-semibold capitalize">
+                      Jour
+                    </th>
+                    <th className="border border-black bg-zinc-200 px-3 py-2 font-semibold">Bloc</th>
+                    <th className="border border-black bg-zinc-200 px-3 py-2 font-semibold">
+                      Produit
+                    </th>
+                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
+                      Enfants + anims
+                    </th>
+                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
+                      Paquets à remettre
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lignesDistribution.map(
+                    ({ date, code, produit, enfants, animateurs, paquets, premiereDuJour, rowSpanJour }, i) => (
+                      <tr key={`${date}-${code}-${produit.id}-${i}`}>
+                        {premiereDuJour && (
+                          <td
+                            rowSpan={rowSpanJour}
+                            className="border border-black px-3 py-2 align-top capitalize"
+                          >
+                            {formatJourCourt(date)}
+                          </td>
+                        )}
+                        <td className="border border-black px-3 py-2">{LABEL_BLOC[code]}</td>
+                        <td className="border border-black px-3 py-2 font-medium">{produit.nom}</td>
+                        <td className="border border-black px-3 py-2 text-center">
+                          {enfants}
+                          {animateurs > 0 ? ` + ${animateurs}` : ""}
+                        </td>
+                        <td className="border border-black px-3 py-2 text-center text-lg font-semibold">
+                          {paquets}
+                        </td>
+                      </tr>
+                    )
+                  )}
+                </tbody>
               </table>
             </div>
           )}
