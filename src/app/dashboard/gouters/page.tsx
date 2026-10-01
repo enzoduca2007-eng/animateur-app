@@ -1240,32 +1240,70 @@ export default function GoutersPage() {
                     <table className="w-full border-collapse text-left text-[11px] leading-tight">
                       <thead>
                         <tr>
-                          <th className="border border-black bg-zinc-200 px-2 py-1 font-semibold capitalize">
+                          <th
+                            rowSpan={2}
+                            className="border border-black bg-zinc-200 px-2 py-1 align-bottom font-semibold capitalize"
+                          >
                             Jour
                           </th>
-                          <th className="border border-black bg-zinc-200 px-2 py-1 font-semibold">
+                          <th
+                            rowSpan={2}
+                            className="border border-black bg-zinc-200 px-2 py-1 align-bottom font-semibold"
+                          >
                             Bloc
                           </th>
-                          <th className="border border-black bg-zinc-200 px-2 py-1 font-semibold">
+                          <th
+                            rowSpan={2}
+                            className="border border-black bg-zinc-200 px-2 py-1 align-bottom font-semibold"
+                          >
                             Produit
                           </th>
-                          <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
+                          <th
+                            colSpan={3}
+                            className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold"
+                          >
                             Qté/enfant
                           </th>
-                          <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
+                          <th
+                            rowSpan={2}
+                            className="border border-black bg-zinc-200 px-2 py-1 align-bottom text-center font-semibold"
+                          >
                             Qté/anim
                           </th>
-                          <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
+                          <th
+                            rowSpan={2}
+                            className="border border-black bg-zinc-200 px-2 py-1 align-bottom text-center font-semibold"
+                          >
                             Enfants + anims
                           </th>
-                          <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
+                          <th
+                            rowSpan={2}
+                            className="border border-black bg-zinc-200 px-2 py-1 align-bottom text-center font-semibold"
+                          >
                             Paquets
                           </th>
-                          <th className="border border-black bg-zinc-200 px-2 py-1 text-right font-semibold">
+                          <th
+                            rowSpan={2}
+                            className="border border-black bg-zinc-200 px-2 py-1 align-bottom text-right font-semibold"
+                          >
                             Prix
                           </th>
-                          <th className="border border-black bg-zinc-200 px-2 py-1 text-right font-semibold">
+                          <th
+                            rowSpan={2}
+                            className="border border-black bg-zinc-200 px-2 py-1 align-bottom text-right font-semibold"
+                          >
                             Total jour
+                          </th>
+                        </tr>
+                        <tr>
+                          <th className="border border-black bg-zinc-200 px-1 py-0.5 text-center text-[10px] font-medium">
+                            L
+                          </th>
+                          <th className="border border-black bg-zinc-200 px-1 py-0.5 text-center text-[10px] font-medium">
+                            T
+                          </th>
+                          <th className="border border-black bg-zinc-200 px-1 py-0.5 text-center text-[10px] font-medium">
+                            G
                           </th>
                         </tr>
                       </thead>
@@ -1295,21 +1333,14 @@ export default function GoutersPage() {
                                 {codes.map((c) => LABEL_BLOC[c]).join(" + ")}
                               </td>
                               <td className="border border-black px-2 py-1 font-medium">{produit.nom}</td>
-                              <td className="border border-black p-0 text-center">
-                                <div className="flex divide-x divide-black">
-                                  <div className="flex-1 py-1">
-                                    <span className="text-[9px] text-zinc-500">L</span>{" "}
-                                    {produit.quantite_lutins}
-                                  </div>
-                                  <div className="flex-1 py-1">
-                                    <span className="text-[9px] text-zinc-500">T</span>{" "}
-                                    {produit.quantite_trolls}
-                                  </div>
-                                  <div className="flex-1 py-1">
-                                    <span className="text-[9px] text-zinc-500">G</span>{" "}
-                                    {produit.quantite_geants}
-                                  </div>
-                                </div>
+                              <td className="border border-black px-1 py-1 text-center">
+                                {produit.quantite_lutins}
+                              </td>
+                              <td className="border border-black px-1 py-1 text-center">
+                                {produit.quantite_trolls}
+                              </td>
+                              <td className="border border-black px-1 py-1 text-center">
+                                {produit.quantite_geants}
                               </td>
                               <td className="border border-black px-2 py-1 text-center">
                                 {besoin.animateurs > 0 ? produit.quantite_animateur : "—"}
