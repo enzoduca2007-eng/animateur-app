@@ -123,6 +123,7 @@ export default function GoutersPage() {
   const [goutersPeriode, setGoutersPeriode] = useState<Gouter[]>([]);
   const [monAnimateur, setMonAnimateur] = useState<Animateur | null>(null);
   const [mesAffectations, setMesAffectations] = useState<AffectationJour[]>([]);
+  const [affectationsPeriode, setAffectationsPeriode] = useState<AffectationJour[]>([]);
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoiEnCours, setEnvoiEnCours] = useState<Record<string, boolean>>({});
@@ -291,6 +292,15 @@ export default function GoutersPage() {
       .gte("date", periode.debut)
       .lte("date", periode.fin)
       .then(({ data }) => setEffectifsSousGroupe((data as EffectifSousGroupe[]) ?? []));
+    // Les animateurs mangent aussi le goûter : on les compte en plus des
+    // enfants dans le besoin (cf. Répartition, où ces affectations/jour
+    // sont saisies).
+    supabase
+      .from("affectations_jour")
+      .select("*")
+      .gte("date", periode.debut)
+      .lte("date", periode.fin)
+      .then(({ data }) => setAffectationsPeriode((data as AffectationJour[]) ?? []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periode, profile.role]);
 
@@ -309,6 +319,14 @@ export default function GoutersPage() {
     return bloc ? effectifDuBloc(bloc, date) : 0;
   }
 
+  // Les animateurs affectés à un bloc ce jour-là (Répartition) mangent eux
+  // aussi le goûter : comptés en plus des enfants dans le besoin.
+  function animateursDuCode(code: CodeBloc, date: string) {
+    const bloc = BLOCS.find((b) => codeDeBloc(b) === code);
+    if (!bloc) return 0;
+    return affectationsPeriode.filter((a) => a.date === date && appartientAuBloc(a, bloc)).length;
+  }
+
   function nomProduit(produitId: string | null) {
     if (!produitId) return "—";
     return produits.find((p) => p.id === produitId)?.nom ?? "—";
@@ -324,22 +342,27 @@ export default function GoutersPage() {
   }
 
   // Nombre de paquets à acheter et coût pour un produit prévu : à partir
-  // des effectifs du/des bloc(s) concernés (bloc natif + commun_avec) ce
-  // jour-là, chacun pondéré par la quantité/enfant propre à son groupe,
-  // puis taille de paquet + prix du produit.
+  // des effectifs + animateurs du/des bloc(s) concernés (bloc natif +
+  // commun_avec) ce jour-là, chacun pondéré par la quantité/enfant propre
+  // à son groupe (les anims comptent comme des enfants de leur bloc pour
+  // la quantité), puis taille de paquet + prix du produit.
   function besoinPrevu(prevu: GouterPrevu) {
     const produit = produits.find((p) => p.id === prevu.produit_id);
     if (!produit) return null;
     const codeNatif: CodeBloc = prevu.groupe === "lutins" ? "lutins" : (prevu.sous_groupe ?? "trolls");
     const codes: CodeBloc[] = [codeNatif, ...prevu.commun_avec];
     const enfants = codes.reduce((total, code) => total + effectifDuCode(code, prevu.date), 0);
+    const animateurs = codes.reduce((total, code) => total + animateursDuCode(code, prevu.date), 0);
     const quantiteTotale = codes.reduce(
-      (total, code) => total + effectifDuCode(code, prevu.date) * quantiteParGroupe(produit, code),
+      (total, code) =>
+        total +
+        (effectifDuCode(code, prevu.date) + animateursDuCode(code, prevu.date)) *
+          quantiteParGroupe(produit, code),
       0
     );
     const paquets = Math.ceil(quantiteTotale / produit.taille_paquet);
     const cout = paquets * produit.prix_paquet;
-    return { enfants, paquets, cout };
+    return { enfants, animateurs, paquets, cout };
   }
 
   function prevusDuBloc(bloc: Bloc, date: string) {
@@ -489,7 +512,7 @@ export default function GoutersPage() {
   const coutTotalPeriode = useMemo(
     () => goutersPrevus.reduce((total, prevu) => total + (besoinPrevu(prevu)?.cout ?? 0), 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [goutersPrevus, produits, effectifsJour, effectifsSousGroupe]
+    [goutersPrevus, produits, effectifsJour, effectifsSousGroupe, affectationsPeriode]
   );
 
   async function trouverOuCreerGouter(bloc: Bloc, date: string, produitId: string | null) {
@@ -947,7 +970,9 @@ export default function GoutersPage() {
                                                 </div>
                                                 {besoin && (
                                                   <p className="text-[10px] text-zinc-400">
-                                                    {besoin.enfants} enfants · {besoin.paquets} paquet
+                                                    {besoin.enfants} enfants
+                                                    {besoin.animateurs > 0 ? ` + ${besoin.animateurs} anim${besoin.animateurs > 1 ? "s" : ""}` : ""} ·{" "}
+                                                    {besoin.paquets} paquet
                                                     {besoin.paquets > 1 ? "s" : ""} ·{" "}
                                                     {FORMAT_EUR.format(besoin.cout)}
                                                   </p>
@@ -1102,54 +1127,75 @@ export default function GoutersPage() {
               <table className="mt-4 w-full border-collapse text-left text-sm">
                 <thead>
                   <tr>
+                    <th className="border border-black bg-zinc-200 px-3 py-2 font-semibold capitalize">
+                      Jour
+                    </th>
+                    <th className="border border-black bg-zinc-200 px-3 py-2 font-semibold">Bloc</th>
                     <th className="border border-black bg-zinc-200 px-3 py-2 font-semibold">
                       Produit
                     </th>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 font-semibold">
-                      Marque
+                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
+                      Qté/enfant
                     </th>
                     <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
-                      Qté/enfant Lutins
+                      Enfants + anims
                     </th>
                     <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
-                      Qté/enfant Trolls
-                    </th>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
-                      Qté/enfant Géants
-                    </th>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
-                      Unités/paquet
+                      Paquets
                     </th>
                     <th className="border border-black bg-zinc-200 px-3 py-2 text-right font-semibold">
-                      Prix/paquet
+                      Prix
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {produits.map((produit) => (
-                    <tr key={produit.id}>
-                      <td className="border border-black px-3 py-2 font-medium">{produit.nom}</td>
-                      <td className="border border-black px-3 py-2 text-zinc-600">
-                        {produit.marque || "—"}
-                      </td>
-                      <td className="border border-black px-3 py-2 text-center">
-                        {produit.quantite_lutins}
-                      </td>
-                      <td className="border border-black px-3 py-2 text-center">
-                        {produit.quantite_trolls}
-                      </td>
-                      <td className="border border-black px-3 py-2 text-center">
-                        {produit.quantite_geants}
-                      </td>
-                      <td className="border border-black px-3 py-2 text-center">
-                        {produit.taille_paquet}
-                      </td>
-                      <td className="border border-black px-3 py-2 text-right">
-                        {FORMAT_EUR.format(produit.prix_paquet)}
-                      </td>
-                    </tr>
-                  ))}
+                  {[...goutersPrevus]
+                    .sort((a, b) => (a.date + a.groupe + (a.sous_groupe ?? "")).localeCompare(b.date + b.groupe + (b.sous_groupe ?? "")))
+                    .map((prevu) => {
+                      const produit = produits.find((p) => p.id === prevu.produit_id);
+                      const besoin = besoinPrevu(prevu);
+                      if (!produit || !besoin) return null;
+                      const codeNatif: CodeBloc =
+                        prevu.groupe === "lutins" ? "lutins" : (prevu.sous_groupe ?? "trolls");
+                      const codes: CodeBloc[] = [codeNatif, ...prevu.commun_avec];
+                      const quantites = [...new Set(codes.map((c) => quantiteParGroupe(produit, c)))];
+                      return (
+                        <tr key={prevu.id}>
+                          <td className="border border-black px-3 py-2 capitalize">
+                            {formatJourCourt(prevu.date)}
+                          </td>
+                          <td className="border border-black px-3 py-2">
+                            {codes.map((c) => LABEL_BLOC[c]).join(" + ")}
+                          </td>
+                          <td className="border border-black px-3 py-2 font-medium">{produit.nom}</td>
+                          <td className="border border-black px-3 py-2 text-center">
+                            {quantites.length === 1 ? quantites[0] : quantites.join(" / ")}
+                          </td>
+                          <td className="border border-black px-3 py-2 text-center">
+                            {besoin.enfants}
+                            {besoin.animateurs > 0 ? ` + ${besoin.animateurs}` : ""}
+                          </td>
+                          <td className="border border-black px-3 py-2 text-center">{besoin.paquets}</td>
+                          <td className="border border-black px-3 py-2 text-right">
+                            {FORMAT_EUR.format(besoin.cout)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
+                <tfoot>
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="border border-black px-3 py-2 text-right font-semibold"
+                    >
+                      Total période
+                    </td>
+                    <td className="border border-black px-3 py-2 text-right font-semibold">
+                      {FORMAT_EUR.format(coutTotalPeriode)}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
