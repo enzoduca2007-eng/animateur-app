@@ -1384,7 +1384,7 @@ export default function GoutersPage() {
                           BLOCS.map((bloc) => (
                             <th
                               key={`${numero}-${codeDeBloc(bloc)}`}
-                              className="border border-black bg-zinc-200 px-1 py-0.5 text-[10px] font-medium"
+                              className="border border-black px-1 py-0.5 text-[10px] font-medium"
                             >
                               {LABEL_BLOC[codeDeBloc(bloc)].charAt(0)}
                             </th>
