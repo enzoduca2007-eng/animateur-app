@@ -1164,60 +1164,75 @@ export default function GoutersPage() {
                   {periode?.description} · {periode?.debut} – {periode?.fin} · Zone {zone}
                 </p>
               </div>
-              <table className="mt-4 w-full table-fixed border-collapse text-left text-xs">
-                <thead>
-                  <tr>
-                    {JOURS_SEMAINE.map((j) => (
-                      <th
-                        key={j.numero}
-                        className="w-1/5 border border-black bg-zinc-200 px-2 py-1.5 text-center font-semibold"
-                      >
-                        {j.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {semaines.map((semaine) => (
-                    <tr key={semaine[0]}>
-                      {JOURS_SEMAINE.map(({ numero }) => {
-                        const date = semaine.find(
-                          (d) => new Date(`${d}T00:00:00Z`).getUTCDay() === numero
-                        );
-                        if (!date) {
-                          return <td key={numero} className="border border-black px-2 py-1.5" />;
-                        }
-                        return (
-                          <td key={numero} className="align-top border border-black px-2 py-1.5">
-                            <p className="mb-1.5 font-semibold capitalize">{formatJourCourt(date)}</p>
-                            <div className="flex flex-col gap-1.5">
-                              {groupesDuJour(date).map((groupe) => (
-                                <div
-                                  key={groupe.blocs.map(codeDeBloc).join("+")}
-                                  className="border border-zinc-400 px-1.5 py-1"
-                                >
-                                  <p className="border-b border-zinc-300 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-700">
-                                    {groupe.blocs.map((b) => LABEL_BLOC[codeDeBloc(b)]).join(" + ")}
-                                  </p>
-                                  <div className="mt-0.5">
-                                    {groupe.prevus.length === 0 ? (
-                                      <p className="text-zinc-500">—</p>
-                                    ) : (
-                                      groupe.prevus.map((p) => (
-                                        <p key={p.id}>{nomProduit(p.produit_id)}</p>
-                                      ))
-                                    )}
+              {semaines.map((semaine, iSemaine) => (
+                <div key={semaine[0]} className={iSemaine > 0 ? "print-page mt-6" : "mt-4"}>
+                  <p className="mb-1.5 text-sm font-semibold text-zinc-700">
+                    Semaine du {formatJourLong(semaine[0])} au {formatJourLong(semaine[semaine.length - 1])}
+                  </p>
+                  <table className="w-full table-fixed border-collapse text-left text-xs">
+                    <thead>
+                      <tr>
+                        {JOURS_SEMAINE.map((j) => (
+                          <th
+                            key={j.numero}
+                            className="w-1/5 border border-black bg-zinc-200 px-2 py-1.5 text-center font-semibold"
+                          >
+                            {j.label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        {JOURS_SEMAINE.map(({ numero }) => {
+                          const date = semaine.find(
+                            (d) => new Date(`${d}T00:00:00Z`).getUTCDay() === numero
+                          );
+                          if (!date) {
+                            return <td key={numero} className="border border-black px-2 py-1.5" />;
+                          }
+                          return (
+                            <td key={numero} className="align-top border border-black px-2 py-1.5">
+                              <p className="mb-1.5 font-semibold capitalize">{formatJourCourt(date)}</p>
+                              <div className="flex flex-col gap-1.5">
+                                {groupesDuJour(date).map((groupe) => (
+                                  <div
+                                    key={groupe.blocs.map(codeDeBloc).join("+")}
+                                    className="border border-zinc-400 px-1.5 py-1"
+                                  >
+                                    <p className="border-b border-zinc-300 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-700">
+                                      {groupe.blocs.map((b) => LABEL_BLOC[codeDeBloc(b)]).join(" + ")}
+                                    </p>
+                                    <div className="mt-0.5">
+                                      {groupe.prevus.length === 0 ? (
+                                        <p className="text-zinc-500">—</p>
+                                      ) : (
+                                        groupe.prevus.map((p) => {
+                                          const marque = produits.find(
+                                            (pr) => pr.id === p.produit_id
+                                          )?.marque;
+                                          return (
+                                            <p key={p.id}>
+                                              {nomProduit(p.produit_id)}
+                                              {marque && (
+                                                <span className="text-zinc-500"> ({marque})</span>
+                                              )}
+                                            </p>
+                                          );
+                                        })
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                                ))}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              ))}
             </div>
           )}
 
