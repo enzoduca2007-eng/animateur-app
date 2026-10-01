@@ -1275,32 +1275,32 @@ export default function GoutersPage() {
                   {periode?.description} · {periode?.debut} – {periode?.fin} · Zone {zone}
                 </p>
               </div>
-              <table className="mt-4 w-full border-collapse text-left text-sm">
+              <table className="mt-4 w-full border-collapse text-left text-[11px] leading-tight">
                 <thead>
                   <tr>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 font-semibold capitalize">
+                    <th className="border border-black bg-zinc-200 px-2 py-1 font-semibold capitalize">
                       Jour
                     </th>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 font-semibold">Bloc</th>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 font-semibold">
+                    <th className="border border-black bg-zinc-200 px-2 py-1 font-semibold">Bloc</th>
+                    <th className="border border-black bg-zinc-200 px-2 py-1 font-semibold">
                       Produit
                     </th>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
+                    <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
                       Qté/enfant
                     </th>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
+                    <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
                       Qté/anim
                     </th>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
+                    <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
                       Enfants + anims
                     </th>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
+                    <th className="border border-black bg-zinc-200 px-2 py-1 text-center font-semibold">
                       Paquets
                     </th>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 text-right font-semibold">
+                    <th className="border border-black bg-zinc-200 px-2 py-1 text-right font-semibold">
                       Prix
                     </th>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 text-right font-semibold">
+                    <th className="border border-black bg-zinc-200 px-2 py-1 text-right font-semibold">
                       Total jour
                     </th>
                   </tr>
@@ -1323,33 +1323,33 @@ export default function GoutersPage() {
                         {premiereDuJour && (
                           <td
                             rowSpan={rowSpanJour}
-                            className="border border-black px-3 py-2 align-top capitalize"
+                            className="border border-black px-2 py-1 align-top capitalize"
                           >
                             {formatJourCourt(prevu.date)}
                           </td>
                         )}
-                        <td className="border border-black px-3 py-2">
+                        <td className="border border-black px-2 py-1">
                           {codes.map((c) => LABEL_BLOC[c]).join(" + ")}
                         </td>
-                        <td className="border border-black px-3 py-2 font-medium">{produit.nom}</td>
-                        <td className="border border-black px-3 py-2 text-center">
+                        <td className="border border-black px-2 py-1 font-medium">{produit.nom}</td>
+                        <td className="border border-black px-2 py-1 text-center">
                           {quantites.length === 1 ? quantites[0] : quantites.join(" / ")}
                         </td>
-                        <td className="border border-black px-3 py-2 text-center">
+                        <td className="border border-black px-2 py-1 text-center">
                           {besoin.animateurs > 0 ? produit.quantite_animateur : "—"}
                         </td>
-                        <td className="border border-black px-3 py-2 text-center">
+                        <td className="border border-black px-2 py-1 text-center">
                           {besoin.enfants}
                           {besoin.animateurs > 0 ? ` + ${besoin.animateurs}` : ""}
                         </td>
-                        <td className="border border-black px-3 py-2 text-center">{besoin.paquets}</td>
-                        <td className="border border-black px-3 py-2 text-right">
+                        <td className="border border-black px-2 py-1 text-center">{besoin.paquets}</td>
+                        <td className="border border-black px-2 py-1 text-right">
                           {FORMAT_EUR.format(besoin.cout)}
                         </td>
                         {premiereDuJour && (
                           <td
                             rowSpan={rowSpanJour}
-                            className="border border-black px-3 py-2 text-right align-top font-semibold"
+                            className="border border-black px-2 py-1 text-right align-top font-semibold"
                           >
                             {FORMAT_EUR.format(totalJour)}
                             <br />
@@ -1369,11 +1369,11 @@ export default function GoutersPage() {
                   <tr>
                     <td
                       colSpan={8}
-                      className="border border-black px-3 py-2 text-right font-semibold"
+                      className="border border-black px-2 py-1 text-right font-semibold"
                     >
                       Total période
                     </td>
-                    <td className="border border-black px-3 py-2 text-right font-semibold">
+                    <td className="border border-black px-2 py-1 text-right font-semibold">
                       {FORMAT_EUR.format(coutTotalPeriode)}
                     </td>
                   </tr>
