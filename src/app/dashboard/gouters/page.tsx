@@ -150,11 +150,11 @@ export default function GoutersPage() {
   });
   const [ajoutsCellule, setAjoutsCellule] = useState<Record<string, string>>({});
   const compteurUpload = useRef(0);
-  const [modeImpression, setModeImpression] = useState<
-    "menu" | "prix" | "distribution" | "grille" | "tracabilite"
-  >("menu");
+  const [modeImpression, setModeImpression] = useState<"menu" | "prix" | "grille" | "tracabilite">(
+    "menu"
+  );
 
-  function imprimer(mode: "menu" | "prix" | "distribution" | "grille" | "tracabilite") {
+  function imprimer(mode: "menu" | "prix" | "grille" | "tracabilite") {
     setModeImpression(mode);
     setTimeout(() => window.print(), 50);
   }
@@ -568,20 +568,19 @@ export default function GoutersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goutersPrevus, produits, effectifsJour, effectifsSousGroupe, affectationsPeriode]);
 
-  // Lignes du tableau imprimable "Distribution" : un paquet calculé par
-  // bloc indépendamment (pas mutualisé comme dans "Quantités & prix"), pour
-  // savoir combien de paquets remettre à chaque groupe séparément — un
-  // produit commun à Trolls + Géants donne ici 2 lignes, chacune arrondie
-  // à son propre paquet entier.
-  const lignesDistribution = useMemo(() => {
-    const lignes: {
-      date: string;
-      code: CodeBloc;
-      produit: ProduitGouter;
-      enfants: number;
-      animateurs: number;
-      paquets: number;
-    }[] = [];
+  // Produits utilisés dans la période (pour les lignes de la grille
+  // imprimable), et paquets par (produit, jour, groupe) — calculés
+  // indépendamment par bloc (pas mutualisés comme dans "Quantités & prix")
+  // puisque la grille sert à la distribution : un produit commun à Trolls +
+  // Géants donne 2 valeurs séparées, chacune arrondie à son propre paquet
+  // entier.
+  const produitsUtilises = useMemo(() => {
+    const idsUtilises = new Set(goutersPrevus.map((g) => g.produit_id));
+    return produits.filter((p) => idsUtilises.has(p.id));
+  }, [goutersPrevus, produits]);
+
+  const grillePaquetsParGroupe = useMemo(() => {
+    const map = new Map<string, number>();
     for (const prevu of goutersPrevus) {
       const produit = produits.find((p) => p.id === prevu.produit_id);
       if (!produit) continue;
@@ -592,37 +591,13 @@ export default function GoutersPage() {
         const animateurs = animateursDuCode(code, prevu.date);
         const quantite = enfants * quantiteParGroupe(produit, code) + animateurs * produit.quantite_animateur;
         const paquets = Math.ceil(quantite / produit.taille_paquet);
-        lignes.push({ date: prevu.date, code, produit, enfants, animateurs, paquets });
+        const cle = `${produit.id}|${prevu.date}|${code}`;
+        map.set(cle, (map.get(cle) ?? 0) + paquets);
       }
     }
-    const ordreCode = (c: CodeBloc) => BLOCS.findIndex((b) => codeDeBloc(b) === c);
-    lignes.sort((a, b) => (a.date !== b.date ? a.date.localeCompare(b.date) : ordreCode(a.code) - ordreCode(b.code)));
-    return lignes.map((ligne, i) => ({
-      ...ligne,
-      premiereDuJour: i === 0 || lignes[i - 1].date !== ligne.date,
-      rowSpanJour: lignes.filter((l) => l.date === ligne.date).length,
-    }));
+    return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goutersPrevus, produits, effectifsJour, effectifsSousGroupe, affectationsPeriode]);
-
-  // Grille imprimable "Produits × Jours" : une ligne par produit utilisé
-  // dans la période, une colonne par jour ouvrable, le nombre de paquets
-  // (total combiné, comme "Quantités & prix") dans chaque case — case vide
-  // grisée quand ce produit n'est pas prévu ce jour-là.
-  const grilleProduits = useMemo(() => {
-    const idsUtilises = new Set(goutersPrevus.map((g) => g.produit_id));
-    const lignesProduits = produits.filter((p) => idsUtilises.has(p.id));
-    return lignesProduits.map((produit) => ({
-      produit,
-      parJour: joursOuvrables.map((date) => {
-        const paquets = goutersPrevus
-          .filter((g) => g.date === date && g.produit_id === produit.id)
-          .reduce((total, prevu) => total + (besoinPrevu(prevu)?.paquets ?? 0), 0);
-        return { date, paquets };
-      }),
-    }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goutersPrevus, produits, joursOuvrables, effectifsJour, effectifsSousGroupe, affectationsPeriode]);
 
   async function trouverOuCreerGouter(bloc: Bloc, date: string, produitId: string | null) {
     const existant = gouters.find(
@@ -801,12 +776,6 @@ export default function GoutersPage() {
                   className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
                 >
                   Imprimer quantités & prix
-                </button>
-                <button
-                  onClick={() => imprimer("distribution")}
-                  className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-                >
-                  Imprimer la distribution
                 </button>
                 <button
                   onClick={() => imprimer("grille")}
@@ -1372,104 +1341,93 @@ export default function GoutersPage() {
             </div>
           )}
 
-          {canManage(profile.role) && modeImpression === "distribution" && (
-            <div className="hidden print:block">
-              <div className="flex items-baseline justify-between border-b-2 border-black pb-2">
-                <h2 className="text-xl font-bold text-zinc-900">Distribution des goûters</h2>
-                <p className="text-sm text-zinc-600">
-                  {periode?.description} · {periode?.debut} – {periode?.fin} · Zone {zone}
-                </p>
-              </div>
-              <table className="mt-4 w-full border-collapse text-left text-sm">
-                <thead>
-                  <tr>
-                    <th className="w-[16%] border border-black bg-zinc-200 px-3 py-2 font-semibold capitalize">
-                      Jour
-                    </th>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 font-semibold">Bloc</th>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 font-semibold">
-                      Produit
-                    </th>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
-                      Enfants + anims
-                    </th>
-                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
-                      Paquets à remettre
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lignesDistribution.map(
-                    ({ date, code, produit, enfants, animateurs, paquets, premiereDuJour, rowSpanJour }, i) => (
-                      <tr key={`${date}-${code}-${produit.id}-${i}`}>
-                        {premiereDuJour && (
-                          <td
-                            rowSpan={rowSpanJour}
-                            className="border border-black px-3 py-2 align-top capitalize"
-                          >
-                            {formatJourCourt(date)}
-                          </td>
-                        )}
-                        <td className="border border-black px-3 py-2">{LABEL_BLOC[code]}</td>
-                        <td className="border border-black px-3 py-2 font-medium">{produit.nom}</td>
-                        <td className="border border-black px-3 py-2 text-center">
-                          {enfants}
-                          {animateurs > 0 ? ` + ${animateurs}` : ""}
-                        </td>
-                        <td className="border border-black px-3 py-2 text-center text-lg font-semibold">
-                          {paquets}
-                        </td>
-                      </tr>
-                    )
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {canManage(profile.role) && modeImpression === "grille" && grilleProduits.length > 0 && (
+          {canManage(profile.role) && modeImpression === "grille" && produitsUtilises.length > 0 && (
             <div className="hidden print:block">
               <div className="flex items-baseline justify-between border-b-2 border-black pb-2">
                 <h2 className="text-xl font-bold text-zinc-900">Grille produits × jours</h2>
                 <p className="text-sm text-zinc-600">
                   {periode?.description} · {periode?.debut} – {periode?.fin} · Zone {zone} · paquets
+                  par groupe (L · T · G)
                 </p>
               </div>
-              <table className="mt-4 w-full border-collapse text-center text-xs">
-                <thead>
-                  <tr>
-                    <th className="border border-black bg-zinc-200 px-2 py-1.5 text-left font-semibold">
-                      Produit
-                    </th>
-                    {joursOuvrables.map((date) => (
-                      <th
-                        key={date}
-                        className="border border-black bg-zinc-200 px-1 py-1.5 font-semibold capitalize"
-                      >
-                        {formatJourCourt(date)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {grilleProduits.map(({ produit, parJour }) => (
-                    <tr key={produit.id}>
-                      <td className="border border-black px-2 py-1.5 text-left font-medium">
-                        {produit.nom}
-                      </td>
-                      {parJour.map(({ date, paquets }) =>
-                        paquets > 0 ? (
-                          <td key={date} className="border border-black px-1 py-1.5 font-semibold">
-                            {paquets}
+              {semaines.map((semaine, iSemaine) => (
+                <div key={semaine[0]} className={iSemaine > 0 ? "print-page mt-6" : "mt-4"}>
+                  <p className="mb-1.5 text-sm font-semibold text-zinc-700">
+                    Semaine du {formatJourLong(semaine[0])} au {formatJourLong(semaine[semaine.length - 1])}
+                  </p>
+                  <table className="w-full border-collapse text-center text-[11px]">
+                    <thead>
+                      <tr>
+                        <th
+                          rowSpan={2}
+                          className="border border-black bg-zinc-200 px-2 py-1.5 text-left align-bottom font-semibold"
+                        >
+                          Produit
+                        </th>
+                        {JOURS_SEMAINE.map(({ numero, label }) => {
+                          const date = semaine.find(
+                            (d) => new Date(`${d}T00:00:00Z`).getUTCDay() === numero
+                          );
+                          return (
+                            <th
+                              key={numero}
+                              colSpan={3}
+                              className="border border-black bg-zinc-200 px-1 py-1 font-semibold capitalize"
+                            >
+                              {date ? label : ""}
+                            </th>
+                          );
+                        })}
+                      </tr>
+                      <tr>
+                        {JOURS_SEMAINE.flatMap(({ numero }) =>
+                          BLOCS.map((bloc) => (
+                            <th
+                              key={`${numero}-${codeDeBloc(bloc)}`}
+                              className="border border-black bg-zinc-200 px-1 py-0.5 text-[10px] font-medium"
+                            >
+                              {LABEL_BLOC[codeDeBloc(bloc)].charAt(0)}
+                            </th>
+                          ))
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {produitsUtilises.map((produit) => (
+                        <tr key={produit.id}>
+                          <td className="border border-black px-2 py-1 text-left font-medium">
+                            {produit.nom}
                           </td>
-                        ) : (
-                          <td key={date} className="border border-black bg-zinc-200 px-1 py-1.5" />
-                        )
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                          {JOURS_SEMAINE.flatMap(({ numero }) => {
+                            const date = semaine.find(
+                              (d) => new Date(`${d}T00:00:00Z`).getUTCDay() === numero
+                            );
+                            return BLOCS.map((bloc) => {
+                              const code = codeDeBloc(bloc);
+                              const paquets = date
+                                ? (grillePaquetsParGroupe.get(`${produit.id}|${date}|${code}`) ?? 0)
+                                : 0;
+                              return paquets > 0 ? (
+                                <td
+                                  key={`${numero}-${code}`}
+                                  className="border border-black px-1 py-1 font-semibold"
+                                >
+                                  {paquets}
+                                </td>
+                              ) : (
+                                <td
+                                  key={`${numero}-${code}`}
+                                  className="border border-black bg-zinc-200 px-1 py-1"
+                                />
+                              );
+                            });
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
             </div>
           )}
 
@@ -1600,6 +1558,25 @@ export default function GoutersPage() {
                         const cle = `${bloc.groupe}-${bloc.sousGroupe}-${prevu.produit_id}`;
                         const enCours = creationEnCours[cle] || (fiche ? envoiEnCours[fiche.id] : false);
                         const statut = fiche ? STATUT_LABELS[fiche.statut_ia] : null;
+                        const produitPrevu = produits.find((p) => p.id === prevu.produit_id);
+                        const tracaRequise = produitPrevu?.tracabilite_requise ?? true;
+
+                        // Produit exempté (ex. bananes) : pas de photo/lot/DLC à
+                        // saisir, carte grisée pour signaler qu'il n'y a rien à
+                        // faire côté traçabilité pour ce produit.
+                        if (!tracaRequise) {
+                          return (
+                            <div
+                              key={prevu.id}
+                              className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 opacity-60"
+                            >
+                              <p className="font-medium text-zinc-500">{nomProduit(prevu.produit_id)}</p>
+                              <span className="mt-1 inline-block rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
+                                Traçabilité non requise
+                              </span>
+                            </div>
+                          );
+                        }
 
                         return (
                           <div key={prevu.id} className="rounded-lg border border-zinc-200 p-4">
