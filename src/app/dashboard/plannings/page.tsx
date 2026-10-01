@@ -1363,7 +1363,7 @@ export default function PlanningsPage() {
               valeurs.push(noms.join(" / "));
             }
             const row = ws.addRow(valeurs);
-            row.height = 20;
+            row.height = 30;
             row.eachCell((cell, colNumber) => {
               cell.border = { ...BORDURE, top: idx === 0 ? BORDURE_EPAISSE : BORDURE_FINE };
               cell.alignment =
@@ -1396,7 +1396,7 @@ export default function PlanningsPage() {
 
       ws.getColumn(1).width = 5;
       ws.getColumn(2).width = 24;
-      for (let i = 3; i <= 7; i++) ws.getColumn(i).width = 22;
+      for (let i = 3; i <= 7; i++) ws.getColumn(i).width = 15;
     }
 
     const buffer = await wb.xlsx.writeBuffer();
