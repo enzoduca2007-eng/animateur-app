@@ -1322,7 +1322,7 @@ export default function PlanningsPage() {
             semaineJours[semaineJours.length - 1]
           )}`,
         ]);
-        titreRow.height = 22;
+        titreRow.height = 28;
         ws.mergeCells(titreRow.number, 1, titreRow.number, colCount);
         for (let col = 1; col <= colCount; col++) {
           const cell = titreRow.getCell(col);
@@ -1333,7 +1333,7 @@ export default function PlanningsPage() {
         }
 
         const headerRow = ws.addRow(["", "Créneau", ...semaineJours.map((j) => formatJourCourt(j))]);
-        headerRow.height = 24;
+        headerRow.height = 30;
         headerRow.eachCell((cell, colNumber) => {
           cell.font = { bold: true };
           cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS_ENTETE } };
@@ -1366,7 +1366,7 @@ export default function PlanningsPage() {
               valeurs.push(noms.join(" / "));
             }
             const row = ws.addRow(valeurs);
-            row.height = 26;
+            row.height = 34;
             row.eachCell((cell, colNumber) => {
               cell.border = {
                 ...BORDURE,
@@ -1401,9 +1401,9 @@ export default function PlanningsPage() {
         }
       }
 
-      ws.getColumn(1).width = 4;
-      ws.getColumn(2).width = 20;
-      for (let i = 3; i <= 7; i++) ws.getColumn(i).width = 18;
+      ws.getColumn(1).width = 5;
+      ws.getColumn(2).width = 24;
+      for (let i = 3; i <= 7; i++) ws.getColumn(i).width = 22;
     }
 
     const buffer = await wb.xlsx.writeBuffer();
