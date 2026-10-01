@@ -10,12 +10,16 @@ import {
   canManage,
   type AffectationJour,
   type Animateur,
+  type EffectifJour,
+  type EffectifSousGroupe,
   type Gouter,
   type GouterPrevu,
   type Groupe,
   type ProduitGouter,
   type SousGroupe,
 } from "@/lib/types";
+
+const FORMAT_EUR = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" });
 
 const JOURS_SEMAINE = [
   { numero: 1, label: "Lundi" },
@@ -130,7 +134,15 @@ export default function GoutersPage() {
   // tableau se fusionnent visuellement.
   const [produits, setProduits] = useState<ProduitGouter[]>([]);
   const [goutersPrevus, setGoutersPrevus] = useState<GouterPrevu[]>([]);
-  const [formNouveauProduit, setFormNouveauProduit] = useState({ nom: "" });
+  const [effectifsJour, setEffectifsJour] = useState<EffectifJour[]>([]);
+  const [effectifsSousGroupe, setEffectifsSousGroupe] = useState<EffectifSousGroupe[]>([]);
+  const [formNouveauProduit, setFormNouveauProduit] = useState({
+    nom: "",
+    marque: "",
+    quantite_par_enfant: "1",
+    taille_paquet: "20",
+    prix_paquet: "",
+  });
   const [ajoutsCellule, setAjoutsCellule] = useState<Record<string, string>>({});
   const compteurUpload = useRef(0);
   const [modeImpression, setModeImpression] = useState<"menu" | "tracabilite">("menu");
@@ -260,9 +272,59 @@ export default function GoutersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periode, profile.role]);
 
+  // Effectifs de la période, pour calculer automatiquement le nombre de
+  // paquets à acheter et le coût de chaque produit prévu (cf. Répartition,
+  // qui est la page où ces effectifs sont saisis).
+  useEffect(() => {
+    if (!periode || !canManage(profile.role)) return;
+    supabase
+      .from("effectifs_jour")
+      .select("*")
+      .gte("date", periode.debut)
+      .lte("date", periode.fin)
+      .then(({ data }) => setEffectifsJour((data as EffectifJour[]) ?? []));
+    supabase
+      .from("effectifs_sous_groupe")
+      .select("*")
+      .gte("date", periode.debut)
+      .lte("date", periode.fin)
+      .then(({ data }) => setEffectifsSousGroupe((data as EffectifSousGroupe[]) ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periode, profile.role]);
+
+  function effectifDuBloc(bloc: Bloc, date: string) {
+    if (bloc.groupe === "lutins") {
+      return effectifsJour.find((e) => e.groupe === "lutins" && e.date === date)?.effectif ?? 0;
+    }
+    return (
+      effectifsSousGroupe.find((e) => e.sous_groupe === bloc.sousGroupe && e.date === date)
+        ?.effectif ?? 0
+    );
+  }
+
+  function effectifDuCode(code: CodeBloc, date: string) {
+    const bloc = BLOCS.find((b) => codeDeBloc(b) === code);
+    return bloc ? effectifDuBloc(bloc, date) : 0;
+  }
+
   function nomProduit(produitId: string | null) {
     if (!produitId) return "—";
     return produits.find((p) => p.id === produitId)?.nom ?? "—";
+  }
+
+  // Nombre de paquets à acheter et coût pour un produit prévu : à partir
+  // des effectifs du/des bloc(s) concernés (bloc natif + commun_avec) ce
+  // jour-là, et de la quantité/enfant + taille de paquet + prix du produit.
+  function besoinPrevu(prevu: GouterPrevu) {
+    const produit = produits.find((p) => p.id === prevu.produit_id);
+    if (!produit) return null;
+    const codeNatif: CodeBloc = prevu.groupe === "lutins" ? "lutins" : (prevu.sous_groupe ?? "trolls");
+    const codes: CodeBloc[] = [codeNatif, ...prevu.commun_avec];
+    const enfants = codes.reduce((total, code) => total + effectifDuCode(code, prevu.date), 0);
+    const quantiteTotale = enfants * produit.quantite_par_enfant;
+    const paquets = Math.ceil(quantiteTotale / produit.taille_paquet);
+    const cout = paquets * produit.prix_paquet;
+    return { enfants, paquets, cout };
   }
 
   function prevusDuBloc(bloc: Bloc, date: string) {
@@ -361,7 +423,14 @@ export default function GoutersPage() {
     setErreur(null);
     const { data, error } = await supabase
       .from("produits_gouter")
-      .insert({ nom, created_by: profile.id })
+      .insert({
+        nom,
+        marque: formNouveauProduit.marque.trim() || null,
+        quantite_par_enfant: Number(formNouveauProduit.quantite_par_enfant) || 1,
+        taille_paquet: Number(formNouveauProduit.taille_paquet) || 20,
+        prix_paquet: Number(formNouveauProduit.prix_paquet) || 0,
+        created_by: profile.id,
+      })
       .select()
       .single();
     if (error) {
@@ -369,7 +438,7 @@ export default function GoutersPage() {
       return;
     }
     setProduits((prev) => [...prev, data as ProduitGouter].sort((a, b) => a.nom.localeCompare(b.nom)));
-    setFormNouveauProduit({ nom: "" });
+    setFormNouveauProduit({ nom: "", marque: "", quantite_par_enfant: "1", taille_paquet: "20", prix_paquet: "" });
   }
 
   async function majProduit(id: string, updates: Partial<ProduitGouter>) {
@@ -390,6 +459,12 @@ export default function GoutersPage() {
         .filter((g) => !monGroupe || g.groupe === monGroupe)
         .sort((a, b) => (a.date + a.groupe + (a.sous_groupe ?? "")).localeCompare(b.date + b.groupe + (b.sous_groupe ?? ""))),
     [goutersPeriode, monGroupe]
+  );
+
+  const coutTotalPeriode = useMemo(
+    () => goutersPrevus.reduce((total, prevu) => total + (besoinPrevu(prevu)?.cout ?? 0), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [goutersPrevus, produits, effectifsJour, effectifsSousGroupe]
   );
 
   async function trouverOuCreerGouter(bloc: Bloc, date: string, produitId: string | null) {
@@ -592,12 +667,69 @@ export default function GoutersPage() {
                   Catalogue
                 </p>
                 <div className="flex flex-wrap items-end gap-2">
-                  <input
-                    value={formNouveauProduit.nom}
-                    onChange={(e) => setFormNouveauProduit({ nom: e.target.value })}
-                    placeholder="Nouveau produit (ex. Bichocos)"
-                    className="w-48 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-                  />
+                  <div>
+                    <label className="text-[10px] text-zinc-400">Nom</label>
+                    <input
+                      value={formNouveauProduit.nom}
+                      onChange={(e) =>
+                        setFormNouveauProduit((prev) => ({ ...prev, nom: e.target.value }))
+                      }
+                      placeholder="Ex. Bichocos"
+                      className="block w-36 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-zinc-400">Marque</label>
+                    <input
+                      value={formNouveauProduit.marque}
+                      onChange={(e) =>
+                        setFormNouveauProduit((prev) => ({ ...prev, marque: e.target.value }))
+                      }
+                      placeholder="Ex. LU"
+                      className="block w-28 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-zinc-400">Qté/enfant</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={formNouveauProduit.quantite_par_enfant}
+                      onChange={(e) =>
+                        setFormNouveauProduit((prev) => ({
+                          ...prev,
+                          quantite_par_enfant: e.target.value,
+                        }))
+                      }
+                      className="block w-20 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-zinc-400">Unités/paquet</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={formNouveauProduit.taille_paquet}
+                      onChange={(e) =>
+                        setFormNouveauProduit((prev) => ({ ...prev, taille_paquet: e.target.value }))
+                      }
+                      className="block w-20 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-zinc-400">Prix/paquet (€)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={formNouveauProduit.prix_paquet}
+                      onChange={(e) =>
+                        setFormNouveauProduit((prev) => ({ ...prev, prix_paquet: e.target.value }))
+                      }
+                      placeholder="0,00"
+                      className="block w-24 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
                   <button
                     onClick={ajouterProduitGouter}
                     className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
@@ -611,11 +743,11 @@ export default function GoutersPage() {
                     Aucun produit configuré pour l&apos;instant.
                   </p>
                 ) : (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
+                  <div className="mt-3 flex flex-col gap-1.5">
                     {produits.map((produit) => (
                       <div
                         key={produit.id}
-                        className="flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-sm"
+                        className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-sm"
                       >
                         <input
                           defaultValue={produit.nom}
@@ -623,12 +755,58 @@ export default function GoutersPage() {
                             e.target.value.trim() &&
                             majProduit(produit.id, { nom: e.target.value.trim() })
                           }
-                          className="w-32 rounded border border-transparent px-1 py-0.5 font-medium hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
+                          className="w-28 rounded border border-transparent px-1 py-0.5 font-medium hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
                         />
+                        <input
+                          defaultValue={produit.marque ?? ""}
+                          onBlur={(e) => majProduit(produit.id, { marque: e.target.value.trim() || null })}
+                          placeholder="Marque"
+                          className="w-20 rounded border border-transparent px-1 py-0.5 text-zinc-500 hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
+                        />
+                        <label className="flex items-center gap-1 text-xs text-zinc-400">
+                          <input
+                            type="number"
+                            min={1}
+                            defaultValue={produit.quantite_par_enfant}
+                            onBlur={(e) => {
+                              const v = Number(e.target.value);
+                              if (v > 0) majProduit(produit.id, { quantite_par_enfant: v });
+                            }}
+                            className="w-14 rounded border border-zinc-200 px-1 py-0.5 text-zinc-700"
+                          />
+                          /enfant
+                        </label>
+                        <label className="flex items-center gap-1 text-xs text-zinc-400">
+                          <input
+                            type="number"
+                            min={1}
+                            defaultValue={produit.taille_paquet}
+                            onBlur={(e) => {
+                              const v = Number(e.target.value);
+                              if (v > 0) majProduit(produit.id, { taille_paquet: v });
+                            }}
+                            className="w-14 rounded border border-zinc-200 px-1 py-0.5 text-zinc-700"
+                          />
+                          /paquet
+                        </label>
+                        <label className="flex items-center gap-1 text-xs text-zinc-400">
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            defaultValue={produit.prix_paquet}
+                            onBlur={(e) => {
+                              const v = Number(e.target.value);
+                              if (v >= 0) majProduit(produit.id, { prix_paquet: v });
+                            }}
+                            className="w-16 rounded border border-zinc-200 px-1 py-0.5 text-zinc-700"
+                          />
+                          €/paquet
+                        </label>
                         <button
                           onClick={() => supprimerProduitGouter(produit.id)}
                           title="Supprimer ce produit"
-                          className="text-zinc-300 hover:text-red-600"
+                          className="ml-auto text-zinc-300 hover:text-red-600"
                         >
                           🗑
                         </button>
@@ -693,8 +871,10 @@ export default function GoutersPage() {
                                             {groupe.blocs.map((b) => LABEL_BLOC[codeDeBloc(b)]).join(" + ")}
                                           </p>
                                           <div className="mt-1 flex flex-col gap-1">
-                                            {groupe.prevus.map((prevu) => (
-                                              <div
+                                            {groupe.prevus.map((prevu) => {
+                                              const besoin = besoinPrevu(prevu);
+                                              return (
+                                                <div
                                                 key={prevu.id}
                                                 className="rounded bg-zinc-50 px-1 py-0.5 text-[11px]"
                                               >
@@ -709,6 +889,13 @@ export default function GoutersPage() {
                                                     🗑
                                                   </button>
                                                 </div>
+                                                {besoin && (
+                                                  <p className="text-[10px] text-zinc-400">
+                                                    {besoin.enfants} enfants · {besoin.paquets} paquet
+                                                    {besoin.paquets > 1 ? "s" : ""} ·{" "}
+                                                    {FORMAT_EUR.format(besoin.cout)}
+                                                  </p>
+                                                )}
                                                 {autresBlocs.length > 0 && (
                                                   <div className="mt-0.5 flex flex-wrap gap-1 text-zinc-400">
                                                     {autresBlocs.map((autre) => {
@@ -731,7 +918,8 @@ export default function GoutersPage() {
                                                   </div>
                                                 )}
                                               </div>
-                                            ))}
+                                              );
+                                            })}
                                           </div>
 
                                           <div className="mt-1 flex items-center gap-0.5">
@@ -774,6 +962,9 @@ export default function GoutersPage() {
                       </tbody>
                     </table>
                   </div>
+                  <p className="mt-2 text-right text-sm font-medium text-zinc-700">
+                    Coût total estimé de la période : {FORMAT_EUR.format(coutTotalPeriode)}
+                  </p>
                 </div>
               )}
             </div>
