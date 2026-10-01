@@ -1293,24 +1293,54 @@ export default function PlanningsPage() {
   }, [alertes]);
 
   // Même contenu que l'impression (un onglet par bloc, toutes les
-  // semaines de la période), en .xlsx — import dynamique pour ne pas
-  // alourdir le bundle de la page pour les visiteurs qui n'exportent pas.
+  // semaines de la période), mis en forme comme le tableau à l'écran
+  // (bordures, en-têtes grisés/gras, lignes de pause teintées) — exceljs
+  // plutôt que xlsx, qui ne sait pas écrire de style en version gratuite.
+  // Import dynamique pour ne pas alourdir le bundle des visiteurs qui
+  // n'exportent pas.
   async function exporterExcel() {
-    const XLSX = await import("xlsx");
-    const wb = XLSX.utils.book_new();
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+
+    const BORDURE_FINE = { style: "thin" as const, color: { argb: "FFD4D4D8" } };
+    const BORDURE = { top: BORDURE_FINE, bottom: BORDURE_FINE, left: BORDURE_FINE, right: BORDURE_FINE };
+    const GRIS_TITRE = "FFE4E4E7";
+    const GRIS_ENTETE = "FFF4F4F5";
+    const GRIS_PAUSE = "FFF4F4F5";
+
     for (const bloc of blocsGeres) {
-      const rows: (string | number)[][] = [];
+      const ws = wb.addWorksheet(bloc.label.slice(0, 31));
+
       for (const semaineJours of semaines) {
-        rows.push([
+        const colCount = 2 + semaineJours.length;
+
+        const titreRow = ws.addRow([
           `Semaine du ${formatJourCourt(semaineJours[0])} au ${formatJourCourt(
             semaineJours[semaineJours.length - 1]
           )}`,
         ]);
-        rows.push(["", "Créneau", ...semaineJours.map((j) => formatJourCourt(j))]);
+        ws.mergeCells(titreRow.number, 1, titreRow.number, colCount);
+        const titreCell = titreRow.getCell(1);
+        titreCell.font = { bold: true };
+        titreCell.alignment = { horizontal: "center" };
+        titreCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS_TITRE } };
+
+        const headerRow = ws.addRow(["", "Créneau", ...semaineJours.map((j) => formatJourCourt(j))]);
+        headerRow.eachCell((cell) => {
+          cell.font = { bold: true };
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS_ENTETE } };
+          cell.border = BORDURE;
+          cell.alignment = { horizontal: "center" };
+        });
+
         for (const type of TYPES) {
-          for (const c of creneaux.filter((cr) => cr.type === type)) {
-            const estArriveeDepart = type === "arrivee" || type === "depart";
-            const row: (string | number)[] = [TYPE_CRENEAU_LABELS[type], c.libelle];
+          const lignes = creneaux.filter((cr) => cr.type === type);
+          if (lignes.length === 0) continue;
+          const estArriveeDepart = type === "arrivee" || type === "depart";
+          const premiereLigne = ws.lastRow!.number + 1;
+
+          for (const c of lignes) {
+            const valeurs: (string | number)[] = ["", c.libelle];
             for (const j of semaineJours) {
               const eligibles = eligiblesBloc(bloc.groupes, j);
               const ids = animateursDe(c.id, j).filter((id) => {
@@ -1322,17 +1352,46 @@ export default function PlanningsPage() {
               const noms = ids
                 .map((id) => animateurs.find((x) => x.id === id)?.prenom)
                 .filter((p): p is string => !!p);
-              row.push(noms.join(" / "));
+              valeurs.push(noms.join(" / "));
             }
-            rows.push(row);
+            const row = ws.addRow(valeurs);
+            row.eachCell((cell, colNumber) => {
+              cell.border = BORDURE;
+              if (type === "pause") {
+                cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS_PAUSE } };
+              }
+              if (colNumber === 2) cell.font = { bold: true };
+            });
           }
+
+          if (lignes.length > 1) {
+            ws.mergeCells(premiereLigne, 1, premiereLigne + lignes.length - 1, 1);
+          }
+          const celluleType = ws.getCell(premiereLigne, 1);
+          celluleType.value = TYPE_CRENEAU_LABELS[type];
+          celluleType.font = { bold: true, size: 9 };
+          celluleType.alignment = { vertical: "middle", horizontal: "center", textRotation: 90 };
+          celluleType.border = BORDURE;
         }
-        rows.push([]);
+
+        ws.addRow([]);
       }
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      XLSX.utils.book_append_sheet(wb, ws, bloc.label.slice(0, 31));
+
+      ws.getColumn(1).width = 4;
+      ws.getColumn(2).width = 20;
+      for (let i = 3; i <= 7; i++) ws.getColumn(i).width = 18;
     }
-    XLSX.writeFile(wb, `planning-${periode?.debut ?? "export"}.xlsx`);
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `planning-${periode?.debut ?? "export"}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
