@@ -140,6 +140,7 @@ export default function GoutersPage() {
   const [formNouveauProduit, setFormNouveauProduit] = useState({
     nom: "",
     marque: "",
+    lien: "",
     quantite_lutins: "1",
     quantite_trolls: "1",
     quantite_geants: "1",
@@ -469,6 +470,7 @@ export default function GoutersPage() {
       .insert({
         nom,
         marque: formNouveauProduit.marque.trim() || null,
+        lien: formNouveauProduit.lien.trim() || null,
         quantite_lutins: Number(formNouveauProduit.quantite_lutins) || 1,
         quantite_trolls: Number(formNouveauProduit.quantite_trolls) || 1,
         quantite_geants: Number(formNouveauProduit.quantite_geants) || 1,
@@ -488,6 +490,7 @@ export default function GoutersPage() {
     setFormNouveauProduit({
       nom: "",
       marque: "",
+      lien: "",
       quantite_lutins: "1",
       quantite_trolls: "1",
       quantite_geants: "1",
@@ -834,6 +837,17 @@ export default function GoutersPage() {
                     />
                   </div>
                   <div>
+                    <label className="text-[10px] text-zinc-400">Lien d&apos;achat</label>
+                    <input
+                      value={formNouveauProduit.lien}
+                      onChange={(e) =>
+                        setFormNouveauProduit((prev) => ({ ...prev, lien: e.target.value }))
+                      }
+                      placeholder="https://..."
+                      className="block w-36 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div>
                     <label className="text-[10px] text-zinc-400">Qté/enfant (L · T · G · Anim)</label>
                     <div className="flex gap-1">
                       {(
@@ -931,6 +945,23 @@ export default function GoutersPage() {
                           placeholder="Marque"
                           className="w-20 rounded border border-transparent px-1 py-0.5 text-zinc-500 hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
                         />
+                        <input
+                          defaultValue={produit.lien ?? ""}
+                          onBlur={(e) => majProduit(produit.id, { lien: e.target.value.trim() || null })}
+                          placeholder="Lien d'achat"
+                          className="w-28 rounded border border-transparent px-1 py-0.5 text-zinc-500 hover:border-zinc-200 focus:border-zinc-300 focus:outline-none"
+                        />
+                        {produit.lien && (
+                          <a
+                            href={produit.lien}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={produit.lien}
+                            className="text-zinc-400 hover:text-blue-600"
+                          >
+                            🔗
+                          </a>
+                        )}
                         <div className="flex items-center gap-1 text-xs text-zinc-400">
                           {(
                             [
@@ -1070,6 +1101,16 @@ export default function GoutersPage() {
                                                 <div className="flex items-start justify-between gap-1">
                                                   <span className="font-medium text-zinc-700">
                                                     {nomProduit(prevu.produit_id)}
+                                                    {produits.find((p) => p.id === prevu.produit_id)?.lien && (
+                                                      <a
+                                                        href={produits.find((p) => p.id === prevu.produit_id)!.lien!}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="ml-1 text-zinc-400 hover:text-blue-600"
+                                                      >
+                                                        🔗
+                                                      </a>
+                                                    )}
                                                   </span>
                                                   <button
                                                     onClick={() => retirerGouterPrevu(prevu.id)}
