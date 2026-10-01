@@ -1396,7 +1396,7 @@ export default function PlanningsPage() {
 
       ws.getColumn(1).width = 5;
       ws.getColumn(2).width = 24;
-      for (let i = 3; i <= 7; i++) ws.getColumn(i).width = 15;
+      for (let i = 3; i <= 7; i++) ws.getColumn(i).width = 17.28;
     }
 
     const buffer = await wb.xlsx.writeBuffer();
