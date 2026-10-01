@@ -540,6 +540,9 @@ export default function GoutersPage() {
       ...ligne,
       premiereDuJour: i === 0 || lignes[i - 1].prevu.date !== ligne.prevu.date,
       rowSpanJour: lignes.filter((l) => l.prevu.date === ligne.prevu.date).length,
+      totalJour: lignes
+        .filter((l) => l.prevu.date === ligne.prevu.date)
+        .reduce((total, l) => total + l.besoin.cout, 0),
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goutersPrevus, produits, effectifsJour, effectifsSousGroupe, affectationsPeriode]);
@@ -1175,10 +1178,14 @@ export default function GoutersPage() {
                     <th className="border border-black bg-zinc-200 px-3 py-2 text-right font-semibold">
                       Prix
                     </th>
+                    <th className="border border-black bg-zinc-200 px-3 py-2 text-right font-semibold">
+                      Total jour
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {lignesPrix.map(({ prevu, produit, besoin, codes, premiereDuJour, rowSpanJour }) => {
+                  {lignesPrix.map(
+                    ({ prevu, produit, besoin, codes, premiereDuJour, rowSpanJour, totalJour }) => {
                     const quantites = [...new Set(codes.map((c) => quantiteParGroupe(produit, c)))];
                     return (
                       <tr key={prevu.id}>
@@ -1208,14 +1215,23 @@ export default function GoutersPage() {
                         <td className="border border-black px-3 py-2 text-right">
                           {FORMAT_EUR.format(besoin.cout)}
                         </td>
+                        {premiereDuJour && (
+                          <td
+                            rowSpan={rowSpanJour}
+                            className="border border-black px-3 py-2 text-right align-top font-semibold"
+                          >
+                            {FORMAT_EUR.format(totalJour)}
+                          </td>
+                        )}
                       </tr>
                     );
-                  })}
+                  }
+                  )}
                 </tbody>
                 <tfoot>
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="border border-black px-3 py-2 text-right font-semibold"
                     >
                       Total période
