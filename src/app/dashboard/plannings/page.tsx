@@ -1318,13 +1318,14 @@ export default function PlanningsPage() {
         const premiereColJour = 3;
 
         const titreRow = ws.addRow([
+          "",
           `Semaine du ${formatJourCourt(semaineJours[0])} au ${formatJourCourt(
             semaineJours[semaineJours.length - 1]
           )}`,
         ]);
         titreRow.height = 28;
-        ws.mergeCells(titreRow.number, 1, titreRow.number, colCount);
-        for (let col = 1; col <= colCount; col++) {
+        ws.mergeCells(titreRow.number, 2, titreRow.number, colCount);
+        for (let col = 2; col <= colCount; col++) {
           const cell = titreRow.getCell(col);
           cell.font = { bold: true };
           cell.alignment = ALIGNEMENT_CENTRE;
@@ -1335,6 +1336,7 @@ export default function PlanningsPage() {
         const headerRow = ws.addRow(["", "Créneau", ...semaineJours.map((j) => formatJourCourt(j))]);
         headerRow.height = 30;
         headerRow.eachCell((cell, colNumber) => {
+          if (colNumber === 1) return;
           cell.font = { bold: true };
           cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS_ENTETE } };
           cell.border = {
