@@ -1292,6 +1292,49 @@ export default function PlanningsPage() {
     return map;
   }, [alertes]);
 
+  // Même contenu que l'impression (un onglet par bloc, toutes les
+  // semaines de la période), en .xlsx — import dynamique pour ne pas
+  // alourdir le bundle de la page pour les visiteurs qui n'exportent pas.
+  async function exporterExcel() {
+    const XLSX = await import("xlsx");
+    const wb = XLSX.utils.book_new();
+    for (const bloc of blocsGeres) {
+      const rows: (string | number)[][] = [];
+      for (const semaineJours of semaines) {
+        rows.push([
+          `Semaine du ${formatJourCourt(semaineJours[0])} au ${formatJourCourt(
+            semaineJours[semaineJours.length - 1]
+          )}`,
+        ]);
+        rows.push(["", "Créneau", ...semaineJours.map((j) => formatJourCourt(j))]);
+        for (const type of TYPES) {
+          for (const c of creneaux.filter((cr) => cr.type === type)) {
+            const estArriveeDepart = type === "arrivee" || type === "depart";
+            const row: (string | number)[] = [TYPE_CRENEAU_LABELS[type], c.libelle];
+            for (const j of semaineJours) {
+              const eligibles = eligiblesBloc(bloc.groupes, j);
+              const ids = animateursDe(c.id, j).filter((id) => {
+                if (!eligibles.includes(id)) return false;
+                if (!estArriveeDepart) return true;
+                const a = affectationDe(c.id, id, j);
+                return !a?.groupe || bloc.groupes.includes(a.groupe);
+              });
+              const noms = ids
+                .map((id) => animateurs.find((x) => x.id === id)?.prenom)
+                .filter((p): p is string => !!p);
+              row.push(noms.join(" / "));
+            }
+            rows.push(row);
+          }
+        }
+        rows.push([]);
+      }
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, bloc.label.slice(0, 31));
+    }
+    XLSX.writeFile(wb, `planning-${periode?.debut ?? "export"}.xlsx`);
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="no-print flex items-center justify-between">
@@ -1309,6 +1352,12 @@ export default function PlanningsPage() {
             className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
           >
             Télécharger en PDF
+          </button>
+          <button
+            onClick={exporterExcel}
+            className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            Exporter en Excel
           </button>
           {editable && (
             <button
