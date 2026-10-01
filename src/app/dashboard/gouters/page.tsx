@@ -143,6 +143,7 @@ export default function GoutersPage() {
     quantite_lutins: "1",
     quantite_trolls: "1",
     quantite_geants: "1",
+    quantite_animateur: "1",
     taille_paquet: "20",
     prix_paquet: "",
   });
@@ -343,9 +344,10 @@ export default function GoutersPage() {
 
   // Nombre de paquets à acheter et coût pour un produit prévu : à partir
   // des effectifs + animateurs du/des bloc(s) concernés (bloc natif +
-  // commun_avec) ce jour-là, chacun pondéré par la quantité/enfant propre
-  // à son groupe (les anims comptent comme des enfants de leur bloc pour
-  // la quantité), puis taille de paquet + prix du produit.
+  // commun_avec) ce jour-là — les enfants pondérés par la quantité/enfant
+  // de leur groupe, les animateurs par la quantité/animateur du produit
+  // (portion différente, pas forcément celle d'un groupe d'enfants) —
+  // puis taille de paquet + prix du produit.
   function besoinPrevu(prevu: GouterPrevu) {
     const produit = produits.find((p) => p.id === prevu.produit_id);
     if (!produit) return null;
@@ -356,8 +358,8 @@ export default function GoutersPage() {
     const quantiteTotale = codes.reduce(
       (total, code) =>
         total +
-        (effectifDuCode(code, prevu.date) + animateursDuCode(code, prevu.date)) *
-          quantiteParGroupe(produit, code),
+        effectifDuCode(code, prevu.date) * quantiteParGroupe(produit, code) +
+        animateursDuCode(code, prevu.date) * produit.quantite_animateur,
       0
     );
     const paquets = Math.ceil(quantiteTotale / produit.taille_paquet);
@@ -467,6 +469,7 @@ export default function GoutersPage() {
         quantite_lutins: Number(formNouveauProduit.quantite_lutins) || 1,
         quantite_trolls: Number(formNouveauProduit.quantite_trolls) || 1,
         quantite_geants: Number(formNouveauProduit.quantite_geants) || 1,
+        quantite_animateur: Number(formNouveauProduit.quantite_animateur) || 1,
         taille_paquet: Number(formNouveauProduit.taille_paquet) || 20,
         prix_paquet: Number(formNouveauProduit.prix_paquet) || 0,
         created_by: profile.id,
@@ -484,6 +487,7 @@ export default function GoutersPage() {
       quantite_lutins: "1",
       quantite_trolls: "1",
       quantite_geants: "1",
+      quantite_animateur: "1",
       taille_paquet: "20",
       prix_paquet: "",
     });
@@ -744,20 +748,21 @@ export default function GoutersPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] text-zinc-400">Qté/enfant (L · T · G)</label>
+                    <label className="text-[10px] text-zinc-400">Qté/enfant (L · T · G · Anim)</label>
                     <div className="flex gap-1">
                       {(
                         [
-                          ["quantite_lutins", "L"],
-                          ["quantite_trolls", "T"],
-                          ["quantite_geants", "G"],
+                          ["quantite_lutins", "L", "Lutins"],
+                          ["quantite_trolls", "T", "Trolls"],
+                          ["quantite_geants", "G", "Géants"],
+                          ["quantite_animateur", "A", "Animateur"],
                         ] as const
-                      ).map(([champ, label]) => (
+                      ).map(([champ, label, titre]) => (
                         <input
                           key={champ}
                           type="number"
                           min={1}
-                          title={LABEL_BLOC[champ === "quantite_lutins" ? "lutins" : champ === "quantite_trolls" ? "trolls" : "geants"]}
+                          title={titre}
                           placeholder={label}
                           value={formNouveauProduit[champ]}
                           onChange={(e) =>
@@ -830,16 +835,13 @@ export default function GoutersPage() {
                         <div className="flex items-center gap-1 text-xs text-zinc-400">
                           {(
                             [
-                              ["quantite_lutins", "L"],
-                              ["quantite_trolls", "T"],
-                              ["quantite_geants", "G"],
+                              ["quantite_lutins", "L", "Lutins"],
+                              ["quantite_trolls", "T", "Trolls"],
+                              ["quantite_geants", "G", "Géants"],
+                              ["quantite_animateur", "A", "Animateur"],
                             ] as const
-                          ).map(([champ, label]) => (
-                            <label
-                              key={champ}
-                              title={LABEL_BLOC[champ === "quantite_lutins" ? "lutins" : champ === "quantite_trolls" ? "trolls" : "geants"]}
-                              className="flex items-center gap-0.5"
-                            >
+                          ).map(([champ, label, titre]) => (
+                            <label key={champ} title={titre} className="flex items-center gap-0.5">
                               {label}
                               <input
                                 type="number"
@@ -853,7 +855,6 @@ export default function GoutersPage() {
                               />
                             </label>
                           ))}
-                          <span>/enfant</span>
                         </div>
                         <label className="flex items-center gap-1 text-xs text-zinc-400">
                           <input
@@ -1138,6 +1139,9 @@ export default function GoutersPage() {
                       Qté/enfant
                     </th>
                     <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
+                      Qté/anim
+                    </th>
+                    <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
                       Enfants + anims
                     </th>
                     <th className="border border-black bg-zinc-200 px-3 py-2 text-center font-semibold">
@@ -1172,6 +1176,9 @@ export default function GoutersPage() {
                             {quantites.length === 1 ? quantites[0] : quantites.join(" / ")}
                           </td>
                           <td className="border border-black px-3 py-2 text-center">
+                            {besoin.animateurs > 0 ? produit.quantite_animateur : "—"}
+                          </td>
+                          <td className="border border-black px-3 py-2 text-center">
                             {besoin.enfants}
                             {besoin.animateurs > 0 ? ` + ${besoin.animateurs}` : ""}
                           </td>
@@ -1186,7 +1193,7 @@ export default function GoutersPage() {
                 <tfoot>
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="border border-black px-3 py-2 text-right font-semibold"
                     >
                       Total période

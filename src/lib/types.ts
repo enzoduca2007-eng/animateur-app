@@ -416,6 +416,7 @@ export interface ProduitGouter {
   quantite_lutins: number;
   quantite_trolls: number;
   quantite_geants: number;
+  quantite_animateur: number;
   taille_paquet: number;
   prix_paquet: number;
   actif: boolean;
