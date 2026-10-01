@@ -1374,7 +1374,9 @@ export default function GoutersPage() {
                               colSpan={3}
                               className="border border-black bg-zinc-200 px-1 py-1 font-semibold capitalize"
                             >
-                              {date ? label : ""}
+                              {date
+                                ? `${label} ${new Date(`${date}T00:00:00Z`).getUTCDate()}`
+                                : ""}
                             </th>
                           );
                         })}
@@ -1393,7 +1395,13 @@ export default function GoutersPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {produitsUtilises.map((produit) => (
+                      {produitsUtilises
+                        .filter((produit) =>
+                          semaine.some((date) =>
+                            goutersPrevus.some((g) => g.date === date && g.produit_id === produit.id)
+                          )
+                        )
+                        .map((produit) => (
                         <tr key={produit.id}>
                           <td className="border border-black px-2 py-1 text-left font-medium">
                             {produit.nom}
