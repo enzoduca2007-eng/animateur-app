@@ -151,10 +151,10 @@ export default function GoutersPage() {
   const [ajoutsCellule, setAjoutsCellule] = useState<Record<string, string>>({});
   const compteurUpload = useRef(0);
   const [modeImpression, setModeImpression] = useState<
-    "menu" | "prix" | "distribution" | "tracabilite"
+    "menu" | "prix" | "distribution" | "grille" | "tracabilite"
   >("menu");
 
-  function imprimer(mode: "menu" | "prix" | "distribution" | "tracabilite") {
+  function imprimer(mode: "menu" | "prix" | "distribution" | "grille" | "tracabilite") {
     setModeImpression(mode);
     setTimeout(() => window.print(), 50);
   }
@@ -605,6 +605,25 @@ export default function GoutersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goutersPrevus, produits, effectifsJour, effectifsSousGroupe, affectationsPeriode]);
 
+  // Grille imprimable "Produits × Jours" : une ligne par produit utilisé
+  // dans la période, une colonne par jour ouvrable, le nombre de paquets
+  // (total combiné, comme "Quantités & prix") dans chaque case — case vide
+  // grisée quand ce produit n'est pas prévu ce jour-là.
+  const grilleProduits = useMemo(() => {
+    const idsUtilises = new Set(goutersPrevus.map((g) => g.produit_id));
+    const lignesProduits = produits.filter((p) => idsUtilises.has(p.id));
+    return lignesProduits.map((produit) => ({
+      produit,
+      parJour: joursOuvrables.map((date) => {
+        const paquets = goutersPrevus
+          .filter((g) => g.date === date && g.produit_id === produit.id)
+          .reduce((total, prevu) => total + (besoinPrevu(prevu)?.paquets ?? 0), 0);
+        return { date, paquets };
+      }),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goutersPrevus, produits, joursOuvrables, effectifsJour, effectifsSousGroupe, affectationsPeriode]);
+
   async function trouverOuCreerGouter(bloc: Bloc, date: string, produitId: string | null) {
     const existant = gouters.find(
       (g) => g.date === date && appartientAuBloc(g, bloc) && g.produit_id === produitId
@@ -788,6 +807,12 @@ export default function GoutersPage() {
                   className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
                 >
                   Imprimer la distribution
+                </button>
+                <button
+                  onClick={() => imprimer("grille")}
+                  className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  Imprimer la grille produits/jours
                 </button>
                 <button
                   onClick={() => imprimer("tracabilite")}
@@ -1397,6 +1422,52 @@ export default function GoutersPage() {
                       </tr>
                     )
                   )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {canManage(profile.role) && modeImpression === "grille" && grilleProduits.length > 0 && (
+            <div className="hidden print:block">
+              <div className="flex items-baseline justify-between border-b-2 border-black pb-2">
+                <h2 className="text-xl font-bold text-zinc-900">Grille produits × jours</h2>
+                <p className="text-sm text-zinc-600">
+                  {periode?.description} · {periode?.debut} – {periode?.fin} · Zone {zone} · paquets
+                </p>
+              </div>
+              <table className="mt-4 w-full border-collapse text-center text-xs">
+                <thead>
+                  <tr>
+                    <th className="border border-black bg-zinc-200 px-2 py-1.5 text-left font-semibold">
+                      Produit
+                    </th>
+                    {joursOuvrables.map((date) => (
+                      <th
+                        key={date}
+                        className="border border-black bg-zinc-200 px-1 py-1.5 font-semibold capitalize"
+                      >
+                        {formatJourCourt(date)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {grilleProduits.map(({ produit, parJour }) => (
+                    <tr key={produit.id}>
+                      <td className="border border-black px-2 py-1.5 text-left font-medium">
+                        {produit.nom}
+                      </td>
+                      {parJour.map(({ date, paquets }) =>
+                        paquets > 0 ? (
+                          <td key={date} className="border border-black px-1 py-1.5 font-semibold">
+                            {paquets}
+                          </td>
+                        ) : (
+                          <td key={date} className="border border-black bg-zinc-200 px-1 py-1.5" />
+                        )
+                      )}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
