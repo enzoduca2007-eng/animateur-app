@@ -125,6 +125,11 @@ export interface AffectationCreneau {
   date: string;
   creneau_id: string;
   animateur_id: string;
+  // Posé uniquement pour un roulant/inclusif (sans groupe réel ce
+  // jour-là), pour distinguer à quel bloc cette ouverture/fermeture
+  // appartient — null pour un animateur normal (bloc implicite via
+  // affectations_jour).
+  groupe: Groupe | null;
   created_by: string | null;
   created_at: string;
 }

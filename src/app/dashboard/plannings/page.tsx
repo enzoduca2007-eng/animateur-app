@@ -404,7 +404,8 @@ export default function PlanningsPage() {
     creneauId: string,
     date: string,
     animateurId: string,
-    assigne: boolean
+    assigne: boolean,
+    groupeBloc: Groupe | null = null
   ) {
     setAffectations((prev) =>
       assigne
@@ -415,6 +416,7 @@ export default function PlanningsPage() {
               date,
               creneau_id: creneauId,
               animateur_id: animateurId,
+              groupe: groupeBloc,
               created_by: profile.id,
               created_at: new Date().toISOString(),
             },
@@ -431,7 +433,13 @@ export default function PlanningsPage() {
 
     if (assigne) {
       const { error } = await supabase.from("affectations_creneau").upsert(
-        { date, creneau_id: creneauId, animateur_id: animateurId, created_by: profile.id },
+        {
+          date,
+          creneau_id: creneauId,
+          animateur_id: animateurId,
+          groupe: groupeBloc,
+          created_by: profile.id,
+        },
         { onConflict: "etablissement_id,date,creneau_id,animateur_id" }
       );
       if (error) setErreur(error.message);
@@ -446,26 +454,43 @@ export default function PlanningsPage() {
     }
   }
 
+  function affectationDe(creneauId: string, animateurId: string, date: string) {
+    return affectations.find(
+      (a) => a.creneau_id === creneauId && a.animateur_id === animateurId && a.date === date
+    );
+  }
+
   // Covoiturage : sur un créneau d'arrivée ou de départ, affecter/retirer
   // le chauffeur applique automatiquement le même choix à tous les autres
   // membres de son groupe (leurs propres cases restent bloquées en saisie
   // directe — voir estChauffeur() côté affichage).
+  //
+  // groupesBloc : le(s) groupe(s) du bloc depuis lequel la case a été
+  // cochée — posé sur la ligne (groupe) uniquement pour un roulant/
+  // inclusif, afin de distinguer pour quel bloc l'ouverture/fermeture a
+  // été cochée (lui seul peut apparaître dans les deux plannings).
   async function toggleAffectation(
     creneauId: string,
     date: string,
     animateurId: string,
-    assigne: boolean
+    assigne: boolean,
+    groupesBloc: Groupe[]
   ) {
     setErreur(null);
-    await appliquerAffectation(creneauId, date, animateurId, assigne);
-
     const creneau = creneaux.find((c) => c.id === creneauId);
+    const estRoulantInclusif = animateursRoulantInclusifDuJour(date).includes(animateurId);
+    const groupeBloc: Groupe | null =
+      estRoulantInclusif && creneau && (creneau.type === "arrivee" || creneau.type === "depart")
+        ? groupesBloc[0]
+        : null;
+    await appliquerAffectation(creneauId, date, animateurId, assigne, groupeBloc);
+
     if (creneau && (creneau.type === "arrivee" || creneau.type === "depart")) {
       const groupe = covoiturageDe(animateurId);
       if (groupe) {
         for (const autreId of groupe.animateur_ids) {
           if (autreId !== animateurId) {
-            await appliquerAffectation(creneauId, date, autreId, assigne);
+            await appliquerAffectation(creneauId, date, autreId, assigne, groupeBloc);
           }
         }
       }
@@ -540,20 +565,14 @@ export default function PlanningsPage() {
   // parti à l'heure de fermeture officielle.
   function animateursGardentLaCle(groupes: Groupe[], j: string, jSuivant: string): Set<string> {
     if (!creneauOuverture) return new Set();
-    const ouvreursLendemain = animateursDe(creneauOuverture.id, jSuivant).filter((id) =>
-      eligiblesBloc(groupes, jSuivant).includes(id)
-    );
+    const ouvreursLendemain = idsCreneauBloc(creneauOuverture.id, jSuivant, groupes);
     if (ouvreursLendemain.length === 0) return new Set();
 
-    const eligiblesJour = eligiblesBloc(groupes, j);
     const departs = creneaux.filter((c) => c.type === "depart");
     const candidats: { id: string; heureDebut: string }[] = [];
     for (const ouvreurId of ouvreursLendemain) {
       for (const c of departs) {
-        if (
-          eligiblesJour.includes(ouvreurId) &&
-          animateursDe(c.id, j).includes(ouvreurId)
-        ) {
+        if (idsCreneauBloc(c.id, j, groupes).includes(ouvreurId)) {
           candidats.push({ id: ouvreurId, heureDebut: c.heure_debut });
         }
       }
@@ -585,9 +604,20 @@ export default function PlanningsPage() {
     return ids.length < nbRequisEncadrement(groupe, date);
   }
 
-  function stagiaireSeulBloc(creneauId: string, date: string, groupes: Groupe[]) {
+  // Comme pour l'affichage de la cellule : un roulant/inclusif tagué pour
+  // l'autre bloc (migration_057) ne compte pas ici, sinon il apparaîtrait
+  // comme présent à l'ouverture/fermeture des deux blocs à la fois.
+  function idsCreneauBloc(creneauId: string, date: string, groupes: Groupe[]) {
     const eligibles = eligiblesBloc(groupes, date);
-    const ids = animateursDe(creneauId, date).filter((id) => eligibles.includes(id));
+    return animateursDe(creneauId, date).filter((id) => {
+      if (!eligibles.includes(id)) return false;
+      const a = affectationDe(creneauId, id, date);
+      return !a?.groupe || groupes.includes(a.groupe);
+    });
+  }
+
+  function stagiaireSeulBloc(creneauId: string, date: string, groupes: Groupe[]) {
+    const ids = idsCreneauBloc(creneauId, date, groupes);
     if (ids.length === 0) return false;
     return ids.every((id) => {
       const a = animateurs.find((x) => x.id === id);
@@ -596,8 +626,7 @@ export default function PlanningsPage() {
   }
 
   function encadrementInsuffisantBloc(creneauId: string, date: string, groupes: Groupe[]) {
-    const eligibles = eligiblesBloc(groupes, date);
-    const ids = animateursDe(creneauId, date).filter((id) => eligibles.includes(id));
+    const ids = idsCreneauBloc(creneauId, date, groupes);
     if (ids.length === 0) return false;
     return ids.length < nbRequisEncadrementBloc(groupes, date);
   }
@@ -1986,9 +2015,15 @@ export default function PlanningsPage() {
                                 </td>
                                 {semaineJours.map((j, jIdx) => {
                                   const eligibles = eligiblesBloc(bloc.groupes, j);
-                                  const ids = animateursDe(c.id, j).filter((id) =>
-                                    eligibles.includes(id)
-                                  );
+                                  const estArriveeDepartLigne = type === "arrivee" || type === "depart";
+                                  const ids = animateursDe(c.id, j).filter((id) => {
+                                    if (!eligibles.includes(id)) return false;
+                                    if (!estArriveeDepartLigne) return true;
+                                    // Un roulant/inclusif tagué pour l'autre bloc ne
+                                    // s'affiche pas ici (cf. migration_057).
+                                    const a = affectationDe(c.id, id, j);
+                                    return !a?.groupe || bloc.groupes.includes(a.groupe);
+                                  });
                                   // Continuité de la clé : parmi tous les créneaux de
                                   // départ du jour, seul celui qui est parti le plus
                                   // tard (parmi ceux qui ouvrent le lendemain) garde la
@@ -2129,10 +2164,19 @@ export default function PlanningsPage() {
                   {animateurs
                     .filter((a) => eligibles.includes(a.id))
                     .map((a) => {
-                      const assigne = animateursDe(
+                      const affectationActuelle = affectationDe(
                         celluleOuverte.creneauId,
+                        a.id,
                         celluleOuverte.date
-                      ).includes(a.id);
+                      );
+                      // Un roulant/inclusif coché depuis l'autre bloc (groupe
+                      // tagué différent) n'apparaît pas coché ici — sinon la
+                      // même case s'affichait cochée dans les deux plannings.
+                      const assigne =
+                        !!affectationActuelle &&
+                        (!affectationActuelle.groupe ||
+                          !estArriveeDepart ||
+                          celluleOuverte.groupes.includes(affectationActuelle.groupe));
                       const groupeCovoit = estArriveeDepart ? covoiturageDe(a.id) : undefined;
                       const chauffeur = groupeCovoit ? estChauffeur(a.id) : true;
                       const nomChauffeur =
@@ -2164,7 +2208,8 @@ export default function PlanningsPage() {
                                 celluleOuverte.creneauId,
                                 celluleOuverte.date,
                                 a.id,
-                                e.target.checked
+                                e.target.checked,
+                                celluleOuverte.groupes
                               )
                             }
                           />
