@@ -1314,7 +1314,6 @@ export default function PlanningsPage() {
 
       for (const semaineJours of semaines) {
         const colCount = 2 + semaineJours.length;
-        const premiereColJour = 3;
 
         const titreRow = ws.addRow([
           "",
@@ -1322,7 +1321,7 @@ export default function PlanningsPage() {
             semaineJours[semaineJours.length - 1]
           )}`,
         ]);
-        titreRow.height = 28;
+        titreRow.height = 20;
         ws.mergeCells(titreRow.number, 2, titreRow.number, colCount);
         for (let col = 2; col <= colCount; col++) {
           const cell = titreRow.getCell(col);
@@ -1333,15 +1332,12 @@ export default function PlanningsPage() {
         }
 
         const headerRow = ws.addRow(["", "Créneau", ...semaineJours.map((j) => formatJourCourt(j))]);
-        headerRow.height = 30;
+        headerRow.height = 20;
         headerRow.eachCell((cell, colNumber) => {
           if (colNumber === 1) return;
           cell.font = { bold: true };
           cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS_ENTETE } };
-          cell.border = {
-            ...BORDURE,
-            right: colNumber >= premiereColJour ? BORDURE_EPAISSE : BORDURE_FINE,
-          };
+          cell.border = BORDURE;
           cell.alignment = ALIGNEMENT_CENTRE;
         });
 
@@ -1367,13 +1363,9 @@ export default function PlanningsPage() {
               valeurs.push(noms.join(" / "));
             }
             const row = ws.addRow(valeurs);
-            row.height = 34;
+            row.height = 20;
             row.eachCell((cell, colNumber) => {
-              cell.border = {
-                ...BORDURE,
-                top: idx === 0 ? BORDURE_EPAISSE : BORDURE_FINE,
-                right: colNumber >= premiereColJour ? BORDURE_EPAISSE : BORDURE_FINE,
-              };
+              cell.border = { ...BORDURE, top: idx === 0 ? BORDURE_EPAISSE : BORDURE_FINE };
               cell.alignment =
                 colNumber === 2 ? { ...ALIGNEMENT_CENTRE, horizontal: "left" } : ALIGNEMENT_CENTRE;
               if (type === "pause") {
