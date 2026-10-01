@@ -787,48 +787,58 @@ export default function GoutersPage() {
                   {periode?.description} · {periode?.debut} – {periode?.fin} · Zone {zone}
                 </p>
               </div>
-              <table className="mt-4 w-full border-collapse text-left text-sm">
+              <table className="mt-4 w-full table-fixed border-collapse text-left text-xs">
                 <thead>
                   <tr>
-                    <th className="w-[16%] border border-black bg-zinc-200 px-3 py-2 font-semibold">
-                      Jour
-                    </th>
-                    {BLOCS.map((bloc) => (
+                    {JOURS_SEMAINE.map((j) => (
                       <th
-                        key={codeDeBloc(bloc)}
-                        className="border border-black bg-zinc-200 px-3 py-2 font-semibold"
+                        key={j.numero}
+                        className="w-1/5 border border-black bg-zinc-200 px-2 py-1.5 text-center font-semibold"
                       >
-                        {LABEL_BLOC[codeDeBloc(bloc)]}
+                        {j.label}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {joursOuvrables.map((date) => {
-                    const lundi = new Date(`${date}T00:00:00Z`).getUTCDay() === 1;
-                    return (
-                      <tr key={date} className={lundi ? "border-t-2 border-t-black" : ""}>
-                        <td className="border border-black px-3 py-2 align-top font-medium capitalize">
-                          {formatJourLong(date)}
-                        </td>
-                        {groupesDuJour(date).map((groupe) => (
-                          <td
-                            key={groupe.blocs.map(codeDeBloc).join("+")}
-                            colSpan={groupe.blocs.length}
-                            className="border border-black px-3 py-2 align-top"
-                          >
-                            {groupe.prevus.length === 0 ? (
-                              <span className="text-zinc-500">—</span>
-                            ) : (
-                              groupe.prevus.map((p) => (
-                                <p key={p.id}>{nomProduit(p.produit_id)}</p>
-                              ))
-                            )}
+                  {semaines.map((semaine) => (
+                    <tr key={semaine[0]}>
+                      {JOURS_SEMAINE.map(({ numero }) => {
+                        const date = semaine.find(
+                          (d) => new Date(`${d}T00:00:00Z`).getUTCDay() === numero
+                        );
+                        if (!date) {
+                          return <td key={numero} className="border border-black px-2 py-1.5" />;
+                        }
+                        return (
+                          <td key={numero} className="align-top border border-black px-2 py-1.5">
+                            <p className="mb-1.5 font-semibold capitalize">{formatJourCourt(date)}</p>
+                            <div className="flex flex-col gap-1.5">
+                              {groupesDuJour(date).map((groupe) => (
+                                <div
+                                  key={groupe.blocs.map(codeDeBloc).join("+")}
+                                  className="border border-zinc-400 px-1.5 py-1"
+                                >
+                                  <p className="border-b border-zinc-300 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-700">
+                                    {groupe.blocs.map((b) => LABEL_BLOC[codeDeBloc(b)]).join(" + ")}
+                                  </p>
+                                  <div className="mt-0.5">
+                                    {groupe.prevus.length === 0 ? (
+                                      <p className="text-zinc-500">—</p>
+                                    ) : (
+                                      groupe.prevus.map((p) => (
+                                        <p key={p.id}>{nomProduit(p.produit_id)}</p>
+                                      ))
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </td>
-                        ))}
-                      </tr>
-                    );
-                  })}
+                        );
+                      })}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
