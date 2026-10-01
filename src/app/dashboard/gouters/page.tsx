@@ -1173,7 +1173,16 @@ export default function GoutersPage() {
                 </p>
               </div>
               {semaines.map((semaine, iSemaine) => (
-                <div key={semaine[0]} className={iSemaine > 0 ? "print-page mt-6" : "mt-4"}>
+                <div
+                  key={semaine[0]}
+                  className={
+                    iSemaine === semaines.length - 1
+                      ? iSemaine === 0
+                        ? "mt-4"
+                        : "mt-6"
+                      : `print-page ${iSemaine === 0 ? "mt-4" : "mt-6"}`
+                  }
+                >
                   <p className="mb-1.5 text-sm font-semibold text-zinc-700">
                     Semaine du {formatJourLong(semaine[0])} au {formatJourLong(semaine[semaine.length - 1])}
                   </p>
@@ -1252,11 +1261,17 @@ export default function GoutersPage() {
                   {periode?.description} · {periode?.debut} – {periode?.fin} · Zone {zone}
                 </p>
               </div>
-              {semaines.map((semaine, iSemaine) => {
-                const lignesSemaine = lignesPrix.filter((l) => semaine.includes(l.prevu.date));
-                if (lignesSemaine.length === 0) return null;
+              {semaines
+                .map((semaine) => ({
+                  semaine,
+                  lignesSemaine: lignesPrix.filter((l) => semaine.includes(l.prevu.date)),
+                }))
+                .filter(({ lignesSemaine }) => lignesSemaine.length > 0)
+                .map(({ semaine, lignesSemaine }, iSemaine, semainesAffichees) => {
+                const derniere = iSemaine === semainesAffichees.length - 1;
+                const classeMarge = iSemaine === 0 ? "mt-4" : "mt-6";
                 return (
-                  <div key={semaine[0]} className={iSemaine > 0 ? "print-page mt-6" : "mt-4"}>
+                  <div key={semaine[0]} className={derniere ? classeMarge : `print-page ${classeMarge}`}>
                     <p className="mb-1.5 text-sm font-semibold text-zinc-700">
                       Semaine du {formatJourLong(semaine[0])} au {formatJourLong(semaine[semaine.length - 1])}
                     </p>
@@ -1421,7 +1436,16 @@ export default function GoutersPage() {
                 </p>
               </div>
               {semaines.map((semaine, iSemaine) => (
-                <div key={semaine[0]} className={iSemaine > 0 ? "print-page mt-6" : "mt-4"}>
+                <div
+                  key={semaine[0]}
+                  className={
+                    iSemaine === semaines.length - 1
+                      ? iSemaine === 0
+                        ? "mt-4"
+                        : "mt-6"
+                      : `print-page ${iSemaine === 0 ? "mt-4" : "mt-6"}`
+                  }
+                >
                   <p className="mb-1.5 text-sm font-semibold text-zinc-700">
                     Semaine du {formatJourLong(semaine[0])} au {formatJourLong(semaine[semaine.length - 1])}
                   </p>
