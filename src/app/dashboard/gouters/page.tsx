@@ -146,6 +146,7 @@ export default function GoutersPage() {
     quantite_animateur: "1",
     taille_paquet: "20",
     prix_paquet: "",
+    tracabilite_requise: true,
   });
   const [ajoutsCellule, setAjoutsCellule] = useState<Record<string, string>>({});
   const compteurUpload = useRef(0);
@@ -474,6 +475,7 @@ export default function GoutersPage() {
         quantite_animateur: Number(formNouveauProduit.quantite_animateur) || 1,
         taille_paquet: Number(formNouveauProduit.taille_paquet) || 20,
         prix_paquet: Number(formNouveauProduit.prix_paquet) || 0,
+        tracabilite_requise: formNouveauProduit.tracabilite_requise,
         created_by: profile.id,
       })
       .select()
@@ -492,6 +494,7 @@ export default function GoutersPage() {
       quantite_animateur: "1",
       taille_paquet: "20",
       prix_paquet: "",
+      tracabilite_requise: true,
     });
   }
 
@@ -511,8 +514,12 @@ export default function GoutersPage() {
     () =>
       goutersPeriode
         .filter((g) => !monGroupe || g.groupe === monGroupe)
+        .filter((g) => {
+          const produit = produits.find((p) => p.id === g.produit_id);
+          return !produit || produit.tracabilite_requise;
+        })
         .sort((a, b) => (a.date + a.groupe + (a.sous_groupe ?? "")).localeCompare(b.date + b.groupe + (b.sous_groupe ?? ""))),
-    [goutersPeriode, monGroupe]
+    [goutersPeriode, monGroupe, produits]
   );
 
   const coutTotalPeriode = useMemo(
@@ -884,6 +891,19 @@ export default function GoutersPage() {
                       className="block w-24 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
                     />
                   </div>
+                  <label className="flex items-center gap-1.5 pb-1.5 text-xs text-zinc-500">
+                    <input
+                      type="checkbox"
+                      checked={formNouveauProduit.tracabilite_requise}
+                      onChange={(e) =>
+                        setFormNouveauProduit((prev) => ({
+                          ...prev,
+                          tracabilite_requise: e.target.checked,
+                        }))
+                      }
+                    />
+                    Traçabilité requise
+                  </label>
                   <button
                     onClick={ajouterProduitGouter}
                     className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
@@ -967,6 +987,16 @@ export default function GoutersPage() {
                             className="w-16 rounded border border-zinc-200 px-1 py-0.5 text-zinc-700"
                           />
                           €/paquet
+                        </label>
+                        <label className="flex items-center gap-1 text-xs text-zinc-500">
+                          <input
+                            type="checkbox"
+                            checked={produit.tracabilite_requise}
+                            onChange={(e) =>
+                              majProduit(produit.id, { tracabilite_requise: e.target.checked })
+                            }
+                          />
+                          Traçabilité
                         </label>
                         <button
                           onClick={() => supprimerProduitGouter(produit.id)}

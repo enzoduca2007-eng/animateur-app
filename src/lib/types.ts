@@ -419,6 +419,7 @@ export interface ProduitGouter {
   quantite_animateur: number;
   taille_paquet: number;
   prix_paquet: number;
+  tracabilite_requise: boolean;
   actif: boolean;
   created_by: string | null;
   created_at: string;
