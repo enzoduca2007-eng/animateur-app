@@ -1303,34 +1303,42 @@ export default function PlanningsPage() {
     const wb = new ExcelJS.Workbook();
 
     const BORDURE_FINE = { style: "thin" as const, color: { argb: "FFD4D4D8" } };
+    const BORDURE_EPAISSE = { style: "medium" as const, color: { argb: "FF52525B" } };
     const BORDURE = { top: BORDURE_FINE, bottom: BORDURE_FINE, left: BORDURE_FINE, right: BORDURE_FINE };
     const GRIS_TITRE = "FFE4E4E7";
     const GRIS_ENTETE = "FFF4F4F5";
     const GRIS_PAUSE = "FFF4F4F5";
+    const ALIGNEMENT_CENTRE = { vertical: "middle" as const, horizontal: "center" as const, wrapText: true };
 
     for (const bloc of blocsGeres) {
       const ws = wb.addWorksheet(bloc.label.slice(0, 31));
 
       for (const semaineJours of semaines) {
         const colCount = 2 + semaineJours.length;
+        const premiereColJour = 3;
 
         const titreRow = ws.addRow([
           `Semaine du ${formatJourCourt(semaineJours[0])} au ${formatJourCourt(
             semaineJours[semaineJours.length - 1]
           )}`,
         ]);
+        titreRow.height = 22;
         ws.mergeCells(titreRow.number, 1, titreRow.number, colCount);
         const titreCell = titreRow.getCell(1);
         titreCell.font = { bold: true };
-        titreCell.alignment = { horizontal: "center" };
+        titreCell.alignment = ALIGNEMENT_CENTRE;
         titreCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS_TITRE } };
 
         const headerRow = ws.addRow(["", "Créneau", ...semaineJours.map((j) => formatJourCourt(j))]);
-        headerRow.eachCell((cell) => {
+        headerRow.height = 24;
+        headerRow.eachCell((cell, colNumber) => {
           cell.font = { bold: true };
           cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS_ENTETE } };
-          cell.border = BORDURE;
-          cell.alignment = { horizontal: "center" };
+          cell.border = {
+            ...BORDURE,
+            right: colNumber >= premiereColJour ? BORDURE_EPAISSE : BORDURE_FINE,
+          };
+          cell.alignment = ALIGNEMENT_CENTRE;
         });
 
         for (const type of TYPES) {
@@ -1339,7 +1347,7 @@ export default function PlanningsPage() {
           const estArriveeDepart = type === "arrivee" || type === "depart";
           const premiereLigne = ws.lastRow!.number + 1;
 
-          for (const c of lignes) {
+          for (const [idx, c] of lignes.entries()) {
             const valeurs: (string | number)[] = ["", c.libelle];
             for (const j of semaineJours) {
               const eligibles = eligiblesBloc(bloc.groupes, j);
@@ -1355,8 +1363,15 @@ export default function PlanningsPage() {
               valeurs.push(noms.join(" / "));
             }
             const row = ws.addRow(valeurs);
+            row.height = 26;
             row.eachCell((cell, colNumber) => {
-              cell.border = BORDURE;
+              cell.border = {
+                ...BORDURE,
+                top: idx === 0 ? BORDURE_EPAISSE : BORDURE_FINE,
+                right: colNumber >= premiereColJour ? BORDURE_EPAISSE : BORDURE_FINE,
+              };
+              cell.alignment =
+                colNumber === 2 ? { ...ALIGNEMENT_CENTRE, horizontal: "left" } : ALIGNEMENT_CENTRE;
               if (type === "pause") {
                 cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS_PAUSE } };
               }
@@ -1371,7 +1386,7 @@ export default function PlanningsPage() {
           celluleType.value = TYPE_CRENEAU_LABELS[type];
           celluleType.font = { bold: true, size: 9 };
           celluleType.alignment = { vertical: "middle", horizontal: "center", textRotation: 90 };
-          celluleType.border = BORDURE;
+          celluleType.border = { ...BORDURE, top: BORDURE_EPAISSE };
         }
 
         ws.addRow([]);
