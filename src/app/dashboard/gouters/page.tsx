@@ -354,7 +354,9 @@ export default function GoutersPage() {
     const produit = produits.find((p) => p.id === prevu.produit_id);
     if (!produit) return null;
     const codeNatif: CodeBloc = prevu.groupe === "lutins" ? "lutins" : (prevu.sous_groupe ?? "trolls");
-    const codes: CodeBloc[] = [codeNatif, ...prevu.commun_avec];
+    // dédoublonné : commun_avec peut contenir le code natif lui-même sur
+    // d'anciennes données, ce qui comptait sinon le bloc deux fois.
+    const codes: CodeBloc[] = [...new Set([codeNatif, ...prevu.commun_avec])];
     const enfants = codes.reduce((total, code) => total + effectifDuCode(code, prevu.date), 0);
     const animateurs = codes.reduce((total, code) => total + animateursDuCode(code, prevu.date), 0);
     const quantiteTotale = codes.reduce(
@@ -449,6 +451,8 @@ export default function GoutersPage() {
   // purement indicatif sur la sélection du produit, chaque bloc reste
   // libre de photographier son propre emballage.
   async function basculerCommunAvec(prevu: GouterPrevu, code: CodeBloc) {
+    const codeNatif: CodeBloc = prevu.groupe === "lutins" ? "lutins" : (prevu.sous_groupe ?? "trolls");
+    if (code === codeNatif) return;
     const present = prevu.commun_avec.includes(code);
     const commun_avec = present
       ? prevu.commun_avec.filter((c) => c !== code)
@@ -540,7 +544,9 @@ export default function GoutersPage() {
         const besoin = besoinPrevu(prevu);
         if (!produit || !besoin) return null;
         const codeNatif: CodeBloc = prevu.groupe === "lutins" ? "lutins" : (prevu.sous_groupe ?? "trolls");
-        const codes: CodeBloc[] = [codeNatif, ...prevu.commun_avec];
+        // dédoublonné : commun_avec peut contenir le code natif lui-même sur
+    // d'anciennes données, ce qui comptait sinon le bloc deux fois.
+    const codes: CodeBloc[] = [...new Set([codeNatif, ...prevu.commun_avec])];
         return { prevu, produit, besoin, codes };
       })
       .filter((ligne): ligne is NonNullable<typeof ligne> => ligne !== null);
@@ -584,7 +590,9 @@ export default function GoutersPage() {
       const produit = produits.find((p) => p.id === prevu.produit_id);
       if (!produit) continue;
       const codeNatif: CodeBloc = prevu.groupe === "lutins" ? "lutins" : (prevu.sous_groupe ?? "trolls");
-      const codes: CodeBloc[] = [codeNatif, ...prevu.commun_avec];
+      // dédoublonné : commun_avec peut contenir le code natif lui-même sur
+    // d'anciennes données, ce qui comptait sinon le bloc deux fois.
+    const codes: CodeBloc[] = [...new Set([codeNatif, ...prevu.commun_avec])];
       for (const code of codes) {
         const enfants = effectifDuCode(code, prevu.date);
         const animateurs = animateursDuCode(code, prevu.date);
