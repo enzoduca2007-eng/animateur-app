@@ -133,6 +133,12 @@ export default function GoutersPage() {
   const [formNouveauProduit, setFormNouveauProduit] = useState({ nom: "" });
   const [ajoutsCellule, setAjoutsCellule] = useState<Record<string, string>>({});
   const compteurUpload = useRef(0);
+  const [modeImpression, setModeImpression] = useState<"menu" | "tracabilite">("menu");
+
+  function imprimer(mode: "menu" | "tracabilite") {
+    setModeImpression(mode);
+    setTimeout(() => window.print(), 50);
+  }
 
   useEffect(() => {
     supabase
@@ -551,12 +557,20 @@ export default function GoutersPage() {
               </select>
             </div>
             {canManage(profile.role) && (
-              <button
-                onClick={() => window.print()}
-                className="ml-auto rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-              >
-                Imprimer le tableau de traçabilité
-              </button>
+              <div className="ml-auto flex gap-2">
+                <button
+                  onClick={() => imprimer("menu")}
+                  className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  Imprimer le tableau des goûters
+                </button>
+                <button
+                  onClick={() => imprimer("tracabilite")}
+                  className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  Imprimer le tableau de traçabilité
+                </button>
+              </div>
             )}
           </div>
 
@@ -765,7 +779,63 @@ export default function GoutersPage() {
             </div>
           )}
 
-          {canManage(profile.role) && (
+          {canManage(profile.role) && modeImpression === "menu" && produits.length > 0 && (
+            <div className="hidden print:block">
+              <h2 className="text-lg font-bold text-zinc-900">Tableau des goûters</h2>
+              <p className="mt-1 text-sm text-zinc-600">
+                {periode?.description} ({periode?.debut} – {periode?.fin}) · Zone {zone}
+              </p>
+              <table className="mt-4 w-full table-fixed border-collapse text-left text-xs">
+                <thead>
+                  <tr>
+                    {JOURS_SEMAINE.map((j) => (
+                      <th
+                        key={j.numero}
+                        className="w-1/5 border border-black px-2 py-1 text-center font-semibold"
+                      >
+                        {j.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {semaines.map((semaine) => (
+                    <tr key={semaine[0]}>
+                      {JOURS_SEMAINE.map(({ numero }) => {
+                        const date = semaine.find(
+                          (d) => new Date(`${d}T00:00:00Z`).getUTCDay() === numero
+                        );
+                        if (!date) {
+                          return <td key={numero} className="border border-black px-2 py-1" />;
+                        }
+                        return (
+                          <td key={numero} className="align-top border border-black px-2 py-1">
+                            <p className="mb-1 font-semibold capitalize">{formatJourCourt(date)}</p>
+                            {groupesDuJour(date).map((groupe) => (
+                              <div key={groupe.blocs.map(codeDeBloc).join("+")} className="mb-1.5">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-600">
+                                  {groupe.blocs.map((b) => LABEL_BLOC[codeDeBloc(b)]).join(" + ")}
+                                </p>
+                                {groupe.prevus.length === 0 ? (
+                                  <p className="text-zinc-500">—</p>
+                                ) : (
+                                  groupe.prevus.map((p) => (
+                                    <p key={p.id}>{nomProduit(p.produit_id)}</p>
+                                  ))
+                                )}
+                              </div>
+                            ))}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {canManage(profile.role) && modeImpression === "tracabilite" && (
             <div className="hidden print:block">
               <h2 className="text-lg font-bold text-zinc-900">
                 Traçabilité des goûters
