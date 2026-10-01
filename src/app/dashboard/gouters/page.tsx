@@ -519,6 +519,31 @@ export default function GoutersPage() {
     [goutersPrevus, produits, effectifsJour, effectifsSousGroupe, affectationsPeriode]
   );
 
+  // Lignes du tableau imprimable "Quantités & prix", triées par jour, avec
+  // le rowSpan de la colonne Jour pré-calculé pour fusionner les lignes
+  // d'un même jour au lieu de répéter la date sur chacune.
+  const lignesPrix = useMemo(() => {
+    const lignes = [...goutersPrevus]
+      .sort((a, b) =>
+        (a.date + a.groupe + (a.sous_groupe ?? "")).localeCompare(b.date + b.groupe + (b.sous_groupe ?? ""))
+      )
+      .map((prevu) => {
+        const produit = produits.find((p) => p.id === prevu.produit_id);
+        const besoin = besoinPrevu(prevu);
+        if (!produit || !besoin) return null;
+        const codeNatif: CodeBloc = prevu.groupe === "lutins" ? "lutins" : (prevu.sous_groupe ?? "trolls");
+        const codes: CodeBloc[] = [codeNatif, ...prevu.commun_avec];
+        return { prevu, produit, besoin, codes };
+      })
+      .filter((ligne): ligne is NonNullable<typeof ligne> => ligne !== null);
+    return lignes.map((ligne, i) => ({
+      ...ligne,
+      premiereDuJour: i === 0 || lignes[i - 1].prevu.date !== ligne.prevu.date,
+      rowSpanJour: lignes.filter((l) => l.prevu.date === ligne.prevu.date).length,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goutersPrevus, produits, effectifsJour, effectifsSousGroupe, affectationsPeriode]);
+
   async function trouverOuCreerGouter(bloc: Bloc, date: string, produitId: string | null) {
     const existant = gouters.find(
       (g) => g.date === date && appartientAuBloc(g, bloc) && g.produit_id === produitId
@@ -1153,42 +1178,39 @@ export default function GoutersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[...goutersPrevus]
-                    .sort((a, b) => (a.date + a.groupe + (a.sous_groupe ?? "")).localeCompare(b.date + b.groupe + (b.sous_groupe ?? "")))
-                    .map((prevu) => {
-                      const produit = produits.find((p) => p.id === prevu.produit_id);
-                      const besoin = besoinPrevu(prevu);
-                      if (!produit || !besoin) return null;
-                      const codeNatif: CodeBloc =
-                        prevu.groupe === "lutins" ? "lutins" : (prevu.sous_groupe ?? "trolls");
-                      const codes: CodeBloc[] = [codeNatif, ...prevu.commun_avec];
-                      const quantites = [...new Set(codes.map((c) => quantiteParGroupe(produit, c)))];
-                      return (
-                        <tr key={prevu.id}>
-                          <td className="border border-black px-3 py-2 capitalize">
+                  {lignesPrix.map(({ prevu, produit, besoin, codes, premiereDuJour, rowSpanJour }) => {
+                    const quantites = [...new Set(codes.map((c) => quantiteParGroupe(produit, c)))];
+                    return (
+                      <tr key={prevu.id}>
+                        {premiereDuJour && (
+                          <td
+                            rowSpan={rowSpanJour}
+                            className="border border-black px-3 py-2 align-top capitalize"
+                          >
                             {formatJourCourt(prevu.date)}
                           </td>
-                          <td className="border border-black px-3 py-2">
-                            {codes.map((c) => LABEL_BLOC[c]).join(" + ")}
-                          </td>
-                          <td className="border border-black px-3 py-2 font-medium">{produit.nom}</td>
-                          <td className="border border-black px-3 py-2 text-center">
-                            {quantites.length === 1 ? quantites[0] : quantites.join(" / ")}
-                          </td>
-                          <td className="border border-black px-3 py-2 text-center">
-                            {besoin.animateurs > 0 ? produit.quantite_animateur : "—"}
-                          </td>
-                          <td className="border border-black px-3 py-2 text-center">
-                            {besoin.enfants}
-                            {besoin.animateurs > 0 ? ` + ${besoin.animateurs}` : ""}
-                          </td>
-                          <td className="border border-black px-3 py-2 text-center">{besoin.paquets}</td>
-                          <td className="border border-black px-3 py-2 text-right">
-                            {FORMAT_EUR.format(besoin.cout)}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                        )}
+                        <td className="border border-black px-3 py-2">
+                          {codes.map((c) => LABEL_BLOC[c]).join(" + ")}
+                        </td>
+                        <td className="border border-black px-3 py-2 font-medium">{produit.nom}</td>
+                        <td className="border border-black px-3 py-2 text-center">
+                          {quantites.length === 1 ? quantites[0] : quantites.join(" / ")}
+                        </td>
+                        <td className="border border-black px-3 py-2 text-center">
+                          {besoin.animateurs > 0 ? produit.quantite_animateur : "—"}
+                        </td>
+                        <td className="border border-black px-3 py-2 text-center">
+                          {besoin.enfants}
+                          {besoin.animateurs > 0 ? ` + ${besoin.animateurs}` : ""}
+                        </td>
+                        <td className="border border-black px-3 py-2 text-center">{besoin.paquets}</td>
+                        <td className="border border-black px-3 py-2 text-right">
+                          {FORMAT_EUR.format(besoin.cout)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
                 <tfoot>
                   <tr>
