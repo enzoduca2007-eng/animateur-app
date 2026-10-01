@@ -1355,7 +1355,12 @@ export default function GoutersPage() {
                               <td className="border border-black px-2 py-1">
                                 {codes.map((c) => LABEL_BLOC[c]).join(" + ")}
                               </td>
-                              <td className="border border-black px-2 py-1 font-medium">{produit.nom}</td>
+                              <td className="border border-black px-2 py-1 font-medium">
+                                {produit.nom}
+                                {produit.marque && (
+                                  <span className="font-normal text-zinc-500"> ({produit.marque})</span>
+                                )}
+                              </td>
                               <td className="border border-black px-1 py-1 text-center">
                                 {produit.quantite_lutins}
                               </td>
