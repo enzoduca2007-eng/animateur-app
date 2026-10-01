@@ -6,7 +6,6 @@ import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
 import { formatHeures, heuresJour, toMinutes } from "@/lib/creneaux";
-import { PeriodesVacances } from "@/components/periodes-vacances";
 import { PointageJour } from "@/components/pointage-jour";
 import {
   canManage,
@@ -239,7 +238,7 @@ function TimelineJour({ creneaux }: { creneaux: Creneau[] }) {
 export default function MonPlanningPage() {
   const profile = useProfile();
   const supabase = createClient();
-  const { periodes, zone, loading: loadingVacances } = useVacances();
+  const { periodes, loading: loadingVacances } = useVacances();
 
   const [moi, setMoi] = useState<Animateur | null | undefined>(undefined);
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
@@ -842,8 +841,6 @@ export default function MonPlanningPage() {
           </p>
         )}
       </div>
-
-      <PeriodesVacances periodes={periodes} zone={zone} loading={loadingVacances} />
 
       {loadingVacances || periodeIndex === null ? (
         <p className="text-sm text-zinc-400">Chargement...</p>

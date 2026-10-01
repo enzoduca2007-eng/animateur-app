@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useVacances } from "@/lib/use-vacances";
 import { periodeEnCours } from "@/lib/vacances";
-import { PeriodesVacances } from "@/components/periodes-vacances";
 import {
   type Animateur,
   type FicheAnimation,
@@ -31,7 +30,7 @@ function formatDateLongue(dateISO: string) {
 
 export default function FichesAnimationPage() {
   const supabase = createClient();
-  const { periodes, zone, loading: loadingVacances } = useVacances();
+  const { periodes, loading: loadingVacances } = useVacances();
 
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
@@ -132,10 +131,6 @@ export default function FichesAnimationPage() {
           Consultation et impression des fiches des grands jeux programmés sur la
           période. Elles sont complétées par les animateurs depuis Mon planning.
         </p>
-      </div>
-
-      <div className="no-print">
-        <PeriodesVacances periodes={periodes} zone={zone} loading={loadingVacances} />
       </div>
 
       {loadingVacances || periodeIndex === null ? (

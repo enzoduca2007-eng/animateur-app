@@ -6,7 +6,6 @@ import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
-import { PeriodesVacances } from "@/components/periodes-vacances";
 import {
   GROUPES,
   MOMENTS_ACTIVITE,
@@ -58,7 +57,7 @@ function lundiDe(dateISO: string) {
 export default function ActivitesPage() {
   const profile = useProfile();
   const supabase = createClient();
-  const { periodes, zone, loading: loadingVacances } = useVacances();
+  const { periodes, loading: loadingVacances } = useVacances();
 
   const monGroupe = profile.role === "coordinateur" ? profile.groupe_coordinateur : null;
   const groupesGeres = useMemo(
@@ -319,10 +318,6 @@ export default function ActivitesPage() {
           Programme les activités de chaque demi-journée et assigne les
           animateurs qui les encadrent.
         </p>
-      </div>
-
-      <div className="no-print">
-        <PeriodesVacances periodes={periodes} zone={zone} loading={loadingVacances} />
       </div>
 
       {erreur && (

@@ -8,7 +8,6 @@ import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
 import { formatHeures, heuresJour, pauseMinutes, toMinutes } from "@/lib/creneaux";
 import { estMineur, plafondHeuresSemaine, peutOuvrirFermerSeul } from "@/lib/regles";
-import { PeriodesVacances } from "@/components/periodes-vacances";
 import {
   canManage,
   GROUPES,
@@ -64,7 +63,7 @@ export default function PlanningsPage() {
     () => groupesGeres.map((g) => ({ cle: g, label: GROUPE_LABELS[g], groupes: [g] as Groupe[] })),
     [groupesGeres]
   );
-  const { periodes, zone, loading: loadingVacances } = useVacances();
+  const { periodes, loading: loadingVacances } = useVacances();
 
   const [animateurs, setAnimateurs] = useState<Animateur[]>([]);
   const [creneaux, setCreneaux] = useState<Creneau[]>([]);
@@ -1798,10 +1797,6 @@ export default function PlanningsPage() {
           </form>
         </div>
       )}
-
-      <div className="no-print">
-        <PeriodesVacances periodes={periodes} zone={zone} loading={loadingVacances} />
-      </div>
 
       {loadingVacances || periodeIndex === null ? (
         <p className="text-sm text-zinc-400">Chargement...</p>

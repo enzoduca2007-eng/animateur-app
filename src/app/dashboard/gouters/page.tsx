@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
-import { PeriodesVacances } from "@/components/periodes-vacances";
 import {
   canManage,
   type AffectationJour,
@@ -709,10 +708,6 @@ export default function GoutersPage() {
           le nom, le numéro de lot, la DLC et la quantité. Tout reste
           corrigible à la main en cas d&apos;erreur de lecture.
         </p>
-      </div>
-
-      <div className="no-print">
-        <PeriodesVacances periodes={periodes} zone={zone} loading={loadingVacances} />
       </div>
 
       {erreur && (
