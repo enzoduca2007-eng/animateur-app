@@ -267,8 +267,11 @@ export default function GoutersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Chargé pour tout le monde, pas juste la direction/coordination : un
+  // animateur doit voir les aliments prévus sur son bloc pour pouvoir
+  // cliquer dessus et photographier l'emballage (traçabilité).
   useEffect(() => {
-    if (!periode || !canManage(profile.role)) return;
+    if (!periode) return;
     supabase
       .from("gouters_prevus")
       .select("*")
@@ -276,7 +279,7 @@ export default function GoutersPage() {
       .lte("date", periode.fin)
       .then(({ data: gp }) => setGoutersPrevus((gp as GouterPrevu[]) ?? []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periode, profile.role]);
+  }, [periode]);
 
   // Effectifs de la période, pour calculer automatiquement le nombre de
   // paquets à acheter et le coût de chaque produit prévu (cf. Répartition,
