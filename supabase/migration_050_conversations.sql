@@ -2,7 +2,7 @@
 -- plus du fil général existant sur la page Messages (messages.conversation_id
 -- null = général, visible par tout le monde comme avant).
 
-create table public.conversations (
+create table if not exists public.conversations (
   id uuid primary key default gen_random_uuid(),
   type text not null check (type in ('direct', 'groupe')),
   -- Nom du groupe (saisi à la création) ; null pour une conversation
@@ -16,11 +16,12 @@ create table public.conversations (
 
 alter table public.conversations enable row level security;
 
+drop trigger if exists conversations_etablissement_defaut on public.conversations;
 create trigger conversations_etablissement_defaut
   before insert on public.conversations
   for each row execute procedure public.etablissement_id_par_defaut();
 
-create table public.conversation_membres (
+create table if not exists public.conversation_membres (
   conversation_id uuid not null references public.conversations (id) on delete cascade,
   profile_id uuid not null references public.profiles (id) on delete cascade,
   etablissement_id uuid not null references public.etablissements (id),
@@ -30,6 +31,7 @@ create table public.conversation_membres (
 
 alter table public.conversation_membres enable row level security;
 
+drop trigger if exists conversation_membres_etablissement_defaut on public.conversation_membres;
 create trigger conversation_membres_etablissement_defaut
   before insert on public.conversation_membres
   for each row execute procedure public.etablissement_id_par_defaut();
@@ -49,20 +51,24 @@ as $$
   );
 $$;
 
+drop policy if exists "conversations: members can view" on public.conversations;
 create policy "conversations: members can view" on public.conversations
   for select using (
     public.dans_mon_etablissement(etablissement_id)
     and public.est_membre_conversation(id)
   );
 
+drop policy if exists "conversations: any signed-in user can create" on public.conversations;
 create policy "conversations: any signed-in user can create" on public.conversations
   for insert with check (
     auth.uid() = created_by and public.dans_mon_etablissement(etablissement_id)
   );
 
+drop policy if exists "conversations: creator can delete" on public.conversations;
 create policy "conversations: creator can delete" on public.conversations
   for delete using (auth.uid() = created_by);
 
+drop policy if exists "conversation_membres: members can view" on public.conversation_membres;
 create policy "conversation_membres: members can view" on public.conversation_membres
   for select using (
     public.dans_mon_etablissement(etablissement_id)
@@ -71,6 +77,7 @@ create policy "conversation_membres: members can view" on public.conversation_me
 
 -- Seul le créateur de la conversation ajoute des membres, et uniquement au
 -- moment de la création (pas d'ajout ultérieur pour l'instant).
+drop policy if exists "conversation_membres: creator adds members" on public.conversation_membres;
 create policy "conversation_membres: creator adds members" on public.conversation_membres
   for insert with check (
     public.dans_mon_etablissement(etablissement_id)
@@ -80,11 +87,12 @@ create policy "conversation_membres: creator adds members" on public.conversatio
     )
   );
 
+drop policy if exists "conversation_membres: leave your own conversations" on public.conversation_membres;
 create policy "conversation_membres: leave your own conversations" on public.conversation_membres
   for delete using (auth.uid() = profile_id);
 
 alter table public.messages
-  add column conversation_id uuid references public.conversations (id) on delete cascade;
+  add column if not exists conversation_id uuid references public.conversations (id) on delete cascade;
 
 drop policy if exists "messages: readable by any signed-in user" on public.messages;
 create policy "messages: readable by any signed-in user" on public.messages
