@@ -41,20 +41,17 @@ export default function LoginPage() {
       return;
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", data.user.id)
-      .single();
+    // Le rôle choisi ("espace") devient le rôle effectif de la session —
+    // échoue si ce compte n'a pas le droit de l'endosser (ni rôle
+    // principal, ni rôle secondaire autorisé).
+    const { error: roleError } = await supabase.rpc("definir_role_actif", {
+      p_role: espace,
+    });
 
-    if (!profile || profile.role !== espace) {
+    if (roleError) {
       await supabase.auth.signOut();
       setLoading(false);
-      setError(
-        profile
-          ? `Ce compte est un compte ${ROLE_LABELS[profile.role as Role]}, pas ${ROLE_LABELS[espace]}.`
-          : "Impossible de déterminer le rôle de ce compte."
-      );
+      setError(`Ce compte n'a pas accès à l'espace ${ROLE_LABELS[espace]}.`);
       return;
     }
 
