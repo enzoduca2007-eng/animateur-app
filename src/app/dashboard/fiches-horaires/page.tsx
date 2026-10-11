@@ -646,7 +646,7 @@ export default function FichesHorairesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="no-print flex items-center justify-between">
+      <div className="no-print flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-zinc-900">Fiches horaires</h1>
           <p className="mt-1 text-sm text-zinc-500">
@@ -655,7 +655,7 @@ export default function FichesHorairesPage() {
               : "Horaires prévisionnels vs réels et présence de chaque animateur."}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => window.print()}
             className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"

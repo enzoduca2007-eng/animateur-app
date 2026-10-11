@@ -604,7 +604,7 @@ export default function RepartitionPage() {
                 ))}
               </select>
             </div>
-            <div className="flex gap-3 text-xs text-zinc-500">
+            <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs text-zinc-500">
               <span className="flex items-center gap-1">
                 <span className="inline-block h-3 w-3 rounded bg-sky-100" /> L = Lutins
               </span>
