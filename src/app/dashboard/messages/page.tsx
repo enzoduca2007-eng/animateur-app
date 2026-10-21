@@ -44,7 +44,13 @@ export default function MessagesPage() {
       .from("conversations")
       .select("*, conversation_membres(profile_id, profiles(id, full_name, role))")
       .order("created_at", { ascending: false });
-    setConversations((data as unknown as ConversationAvecMembres[]) ?? []);
+    // Le créateur peut lire une conversation qu'il a quittée (migration_062) :
+    // on n'affiche que celles dont on est encore membre.
+    setConversations(
+      ((data as unknown as ConversationAvecMembres[]) ?? []).filter((c) =>
+        c.conversation_membres.some((m) => m.profile_id === profile.id)
+      )
+    );
   }
 
   async function loadMessages(conversationId: string | null) {
