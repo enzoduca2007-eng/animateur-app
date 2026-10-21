@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { imprimer as lancerImpression } from "@/lib/impression";
 import { useProfile } from "@/lib/profile-context";
 import {
   AVIS_FINAL_LABELS,
@@ -240,7 +241,7 @@ export default function StagiairesPage() {
     setImpressionCiblee(animateurId);
     // Laisse React re-rendre la vue imprimable filtrée avant d'ouvrir le
     // dialogue d'impression.
-    requestAnimationFrame(() => window.print());
+    requestAnimationFrame(() => lancerImpression());
   }
 
   async function charger() {

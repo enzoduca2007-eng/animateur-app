@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { imprimer } from "@/lib/impression";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
@@ -1424,7 +1425,7 @@ export default function PlanningsPage() {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => window.print()}
+            onClick={() => imprimer()}
             className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
           >
             Télécharger en PDF

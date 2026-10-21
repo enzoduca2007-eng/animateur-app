@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { imprimer } from "@/lib/impression";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
@@ -632,7 +633,7 @@ export default function RepartitionPage() {
             </div>
             {canManage(profile.role) && (
               <button
-                onClick={() => window.print()}
+                onClick={() => imprimer()}
                 className="ml-auto rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
               >
                 Imprimer la feuille de présence

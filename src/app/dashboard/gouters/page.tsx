@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { imprimer as lancerImpression } from "@/lib/impression";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
@@ -155,7 +156,7 @@ export default function GoutersPage() {
 
   function imprimer(mode: "menu" | "prix" | "grille" | "tracabilite") {
     setModeImpression(mode);
-    setTimeout(() => window.print(), 50);
+    setTimeout(() => lancerImpression(), 50);
   }
 
   useEffect(() => {

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ProfileProvider } from "@/lib/profile-context";
 import { DashboardNav } from "./nav";
+import { PreparationImpression } from "@/components/preparation-impression";
 import type { Profile } from "@/lib/types";
 
 export default async function DashboardLayout({
@@ -39,9 +40,10 @@ export default async function DashboardLayout({
 
   return (
     <ProfileProvider profile={profilAffiche}>
-      <div className="flex min-h-screen flex-1 flex-col md:flex-row">
+      <PreparationImpression />
+      <div className="flex min-h-screen flex-1 flex-col md:flex-row print:block print:min-h-0">
         <DashboardNav />
-        <main className="mx-auto w-full max-w-5xl flex-1 overflow-x-hidden px-3 py-5 sm:px-4 md:py-8">
+        <main className="mx-auto w-full max-w-5xl flex-1 overflow-x-hidden px-3 py-5 sm:px-4 md:py-8 print:max-w-none print:overflow-visible print:p-0">
           {children}
         </main>
       </div>

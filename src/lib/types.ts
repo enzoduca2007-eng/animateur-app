@@ -389,6 +389,16 @@ export interface FeuilleTemps {
   updated_at: string;
 }
 
+/** Signature quotidienne de présence (migration_060). */
+export interface SignaturePresence {
+  id: string;
+  date: string;
+  animateur_id: string;
+  /** Image PNG en data URL. */
+  signature: string;
+  signe_le: string;
+}
+
 export type StatutIaGouter = "en_attente" | "traite" | "echec";
 
 export interface Gouter {

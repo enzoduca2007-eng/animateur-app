@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { imprimer as lancerImpression } from "@/lib/impression";
 import { useVacances } from "@/lib/use-vacances";
 import { periodeEnCours } from "@/lib/vacances";
 import {
@@ -95,7 +96,7 @@ export default function FichesAnimationPage() {
   // que window.print() ne capture la page.
   useEffect(() => {
     if (demandeImpression === 0) return;
-    window.print();
+    lancerImpression();
   }, [demandeImpression]);
 
   function imprimer(cible: string | null) {

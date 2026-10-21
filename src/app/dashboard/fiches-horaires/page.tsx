@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { imprimer } from "@/lib/impression";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
@@ -15,6 +16,7 @@ import {
   type Creneau,
   type FeuilleTemps,
   type JourFermeture,
+  type SignaturePresence,
 } from "@/lib/types";
 
 // "18:00:00" -> "18h00" : l'heure elle-même plutôt que le libellé du
@@ -150,6 +152,7 @@ function FicheHorairePrint({
   affectations,
   affectationsJour,
   creneaux,
+  signatures,
   zone,
 }: {
   animateur: Animateur;
@@ -158,6 +161,7 @@ function FicheHorairePrint({
   affectations: AffectationCreneau[];
   affectationsJour: AffectationJour[];
   creneaux: Creneau[];
+  signatures: SignaturePresence[];
   zone: number | string;
 }) {
   return (
@@ -276,14 +280,35 @@ function FicheHorairePrint({
           </tr>
         </thead>
         <tbody>
-          {semaineJours.map((j) => (
-            <tr key={j}>
-              <td className="border border-black bg-zinc-200 px-2 py-2 capitalize">
-                {formatJourCourt(j)}
-              </td>
-              <td className="border border-black px-2 py-2" />
-            </tr>
-          ))}
+          {semaineJours.map((j) => {
+            // Signature faite par l'animateur sur son téléphone (Mon
+            // planning) ; case vide sinon, pour signer sur papier.
+            const signature = signatures.find(
+              (s) => s.date === j && s.animateur_id === animateur.id
+            );
+            return (
+              <tr key={j}>
+                <td className="border border-black bg-zinc-200 px-2 py-2 capitalize">
+                  {formatJourCourt(j)}
+                </td>
+                <td className="h-12 border border-black px-2 py-1">
+                  {signature && (
+                    <div className="flex items-center gap-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={signature.signature} alt="Signature" className="h-10 w-auto" />
+                      <span className="text-[10px] text-zinc-600">
+                        signé à{" "}
+                        {new Date(signature.signe_le).toLocaleTimeString("fr-FR", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
@@ -313,6 +338,7 @@ export default function FichesHorairesPage() {
   const [affectations, setAffectations] = useState<AffectationCreneau[]>([]);
   const [affectationsJour, setAffectationsJour] = useState<AffectationJour[]>([]);
   const [feuilles, setFeuilles] = useState<FeuilleTemps[]>([]);
+  const [signatures, setSignatures] = useState<SignaturePresence[]>([]);
   const [joursFermeture, setJoursFermeture] = useState<JourFermeture[]>([]);
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [semaineIndex, setSemaineIndex] = useState(0);
@@ -331,6 +357,7 @@ export default function FichesHorairesPage() {
   const [toutesAffectations, setToutesAffectations] = useState<AffectationCreneau[]>([]);
   const [toutesAffectationsJour, setToutesAffectationsJour] = useState<AffectationJour[]>([]);
   const [toutesFeuilles, setToutesFeuilles] = useState<FeuilleTemps[]>([]);
+  const [toutesSignatures, setToutesSignatures] = useState<SignaturePresence[]>([]);
 
   useEffect(() => {
     function reinitialiserApresImpression() {
@@ -343,7 +370,7 @@ export default function FichesHorairesPage() {
   async function imprimerToutesLesSemaines() {
     if (!periode) return;
     setChargementToutesSemaines(true);
-    const [{ data: c }, { data: j }, { data: f }] = await Promise.all([
+    const [{ data: c }, { data: j }, { data: f }, { data: sp }] = await Promise.all([
       supabase
         .from("affectations_creneau")
         .select("*")
@@ -359,15 +386,21 @@ export default function FichesHorairesPage() {
         .select("*")
         .gte("date", periode.debut)
         .lte("date", periode.fin),
+      supabase
+        .from("signatures_presence")
+        .select("*")
+        .gte("date", periode.debut)
+        .lte("date", periode.fin),
     ]);
     setToutesAffectations((c as AffectationCreneau[]) ?? []);
     setToutesAffectationsJour((j as AffectationJour[]) ?? []);
     setToutesFeuilles((f as FeuilleTemps[]) ?? []);
+    setToutesSignatures((sp as SignaturePresence[]) ?? []);
     setChargementToutesSemaines(false);
     setImpressionToutesSemaines(true);
     // Laisse React re-rendre le bloc imprimable avant d'ouvrir le
     // dialogue d'impression.
-    requestAnimationFrame(() => window.print());
+    requestAnimationFrame(() => imprimer());
   }
 
   useEffect(() => {
@@ -441,7 +474,9 @@ export default function FichesHorairesPage() {
       supabase.from("affectations_creneau").select("*").gte("date", debut).lte("date", fin),
       supabase.from("affectations_jour").select("*").gte("date", debut).lte("date", fin),
       supabase.from("feuilles_temps").select("*").gte("date", debut).lte("date", fin),
-    ]).then(([{ data: c }, { data: j }, { data: f }]) => {
+      supabase.from("signatures_presence").select("*").gte("date", debut).lte("date", fin),
+    ]).then(([{ data: c }, { data: j }, { data: f }, { data: sp }]) => {
+      setSignatures((sp as SignaturePresence[]) ?? []);
       setAffectations((c as AffectationCreneau[]) ?? []);
       setAffectationsJour((j as AffectationJour[]) ?? []);
       setFeuilles((f as FeuilleTemps[]) ?? []);
@@ -657,7 +692,7 @@ export default function FichesHorairesPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={() => window.print()}
+            onClick={() => imprimer()}
             className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
           >
             Télécharger en PDF (à faire signer)
@@ -826,6 +861,16 @@ export default function FichesHorairesPage() {
                                   </button>
                                 )}
                               </div>
+                              {signatures.some(
+                                (s) => s.date === j && s.animateur_id === a.id
+                              ) && (
+                                <p
+                                  className="mt-0.5 text-[10px] font-medium text-emerald-700"
+                                  title="Présence signée par l'animateur"
+                                >
+                                  ✍️ signé
+                                </p>
+                              )}
                             </td>
                           );
                         })}
@@ -872,6 +917,7 @@ export default function FichesHorairesPage() {
                   affectations={affectations}
                   affectationsJour={affectationsJour}
                   creneaux={creneaux}
+                  signatures={signatures}
                   zone={zone}
                 />
               ))}
@@ -899,6 +945,7 @@ export default function FichesHorairesPage() {
                     affectations={toutesAffectations}
                     affectationsJour={toutesAffectationsJour}
                     creneaux={creneaux}
+                    signatures={toutesSignatures}
                     zone={zone}
                   />
                 ))

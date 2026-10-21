@@ -18,21 +18,56 @@ body {
 }
 
 @media print {
+  /* Orientation par défaut. La vraie règle est injectée juste avant
+     l'impression par preparerImpression() (src/lib/impression.ts) :
+     portrait si la vue imprimée porte .print-portrait (feuille de présence
+     Répartition, fiches Stagiaires, fiches horaires...), paysage sinon.
+     Les "pages nommées" (page: vue-portrait) utilisées avant étaient
+     ignorées dans les conteneurs flex du dashboard et par Safari iOS. */
   @page {
-    size: landscape;
+    size: A4 landscape;
     margin: 10mm;
   }
 
-  /* Certaines pages (feuille de présence Répartition, fiches Stagiaires)
-     veulent du portrait plutôt que le paysage par défaut du reste du
-     site. */
-  @page vue-portrait {
-    size: portrait;
-    margin: 10mm;
+  /* overflow-x: hidden (html, body, main) force un overflow-y: auto, et
+     Chrome imprimait alors la barre de défilement sur la feuille. À
+     l'impression rien ne défile : tout s'affiche en entier. */
+  html,
+  body,
+  main,
+  .overflow-auto,
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-x-hidden,
+  .overflow-y-hidden {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
   }
 
-  .print-portrait {
-    page: vue-portrait;
+  /* Mise en page en bloc (pas en flex) : la pagination dans un conteneur
+     flex coupe le contenu après la 1re page sur Safari/Firefox. */
+  html,
+  body {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+
+  * {
+    scrollbar-width: none !important;
+  }
+
+  *::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  /* Rien ne dépasse de la largeur de la feuille, y compris sur téléphone. */
+  table,
+  img,
+  svg {
+    max-width: 100% !important;
   }
 
   * {

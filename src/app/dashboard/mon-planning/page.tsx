@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { imprimer } from "@/lib/impression";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
 import { formatHeures, heuresJour, toMinutes } from "@/lib/creneaux";
 import { PointageJour } from "@/components/pointage-jour";
+import { SignaturePresenceJour, aujourdhuiISO } from "@/components/signature-presence";
 import {
   canManage,
   GROUPE_LABELS,
@@ -26,6 +28,7 @@ import {
   type MomentActivite,
   type PlanningActivite,
   type PublicationPlanningSemaine,
+  type SignaturePresence,
 } from "@/lib/types";
 
 // 1=lundi ... 6=samedi, comme gtfs_trips.jour_semaine. 0 (dimanche) -> null.
@@ -249,12 +252,14 @@ export default function MonPlanningPage() {
   const [fichesAnimation, setFichesAnimation] = useState<FicheAnimation[]>([]);
   const [joursFermeture, setJoursFermeture] = useState<JourFermeture[]>([]);
   const [feuilles, setFeuilles] = useState<FeuilleTemps[]>([]);
+  const [signatures, setSignatures] = useState<SignaturePresence[]>([]);
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [jourIndex, setJourIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [ficheOuverte, setFicheOuverte] = useState<string | null>(null);
   const [publications, setPublications] = useState<PublicationPlanningSemaine[]>([]);
+  const [publicationsActivites, setPublicationsActivites] = useState<PublicationPlanningSemaine[]>([]);
   const [gtfsStops, setGtfsStops] = useState<GtfsStop[]>([]);
   const [vue, setVue] = useState<"individuel" | "collectif">("individuel");
   const [affectationsCollectif, setAffectationsCollectif] = useState<AffectationCreneau[]>([]);
@@ -294,6 +299,12 @@ export default function MonPlanningPage() {
       .select("*")
       .then(({ data }) => {
         if (data) setPublications(data as PublicationPlanningSemaine[]);
+      });
+    supabase
+      .from("activites_publications")
+      .select("*")
+      .then(({ data }) => {
+        if (data) setPublicationsActivites(data as PublicationPlanningSemaine[]);
       });
     supabase
       .from("gtfs_stops")
@@ -341,6 +352,19 @@ export default function MonPlanningPage() {
     return !!semaine && semainesPubliees.has(semaine[0]);
   }
 
+  // Les activités se publient indépendamment des horaires (table à part,
+  // voir migration_058) : un animateur peut voir ses activités sans encore
+  // voir ses horaires, ou l'inverse.
+  const semainesPublieesActivites = useMemo(
+    () => new Set(publicationsActivites.map((p) => p.semaine_debut)),
+    [publicationsActivites]
+  );
+  function activitesPublieesPour(date: string) {
+    if (canManage(profile.role)) return true;
+    const semaine = semaines.find((s) => s.includes(date));
+    return !!semaine && semainesPublieesActivites.has(semaine[0]);
+  }
+
   async function chargerFeuilles() {
     if (!moi || !periode) return;
     const { data } = await supabase
@@ -381,11 +405,18 @@ export default function MonPlanningPage() {
         .gte("date", periode.debut)
         .lte("date", periode.fin)
         .order("ordre"),
-    ]).then(([{ data: c }, { data: j }, { data: f }, { data: pa }]) => {
+      supabase
+        .from("signatures_presence")
+        .select("*")
+        .eq("animateur_id", moi.id)
+        .gte("date", periode.debut)
+        .lte("date", periode.fin),
+    ]).then(([{ data: c }, { data: j }, { data: f }, { data: pa }, { data: sp }]) => {
       setAffectations((c as AffectationCreneau[]) ?? []);
       setAffectationsJour((j as AffectationJour[]) ?? []);
       setFeuilles((f as FeuilleTemps[]) ?? []);
       setActivites((pa as PlanningActivite[]) ?? []);
+      setSignatures((sp as SignaturePresence[]) ?? []);
       setLoading(false);
       setJourIndex(0);
     });
@@ -501,6 +532,27 @@ export default function MonPlanningPage() {
       .eq("id", activiteId);
   }
 
+  async function signerPresence(date: string, signature: string) {
+    if (!moi) return;
+    setErreur(null);
+    const { data, error } = await supabase
+      .from("signatures_presence")
+      .upsert(
+        { date, animateur_id: moi.id, signature, signe_le: new Date().toISOString() },
+        { onConflict: "etablissement_id,date,animateur_id" }
+      )
+      .select()
+      .single();
+    if (error) {
+      setErreur(error.message);
+      return;
+    }
+    setSignatures((prev) => [
+      ...prev.filter((s) => s.date !== date),
+      data as SignaturePresence,
+    ]);
+  }
+
   async function majFeuille(
     date: string,
     updates: Partial<
@@ -574,6 +626,17 @@ export default function MonPlanningPage() {
   // collective : tous les jours ouverts de la période (pour voir toute
   // l'équipe, même les jours où moi je ne travaille pas).
   const joursAffiches = vue === "individuel" ? joursTravailles : joursOuvres;
+
+  // Ouvre la vue individuelle sur aujourd'hui (ou le prochain jour
+  // travaillé) plutôt que sur le 1er jour de la période : c'est là que
+  // l'animateur vient signer sa présence du jour.
+  useEffect(() => {
+    if (loading || vue !== "individuel") return;
+    const i = joursTravailles.findIndex((j) => j >= aujourdhuiISO());
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (i > 0) setJourIndex(i);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   function nomsDe(ids: string[]) {
     return ids
@@ -817,9 +880,10 @@ export default function MonPlanningPage() {
                     const groupe = affectationsJour.find((a) => a.date === j)?.groupe;
                     const heures = heuresJour(assignesJour);
                     const estAujourdhui = j === aujourdhui;
-                    const publie = semainePublieePour(j);
+                    const publieHoraires = semainePublieePour(j);
+                    const publieActivites = activitesPublieesPour(j);
 
-                    if (!publie) {
+                    if (!publieHoraires && !publieActivites) {
                       return (
                         <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-8 text-center shadow-sm">
                           <p className="text-lg font-bold capitalize text-zinc-900">
@@ -862,7 +926,7 @@ export default function MonPlanningPage() {
                                 {GROUPE_LABELS[groupe]}
                               </span>
                             )}
-                            {heures !== null && (
+                            {publieHoraires && heures !== null && (
                               <span className="rounded-full bg-zinc-900 px-3 py-1 text-sm font-bold text-white">
                                 {formatHeures(heures)}
                               </span>
@@ -870,7 +934,11 @@ export default function MonPlanningPage() {
                           </div>
                         </div>
 
-                        {assignesJour.length > 0 ? (
+                        {!publieHoraires ? (
+                          <p className="mt-3 text-xs text-zinc-400">
+                            🚫 Horaires non publiés.
+                          </p>
+                        ) : assignesJour.length > 0 ? (
                           <div className="flex items-start gap-1">
                             <div className="flex-1">
                               <TimelineJour creneaux={assignesJour} />
@@ -894,6 +962,11 @@ export default function MonPlanningPage() {
                           </p>
                         )}
 
+                        {!publieActivites ? (
+                          <p className="mt-4 text-xs text-zinc-400">
+                            🚫 Activités non publiées.
+                          </p>
+                        ) : (
                         <div className="mt-4 flex flex-col gap-3">
                           {MOMENTS_ACTIVITE.map((m) => {
                             const acts = activitesDuJour(j, groupe, m.cle);
@@ -967,11 +1040,18 @@ export default function MonPlanningPage() {
                             );
                           })}
                         </div>
+                        )}
 
                         <PointageJour
                           feuille={feuilles.find((f) => f.date === j) ?? null}
                           onChange={(updates) => majFeuille(j, updates)}
                           readOnly={profile.role === "animateur"}
+                        />
+                        <SignaturePresenceJour
+                          date={j}
+                          signature={signatures.find((s) => s.date === j) ?? null}
+                          peutSigner
+                          onSigner={(dataUrl) => signerPresence(j, dataUrl)}
                         />
                       </div>
                     );
@@ -1129,7 +1209,7 @@ export default function MonPlanningPage() {
                   </p>
                   <div className="flex shrink-0 items-center gap-2">
                     <button
-                      onClick={() => window.print()}
+                      onClick={() => imprimer()}
                       title="Imprimer cette fiche"
                       className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
                     >

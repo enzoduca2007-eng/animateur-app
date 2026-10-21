@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { imprimer } from "@/lib/impression";
 import { useProfile } from "@/lib/profile-context";
 import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
 import {
+  canManage,
   GROUPES,
   MOMENTS_ACTIVITE,
   TYPE_ACTIVITE_EMOJIS,
@@ -16,6 +18,7 @@ import {
   type Groupe,
   type MomentActivite,
   type PlanningActivite,
+  type PublicationPlanningSemaine,
   type SousGroupe,
   type ThemeSemaine,
   type TypeActivite,
@@ -91,6 +94,7 @@ export default function ActivitesPage() {
   const [affectationsJour, setAffectationsJour] = useState<AffectationJour[]>([]);
   const [activites, setActivites] = useState<PlanningActivite[]>([]);
   const [themes, setThemes] = useState<ThemeSemaine[]>([]);
+  const [publications, setPublications] = useState<PublicationPlanningSemaine[]>([]);
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [modal, setModal] = useState<{
@@ -124,6 +128,53 @@ export default function ActivitesPage() {
   );
   const semaines = useMemo(() => semainesDe(joursOuvres), [joursOuvres]);
   const semaineIndexSafe = Math.min(semaineIndex, Math.max(0, semaines.length - 1));
+  const semaineJoursSelectionnee = semaines[semaineIndexSafe] ?? [];
+
+  const semainesPubliees = useMemo(
+    () => new Set(publications.map((p) => p.semaine_debut)),
+    [publications]
+  );
+  const semaineSelectionneePubliee =
+    semaineJoursSelectionnee.length > 0 &&
+    semainesPubliees.has(semaineJoursSelectionnee[0]);
+
+  async function chargerPublications() {
+    const { data } = await supabase.from("activites_publications").select("*");
+    if (data) setPublications(data as PublicationPlanningSemaine[]);
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    chargerPublications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function publierActivitesSemaine() {
+    if (semaineJoursSelectionnee.length === 0) return;
+    setErreur(null);
+    const { error } = await supabase
+      .from("activites_publications")
+      .insert({ semaine_debut: semaineJoursSelectionnee[0], publie_par: profile.id });
+    if (error) {
+      setErreur(error.message);
+      return;
+    }
+    chargerPublications();
+  }
+
+  async function depublierActivitesSemaine() {
+    if (semaineJoursSelectionnee.length === 0) return;
+    setErreur(null);
+    const { error } = await supabase
+      .from("activites_publications")
+      .delete()
+      .eq("semaine_debut", semaineJoursSelectionnee[0]);
+    if (error) {
+      setErreur(error.message);
+      return;
+    }
+    chargerPublications();
+  }
 
   async function chargerDonnees() {
     if (!periode) return;
@@ -396,13 +447,32 @@ export default function ActivitesPage() {
                 </select>
               </div>
             )}
+            {canManage(profile.role) && semaineJoursSelectionnee.length > 0 && (
+              <label className="ml-auto flex items-center gap-2 rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700">
+                <input
+                  type="checkbox"
+                  checked={semaineSelectionneePubliee}
+                  onChange={(e) =>
+                    e.target.checked ? publierActivitesSemaine() : depublierActivitesSemaine()
+                  }
+                />
+                Publier les activités de cette semaine
+              </label>
+            )}
             <button
-              onClick={() => window.print()}
-              className="ml-auto rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              onClick={() => imprimer()}
+              className={`rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 ${
+                canManage(profile.role) && semaineJoursSelectionnee.length > 0 ? "" : "ml-auto"
+              }`}
             >
               Imprimer
             </button>
           </div>
+          {canManage(profile.role) && !semaineSelectionneePubliee && (
+            <p className="no-print text-xs font-medium text-red-600">
+              🚫 Activités non publiées — invisibles pour les animateurs.
+            </p>
+          )}
 
           {loading ? (
             <p className="text-sm text-zinc-400">Chargement...</p>
