@@ -9,6 +9,7 @@ import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances"
 import { formatHeures, heuresJour, toMinutes } from "@/lib/creneaux";
 import { PointageJour } from "@/components/pointage-jour";
 import { SignaturePresenceJour, aujourdhuiISO } from "@/components/signature-presence";
+import { RecapSemaine, type LigneRecap } from "@/components/recap-semaine";
 import {
   canManage,
   GROUPE_LABELS,
@@ -29,6 +30,7 @@ import {
   type PlanningActivite,
   type PublicationPlanningSemaine,
   type SignaturePresence,
+  type SignatureSemaine,
 } from "@/lib/types";
 
 // 1=lundi ... 6=samedi, comme gtfs_trips.jour_semaine. 0 (dimanche) -> null.
@@ -253,6 +255,7 @@ export default function MonPlanningPage() {
   const [joursFermeture, setJoursFermeture] = useState<JourFermeture[]>([]);
   const [feuilles, setFeuilles] = useState<FeuilleTemps[]>([]);
   const [signatures, setSignatures] = useState<SignaturePresence[]>([]);
+  const [signaturesSemaine, setSignaturesSemaine] = useState<SignatureSemaine[]>([]);
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [jourIndex, setJourIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -411,7 +414,14 @@ export default function MonPlanningPage() {
         .eq("animateur_id", moi.id)
         .gte("date", periode.debut)
         .lte("date", periode.fin),
-    ]).then(([{ data: c }, { data: j }, { data: f }, { data: pa }, { data: sp }]) => {
+      supabase
+        .from("signatures_semaine")
+        .select("*")
+        .eq("animateur_id", moi.id)
+        .gte("semaine_debut", periode.debut)
+        .lte("semaine_debut", periode.fin),
+    ]).then(([{ data: c }, { data: j }, { data: f }, { data: pa }, { data: sp }, { data: ss }]) => {
+      setSignaturesSemaine((ss as SignatureSemaine[]) ?? []);
       setAffectations((c as AffectationCreneau[]) ?? []);
       setAffectationsJour((j as AffectationJour[]) ?? []);
       setFeuilles((f as FeuilleTemps[]) ?? []);
@@ -532,24 +542,34 @@ export default function MonPlanningPage() {
       .eq("id", activiteId);
   }
 
-  async function signerPresence(date: string, signature: string) {
+  async function signerSemaine(semaineDebut: string, semaineFin: string, signature: string) {
     if (!moi) return;
     setErreur(null);
     const { data, error } = await supabase
-      .from("signatures_presence")
+      .from("signatures_semaine")
       .upsert(
-        { date, animateur_id: moi.id, signature, signe_le: new Date().toISOString() },
-        { onConflict: "etablissement_id,date,animateur_id" }
+        {
+          animateur_id: moi.id,
+          semaine_debut: semaineDebut,
+          semaine_fin: semaineFin,
+          signature,
+          signe_le: new Date().toISOString(),
+        },
+        { onConflict: "etablissement_id,animateur_id,semaine_debut" }
       )
       .select()
       .single();
     if (error) {
-      setErreur(error.message);
+      setErreur(
+        error.code === "42501"
+          ? "Impossible de signer la semaine : une présence n'est pas signée ou la semaine n'est pas terminée."
+          : error.message
+      );
       return;
     }
-    setSignatures((prev) => [
-      ...prev.filter((s) => s.date !== date),
-      data as SignaturePresence,
+    setSignaturesSemaine((prev) => [
+      ...prev.filter((s) => s.semaine_debut !== semaineDebut),
+      data as SignatureSemaine,
     ]);
   }
 
@@ -626,6 +646,41 @@ export default function MonPlanningPage() {
   // collective : tous les jours ouverts de la période (pour voir toute
   // l'équipe, même les jours où moi je ne travaille pas).
   const joursAffiches = vue === "individuel" ? joursTravailles : joursOuvres;
+
+  // Lignes du récapitulatif de la semaine du jour affiché : jours où je
+  // travaille, horaires prévus (semaines publiées) et réels, signatures.
+  function lignesRecap(semaine: string[]): LigneRecap[] {
+    return semaine
+      .filter((j) => joursTravailles.includes(j) && semainePublieePour(j))
+      .map((j) => {
+        const ids = new Set(affectations.filter((a) => a.date === j).map((a) => a.creneau_id));
+        const assignes = creneaux.filter((c) => ids.has(c.id));
+        const arrivees = assignes.filter((c) => c.type === "arrivee").map((c) => c.heure_debut).sort();
+        const departs = assignes.filter((c) => c.type === "depart").map((c) => c.heure_debut).sort();
+        const heures = heuresJour(assignes);
+        const h = (t: string) => t.slice(0, 5).replace(":", "h");
+        const prevu =
+          arrivees.length > 0 && departs.length > 0
+            ? `${h(arrivees[0])} → ${h(departs[departs.length - 1])}${heures ? ` (${formatHeures(heures)})` : ""}`
+            : "—";
+        const feuille = feuilles.find((f) => f.date === j);
+        const reel = !feuille
+          ? ""
+          : !feuille.present
+            ? `Absent${feuille.motif_absence ? ` (${feuille.motif_absence})` : ""}`
+            : feuille.heure_arrivee_reelle && feuille.heure_depart_reelle
+              ? `${h(feuille.heure_arrivee_reelle)} → ${h(feuille.heure_depart_reelle)}`
+              : "Présent";
+        return {
+          date: j,
+          prevu,
+          reel,
+          present: feuille ? feuille.present : null,
+          signe: signatures.some((s) => s.date === j),
+        };
+      });
+  }
+
 
   // Ouvre la vue individuelle sur aujourd'hui (ou le prochain jour
   // travaillé) plutôt que sur le 1er jour de la période : c'est là que
@@ -1050,10 +1105,31 @@ export default function MonPlanningPage() {
                         <SignaturePresenceJour
                           date={j}
                           signature={signatures.find((s) => s.date === j) ?? null}
-                          peutSigner
-                          onSigner={(dataUrl) => signerPresence(j, dataUrl)}
                         />
                       </div>
+                    );
+                  })()}
+
+                  {(() => {
+                    const semaine = semaines.find((s) => s.includes(jourCourant)) ?? [];
+                    const lignes = lignesRecap(semaine);
+                    if (lignes.length === 0) return null;
+                    const debut = semaine[0];
+                    const fin = semaine[semaine.length - 1];
+                    return (
+                      <RecapSemaine
+                        key={debut}
+                        lignes={lignes}
+                        signatureSemaine={
+                          signaturesSemaine.find((s) => s.semaine_debut === debut) ?? null
+                        }
+                        onAllerAuJour={(date) => {
+                          const i = joursTravailles.indexOf(date);
+                          if (i >= 0) setJourIndex(i);
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                        onSignerSemaine={(dataUrl) => signerSemaine(debut, fin, dataUrl)}
+                      />
                     );
                   })()}
                 </>

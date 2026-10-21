@@ -55,7 +55,10 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/dashboard");
+    // Retour à la page demandée avant la connexion (ex. QR code de
+    // présence scanné sans être connecté), sinon l'accueil.
+    const suite = new URLSearchParams(window.location.search).get("suite");
+    router.push(suite?.startsWith("/dashboard") ? suite : "/dashboard");
     router.refresh();
   }
 

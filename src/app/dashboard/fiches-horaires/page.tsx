@@ -8,6 +8,7 @@ import { useVacances } from "@/lib/use-vacances";
 import { estWeekend, joursDe, periodeEnCours, semainesDe } from "@/lib/vacances";
 import { formatHeures, heuresJour, pauseMinutes, toMinutes } from "@/lib/creneaux";
 import { PointageJour } from "@/components/pointage-jour";
+import QRCode from "qrcode";
 import {
   canManage,
   type AffectationCreneau,
@@ -17,6 +18,7 @@ import {
   type FeuilleTemps,
   type JourFermeture,
   type SignaturePresence,
+  type SignatureSemaine,
 } from "@/lib/types";
 
 // "18:00:00" -> "18h00" : l'heure elle-même plutôt que le libellé du
@@ -153,6 +155,7 @@ function FicheHorairePrint({
   affectationsJour,
   creneaux,
   signatures,
+  signaturesSemaine,
   zone,
 }: {
   animateur: Animateur;
@@ -162,8 +165,25 @@ function FicheHorairePrint({
   affectationsJour: AffectationJour[];
   creneaux: Creneau[];
   signatures: SignaturePresence[];
+  signaturesSemaine: SignatureSemaine[];
   zone: number | string;
 }) {
+  // Signature de la fiche de la semaine faite par l'animateur dans Mon
+  // planning : reprise dans les deux cases "Signature de l'employé".
+  const signatureSemaine = signaturesSemaine.find(
+    (s) => s.animateur_id === animateur.id && s.semaine_debut === semaineJours[0]
+  );
+  const caseEmploye = (
+    <div className="border border-black px-3 py-2">
+      <p className="text-sm text-zinc-700">Signature de l&apos;employé</p>
+      {signatureSemaine ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={signatureSemaine.signature} alt="Signature" className="h-14 w-auto" />
+      ) : (
+        <div className="h-14" />
+      )}
+    </div>
+  );
   return (
     <div className="print-page">
       <h2 className="text-lg font-bold text-zinc-900">Fiche horaire</h2>
@@ -254,10 +274,7 @@ function FicheHorairePrint({
       </table>
 
       <div className="mt-8 grid grid-cols-2 gap-8">
-        <div className="border border-black px-3 py-2">
-          <p className="text-sm text-zinc-700">Signature de l&apos;employé</p>
-          <div className="h-14" />
-        </div>
+        {caseEmploye}
         <div className="border border-black px-3 py-2">
           <p className="text-sm text-zinc-700">Signature de l&apos;employeur</p>
           <div className="h-14" />
@@ -313,10 +330,7 @@ function FicheHorairePrint({
       </table>
 
       <div className="mt-8 grid grid-cols-2 gap-8">
-        <div className="border border-black px-3 py-2">
-          <p className="text-sm text-zinc-700">Signature de l&apos;employé</p>
-          <div className="h-14" />
-        </div>
+        {caseEmploye}
         <div className="border border-black px-3 py-2">
           <p className="text-sm text-zinc-700">Signature de l&apos;employeur</p>
           <div className="h-14" />
@@ -339,6 +353,7 @@ export default function FichesHorairesPage() {
   const [affectationsJour, setAffectationsJour] = useState<AffectationJour[]>([]);
   const [feuilles, setFeuilles] = useState<FeuilleTemps[]>([]);
   const [signatures, setSignatures] = useState<SignaturePresence[]>([]);
+  const [signaturesSemaine, setSignaturesSemaine] = useState<SignatureSemaine[]>([]);
   const [joursFermeture, setJoursFermeture] = useState<JourFermeture[]>([]);
   const [periodeIndex, setPeriodeIndex] = useState<number | null>(null);
   const [semaineIndex, setSemaineIndex] = useState(0);
@@ -358,10 +373,16 @@ export default function FichesHorairesPage() {
   const [toutesAffectationsJour, setToutesAffectationsJour] = useState<AffectationJour[]>([]);
   const [toutesFeuilles, setToutesFeuilles] = useState<FeuilleTemps[]>([]);
   const [toutesSignatures, setToutesSignatures] = useState<SignaturePresence[]>([]);
+  const [toutesSignaturesSemaine, setToutesSignaturesSemaine] = useState<SignatureSemaine[]>([]);
+  // Feuille de QR codes de présence de la semaine affichée (un par jour), à
+  // afficher à la MJC : les animateurs les scannent pour signer.
+  const [qrSemaine, setQrSemaine] = useState<{ date: string; image: string }[] | null>(null);
+  const [chargementQr, setChargementQr] = useState(false);
 
   useEffect(() => {
     function reinitialiserApresImpression() {
       setImpressionToutesSemaines(false);
+      setQrSemaine(null);
     }
     window.addEventListener("afterprint", reinitialiserApresImpression);
     return () => window.removeEventListener("afterprint", reinitialiserApresImpression);
@@ -370,7 +391,7 @@ export default function FichesHorairesPage() {
   async function imprimerToutesLesSemaines() {
     if (!periode) return;
     setChargementToutesSemaines(true);
-    const [{ data: c }, { data: j }, { data: f }, { data: sp }] = await Promise.all([
+    const [{ data: c }, { data: j }, { data: f }, { data: sp }, { data: ss }] = await Promise.all([
       supabase
         .from("affectations_creneau")
         .select("*")
@@ -391,11 +412,17 @@ export default function FichesHorairesPage() {
         .select("*")
         .gte("date", periode.debut)
         .lte("date", periode.fin),
+      supabase
+        .from("signatures_semaine")
+        .select("*")
+        .gte("semaine_debut", periode.debut)
+        .lte("semaine_debut", periode.fin),
     ]);
     setToutesAffectations((c as AffectationCreneau[]) ?? []);
     setToutesAffectationsJour((j as AffectationJour[]) ?? []);
     setToutesFeuilles((f as FeuilleTemps[]) ?? []);
     setToutesSignatures((sp as SignaturePresence[]) ?? []);
+    setToutesSignaturesSemaine((ss as SignatureSemaine[]) ?? []);
     setChargementToutesSemaines(false);
     setImpressionToutesSemaines(true);
     // Laisse React re-rendre le bloc imprimable avant d'ouvrir le
@@ -455,6 +482,46 @@ export default function FichesHorairesPage() {
     [semaines, semaineIndexSafe]
   );
 
+  // Crée (si besoin) un jeton par jour de la semaine affichée puis imprime
+  // la feuille de QR codes à afficher à la MJC. Les jetons existants sont
+  // réutilisés : réimprimer la feuille ne rend pas l'ancienne invalide.
+  async function imprimerFeuilleQr() {
+    if (semaineJours.length === 0) return;
+    setChargementQr(true);
+    setErreur(null);
+    const { error: errInsert } = await supabase
+      .from("qr_presence")
+      .upsert(
+        semaineJours.map((date) => ({ date, created_by: profile.id })),
+        { onConflict: "etablissement_id,date", ignoreDuplicates: true }
+      );
+    const { data, error } = await supabase
+      .from("qr_presence")
+      .select("jeton, date")
+      .in("date", semaineJours);
+    if (errInsert || error || !data) {
+      setChargementQr(false);
+      setErreur((errInsert ?? error)?.message ?? "Impossible de créer les QR codes.");
+      return;
+    }
+    const lignesQr = await Promise.all(
+      semaineJours
+        .map((date) => (data as { jeton: string; date: string }[]).find((q) => q.date === date))
+        .filter((q): q is { jeton: string; date: string } => !!q)
+        .map(async (q) => ({
+          date: q.date,
+          image: await QRCode.toDataURL(
+            `${window.location.origin}/dashboard/presence?j=${q.jeton}`,
+            { margin: 1, width: 360 }
+          ),
+        }))
+    );
+    setQrSemaine(lignesQr);
+    setChargementQr(false);
+    requestAnimationFrame(() => imprimer());
+  }
+
+
   async function chargerFeuilles(debut: string, fin: string) {
     const { data } = await supabase
       .from("feuilles_temps")
@@ -475,7 +542,9 @@ export default function FichesHorairesPage() {
       supabase.from("affectations_jour").select("*").gte("date", debut).lte("date", fin),
       supabase.from("feuilles_temps").select("*").gte("date", debut).lte("date", fin),
       supabase.from("signatures_presence").select("*").gte("date", debut).lte("date", fin),
-    ]).then(([{ data: c }, { data: j }, { data: f }, { data: sp }]) => {
+      supabase.from("signatures_semaine").select("*").eq("semaine_debut", debut),
+    ]).then(([{ data: c }, { data: j }, { data: f }, { data: sp }, { data: ss }]) => {
+      setSignaturesSemaine((ss as SignatureSemaine[]) ?? []);
       setSignatures((sp as SignaturePresence[]) ?? []);
       setAffectations((c as AffectationCreneau[]) ?? []);
       setAffectationsJour((j as AffectationJour[]) ?? []);
@@ -706,6 +775,15 @@ export default function FichesHorairesPage() {
               ? "Préparation..."
               : "Imprimer toutes les semaines"}
           </button>
+          {editable && (
+            <button
+              onClick={imprimerFeuilleQr}
+              disabled={chargementQr || semaineJours.length === 0}
+              className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+            >
+              {chargementQr ? "Préparation..." : "📷 Feuille QR codes de la semaine"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -812,6 +890,14 @@ export default function FichesHorairesPage() {
                       <tr key={a.id} className="border-b border-zinc-100 last:border-0">
                         <td className="sticky left-0 z-10 whitespace-nowrap border border-zinc-300 bg-white px-3 py-2 font-medium text-zinc-900">
                           {a.prenom} {a.nom}
+                          {signaturesSemaine.some((s) => s.animateur_id === a.id) && (
+                            <span
+                              className="ml-1.5 text-[10px] font-medium text-emerald-700"
+                              title="Fiche de la semaine signée par l'animateur"
+                            >
+                              📝 fiche signée
+                            </span>
+                          )}
                         </td>
                         {semaineJours.map((j) => {
                           if (
@@ -906,7 +992,7 @@ export default function FichesHorairesPage() {
             </div>
           )}
 
-          {!impressionToutesSemaines && lignes.length > 0 && (
+          {!impressionToutesSemaines && !qrSemaine && lignes.length > 0 && (
             <div className="print-portrait hidden print:block">
               {lignes.map((a) => (
                 <FicheHorairePrint
@@ -918,6 +1004,7 @@ export default function FichesHorairesPage() {
                   affectationsJour={affectationsJour}
                   creneaux={creneaux}
                   signatures={signatures}
+                  signaturesSemaine={signaturesSemaine}
                   zone={zone}
                 />
               ))}
@@ -927,7 +1014,36 @@ export default function FichesHorairesPage() {
           {/* "Imprimer toutes les semaines" : une fiche par animateur par
               semaine, pour toute la période — données chargées à part
               (toutes* state) le temps de l'impression. */}
-          {impressionToutesSemaines && (
+          {/* Feuille de QR codes de présence de la semaine, à afficher à
+              la MJC. */}
+          {qrSemaine && (
+            <div className="print-portrait hidden print:block">
+              <h2 className="text-center text-xl font-bold text-zinc-900">
+                Signature de présence
+              </h2>
+              <p className="mt-1 text-center text-sm text-zinc-600">
+                Semaine du {formatJourCourt(semaineJours[0])} au{" "}
+                {formatJourCourt(semaineJours[semaineJours.length - 1])} — scanne le QR code
+                du jour avec ton téléphone, puis signe.
+              </p>
+              <div className="mt-6 grid grid-cols-2 gap-6">
+                {qrSemaine.map((q) => (
+                  <div
+                    key={q.date}
+                    className="flex break-inside-avoid flex-col items-center border-2 border-black p-3"
+                  >
+                    <p className="text-lg font-bold capitalize text-zinc-900">
+                      {formatJourCourt(q.date)}
+                    </p>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={q.image} alt={`QR code du ${q.date}`} className="mt-2 h-44 w-44" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {impressionToutesSemaines && !qrSemaine && (
             <div className="print-portrait hidden print:block">
               {semaines.map((semaineJoursX) =>
                 lignesPourSemaine(
@@ -946,6 +1062,7 @@ export default function FichesHorairesPage() {
                     affectationsJour={toutesAffectationsJour}
                     creneaux={creneaux}
                     signatures={toutesSignatures}
+                    signaturesSemaine={toutesSignaturesSemaine}
                     zone={zone}
                   />
                 ))

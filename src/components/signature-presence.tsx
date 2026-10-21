@@ -19,7 +19,7 @@ function formatHeureSignature(iso: string) {
   return new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
 
-function PadSignature({
+export function PadSignature({
   onValider,
   onAnnuler,
   enCours,
@@ -133,39 +133,23 @@ function PadSignature({
   );
 }
 
-/** Bloc "Signature de présence" d'un jour. L'animateur peut signer (ou
- * re-signer) uniquement le jour même ; les autres jours, et pour la
- * direction, la signature est seulement affichée. */
+/** Bloc "Signature de présence" d'un jour dans Mon planning. La signature
+ * se fait uniquement en scannant le QR code du jour affiché à la MJC
+ * (page /dashboard/presence) : ici, on affiche juste l'état. */
 export function SignaturePresenceJour({
   date,
   signature,
-  peutSigner,
-  onSigner,
 }: {
   date: string;
   signature: SignaturePresence | null;
-  peutSigner: boolean;
-  onSigner: (dataUrl: string) => Promise<void>;
 }) {
-  const [modification, setModification] = useState(false);
-  const [enCours, setEnCours] = useState(false);
-  const estAujourdhui = date === aujourdhuiISO();
-  const signable = peutSigner && estAujourdhui;
-
-  async function valider(dataUrl: string) {
-    setEnCours(true);
-    await onSigner(dataUrl);
-    setEnCours(false);
-    setModification(false);
-  }
-
   return (
     <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
         Signature de présence
       </p>
 
-      {signature && !modification ? (
+      {signature ? (
         <div className="mt-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -176,29 +160,12 @@ export function SignaturePresenceJour({
           <p className="mt-1 text-xs text-emerald-700">
             ✓ Signé à {formatHeureSignature(signature.signe_le)}
           </p>
-          {signable && (
-            <button
-              type="button"
-              onClick={() => setModification(true)}
-              className="mt-1 text-xs text-zinc-500 underline hover:text-zinc-800"
-            >
-              Refaire ma signature
-            </button>
-          )}
         </div>
-      ) : signable ? (
-        <div className="mt-2">
-          <PadSignature
-            onValider={valider}
-            onAnnuler={signature ? () => setModification(false) : undefined}
-            enCours={enCours}
-          />
-        </div>
+      ) : date > aujourdhuiISO() ? (
+        <p className="mt-1 text-sm text-zinc-400">Tu pourras signer ce jour-là.</p>
       ) : (
-        <p className="mt-1 text-sm text-zinc-400">
-          {peutSigner && date > aujourdhuiISO()
-            ? "Vous pourrez signer ce jour-là."
-            : "Non signé."}
+        <p className="mt-1 text-sm text-zinc-700">
+          📷 Pas encore signé : scanne le QR code de ce jour sur la feuille affichée à la MJC.
         </p>
       )}
     </div>

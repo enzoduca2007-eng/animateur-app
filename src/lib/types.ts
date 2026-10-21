@@ -399,6 +399,17 @@ export interface SignaturePresence {
   signe_le: string;
 }
 
+/** Signature de la fiche de la semaine (horaires + présences, migration_061). */
+export interface SignatureSemaine {
+  id: string;
+  animateur_id: string;
+  semaine_debut: string;
+  semaine_fin: string;
+  /** Image PNG en data URL. */
+  signature: string;
+  signe_le: string;
+}
+
 export type StatutIaGouter = "en_attente" | "traite" | "echec";
 
 export interface Gouter {
