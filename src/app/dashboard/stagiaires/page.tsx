@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { imprimer as lancerImpression } from "@/lib/impression";
 import { useProfile } from "@/lib/profile-context";
@@ -118,106 +118,108 @@ function GrilleCriteresPrint({
         <span className="font-bold text-sky-700">X bleu</span> = Stagiaire · anneau bleu = même
         avis
       </p>
-      {/* border-separate (pas collapse) : même bug moteur d'impression Chrome
-          que sur Répartition — border-collapse + cellule rowSpan (colonne
-          Appréciation ici) fait disparaître le contenu qui déborde sur une
-          2e page au lieu de la paginer. Colonne Critère élargie (45% au
-          lieu de 28%) : les libellés longs ("Comprend et respecte le
-          projet pédagogique...") passaient sur 2-3 lignes et gonflaient
-          la hauteur du tableau bien au-delà d'une page. */}
-      <table className="mt-2 w-full table-fixed border-separate border-spacing-0 text-left text-[11px] leading-tight">
-        <colgroup>
-          <col className="w-[45%]" />
-          {NIVEAUX.map((n) => (
-            <col key={n} className="w-[8%]" />
-          ))}
-          <col className="w-[23%]" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th className="border border-black px-2 py-1 font-semibold">Critère</th>
-            {NIVEAUX.map((niveau) => (
-              <th
-                key={niveau}
-                className="border border-black px-1 py-1 text-center font-semibold"
-              >
-                {NIVEAU_CRITERE_ABBREV[niveau]}
-              </th>
-            ))}
-            <th className="border border-black px-2 py-1 font-semibold">Appréciation</th>
-          </tr>
-        </thead>
-        <tbody>
-          {CRITERES_STAGIAIRE.map((cat) => {
-            const texteAppreciation = appreciations?.[cat.cle];
-            return (
-              <Fragment key={cat.cle}>
+      {/* Un tableau par catégorie, chacun insécable (break-inside: avoid) :
+          quand la fiche déborde sur une 2e page, la coupure tombe entre
+          deux catégories au lieu de couper une catégorie au milieu (avant :
+          un seul grand tableau avec la colonne Appréciation en rowSpan —
+          bordures cassées, appréciation tronquée, titre de catégorie seul
+          en bas de page, plus d'en-tête de niveaux en page 2). Chaque
+          catégorie porte ses propres en-têtes de niveaux, lisibles sur
+          n'importe quelle page. Colonne Critère à 45% : les libellés longs
+          tiennent sur moins de lignes. */}
+      <div className="mt-2">
+        {CRITERES_STAGIAIRE.map((cat, iCat) => {
+          const texteAppreciation = appreciations?.[cat.cle];
+          return (
+            <div key={cat.cle} className={`break-inside-avoid ${iCat === 0 ? "" : "-mt-px"}`}>
+            <table className="w-full table-fixed border-collapse text-left text-[11px] leading-tight">
+              <colgroup>
+                <col className="w-[45%]" />
+                {NIVEAUX.map((n) => (
+                  <col key={n} className="w-[8%]" />
+                ))}
+                <col className="w-[23%]" />
+              </colgroup>
+              <tbody>
                 <tr>
-                  <td
-                    colSpan={2 + NIVEAUX.length}
-                    className="border border-black bg-zinc-200 px-2 py-0.5 font-semibold"
-                  >
+                  <td className="border border-black bg-zinc-200 px-2 py-0.5 font-semibold">
                     {cat.categorie}
                   </td>
-                </tr>
-                {cat.criteres.map((c, idx) => {
-                  const dernier = idx === cat.criteres.length - 1;
-                  const bordureBas = dernier ? "border-b border-black" : "";
-                  return (
-                    <tr key={c.cle}>
-                      <td className={`border-x border-black px-2 py-1.5 ${bordureBas}`}>
-                        {c.label}
-                      </td>
-                      {NIVEAUX.map((niveau) => (
-                        <td
-                          key={niveau}
-                          className={`border-x border-black px-1 py-1.5 text-center ${bordureBas}`}
-                        >
-                          <MarqueNiveau
-                            dir={criteresDirection?.[c.cle]}
-                            stag={criteresStagiaire?.[c.cle]}
-                            niveau={niveau}
-                          />
-                        </td>
-                      ))}
-                      {idx === 0 && (
-                        <td
-                          rowSpan={cat.criteres.length}
-                          className="border-x border-b border-black px-2 py-1.5 align-top whitespace-pre-wrap text-zinc-700"
-                        >
-                          {texteAppreciation ?? ""}
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </Fragment>
-            );
-          })}
-          {(() => {
-            const { matches, total, niveau } = concordance(criteresDirection, criteresStagiaire);
-            return (
-              <tr>
-                <td className="border-x border-b border-black bg-zinc-200 px-2 py-1.5 font-semibold">
-                  Niveau d&apos;acquisition global (déduit automatiquement de la concordance
-                  auto-éval. / direction{total > 0 ? ` — ${matches}/${total} critères` : ""})
-                </td>
-                {NIVEAUX.map((n) => (
-                  <td
-                    key={n}
-                    className="border-x border-b border-black bg-zinc-200 px-1 py-1.5 text-center"
-                  >
-                    {niveau === n ? (
-                      <span className="text-sm font-bold text-zinc-900">X</span>
-                    ) : null}
+                  {NIVEAUX.map((niveau) => (
+                    <td
+                      key={niveau}
+                      className="border border-black bg-zinc-200 px-1 py-0.5 text-center font-semibold"
+                    >
+                      {NIVEAU_CRITERE_ABBREV[niveau]}
+                    </td>
+                  ))}
+                  <td className="border border-black bg-zinc-200 px-2 py-0.5 font-semibold">
+                    Appréciation
                   </td>
+                </tr>
+                {cat.criteres.map((c, idx) => (
+                  <tr key={c.cle}>
+                    <td className="border border-black px-2 py-1.5">{c.label}</td>
+                    {NIVEAUX.map((niveau) => (
+                      <td key={niveau} className="border border-black px-1 py-1.5 text-center">
+                        <MarqueNiveau
+                          dir={criteresDirection?.[c.cle]}
+                          stag={criteresStagiaire?.[c.cle]}
+                          niveau={niveau}
+                        />
+                      </td>
+                    ))}
+                    {idx === 0 && (
+                      <td
+                        rowSpan={cat.criteres.length}
+                        className="border border-black px-2 py-1.5 align-top whitespace-pre-wrap text-zinc-700"
+                      >
+                        {texteAppreciation ?? ""}
+                      </td>
+                    )}
+                  </tr>
                 ))}
-                <td className="border-x border-b border-black bg-zinc-200 px-2 py-1.5" />
-              </tr>
-            );
-          })()}
-        </tbody>
-      </table>
+              </tbody>
+            </table>
+            </div>
+          );
+        })}
+        {(() => {
+          const { matches, total, niveau } = concordance(criteresDirection, criteresStagiaire);
+          return (
+            <div className="-mt-px break-inside-avoid">
+            <table className="w-full table-fixed border-collapse text-left text-[11px] leading-tight">
+              <colgroup>
+                <col className="w-[45%]" />
+                {NIVEAUX.map((n) => (
+                  <col key={n} className="w-[8%]" />
+                ))}
+                <col className="w-[23%]" />
+              </colgroup>
+              <tbody>
+                <tr>
+                  <td className="border border-black bg-zinc-200 px-2 py-1.5 font-semibold">
+                    Niveau d&apos;acquisition global (déduit automatiquement de la concordance
+                    auto-éval. / direction{total > 0 ? ` — ${matches}/${total} critères` : ""})
+                  </td>
+                  {NIVEAUX.map((n) => (
+                    <td
+                      key={n}
+                      className="border border-black bg-zinc-200 px-1 py-1.5 text-center"
+                    >
+                      {niveau === n ? (
+                        <span className="text-sm font-bold text-zinc-900">X</span>
+                      ) : null}
+                    </td>
+                  ))}
+                  <td className="border border-black bg-zinc-200 px-2 py-1.5" />
+                </tr>
+              </tbody>
+            </table>
+            </div>
+          );
+        })()}
+      </div>
     </>
   );
 }
@@ -674,7 +676,7 @@ export default function StagiairesPage() {
                     appreciations={evaluation?.appreciations_categories}
                   />
 
-                  <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                  <div className="mt-4 grid break-inside-avoid grid-cols-2 gap-x-8 gap-y-2 text-sm">
                     <p className="col-span-2">
                       <span className="font-semibold">Avis final : </span>
                       {evaluation?.avis_final ? AVIS_FINAL_LABELS[evaluation.avis_final] : "—"}
